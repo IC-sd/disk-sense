@@ -27,7 +27,7 @@ Long-term interventions include moving data, changing application locations, red
 - Cleanup is one possible action, not the default answer.
 - Personal files and application data are different safety domains.
 - The product must explain recurring growth, not merely report current size.
-- User decisions become durable memory.
+- Explanations are deterministic, inspectable, and based on evidence.
 - The default interface is calm and understandable; expert evidence is available on demand.
 
 ## Primary objects
@@ -40,8 +40,6 @@ Long-term interventions include moving data, changing application locations, red
 - `UserDecision`: keep, ignore, monitor, move, archive, or delete.
 - `ActionJob`: an auditable execution with per-item results.
 - `ChangeEvent`: a normalized observation of something added, removed, modified, moved, or repeatedly growing.
-- `UserMemory`: a human-readable, user-editable memory about a path, application, project, or storage habit.
-- `AgentContext`: a permission-scoped context package that another local agent can consume without direct filesystem access.
 
 ## Success criteria
 
@@ -50,22 +48,3 @@ Long-term interventions include moving data, changing application locations, red
 - It can explain why an application installed on another drive still consumes system-disk space.
 - It can distinguish a one-time cleanup opportunity from a recurring growth source.
 - Every destructive action is previewed, auditable, and recoverable where Windows permits.
-
-## Self-evolving memory direction
-
-Disk Sense should not silently train itself or mutate rules. Its learning loop is explicit:
-
-1. observe a change;
-2. propose a memory or pattern;
-3. show the evidence;
-4. let the user accept, edit, or reject it;
-5. use accepted memories in later classification.
-
-Accepted memories are stored as Markdown so the user can inspect, edit, back up, or provide them to another agent. Machine indexes may accelerate lookup, but Markdown remains the human-readable source of truth.
-
-Examples:
-
-- “This folder is an active project; never recommend deletion.”
-- “This application stores its cache on C: even though it is installed on D:.”
-- “Archive completed projects after 90 days without access.”
-- “The user usually keeps installers for one month, then moves them to D:\\Archive.”

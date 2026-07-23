@@ -44,4 +44,42 @@ function scan(options = {}) {
   }
   return { items: items.sort((a,b)=>b.size-a.size), errors, files, dirs, limited: items.length >= limit, roots: options.roots || roots() }
 }
-module.exports = { scan, roots }
+
+async function scanAsync(options = {}, hooks = {}) {
+  const limit = options.limit || 50000
+  const minBytes = options.minBytes || 1024 * 1024
+  const items = []
+  const errors = []
+  const queue = [...(options.roots || roots())]
+  let files = 0
+  let dirs = 0
+  let visited = 0
+  const signal = hooks.signal
+  while (queue.length && items.length < limit) {
+    if (signal?.aborted) return { items, errors, files, dirs, limited: false, cancelled: true, roots: options.roots || roots() }
+    const current = queue.pop()
+    let entries
+    try { entries = fs.readdirSync(current, { withFileTypes: true }) } catch (error) { errors.push({ path: current, reason: error.code || error.message }); continue }
+    dirs++; visited++
+    for (const entry of entries) {
+      if (items.length >= limit) break
+      if (signal?.aborted) return { items, errors, files, dirs, limited: false, cancelled: true, roots: options.roots || roots() }
+      const full = path.join(current, entry.name)
+      try {
+        const stat = fs.statSync(full)
+        if (entry.isDirectory()) queue.push(full)
+        else {
+          files++
+          if (stat.size >= minBytes) {
+            const c = classify(full, stat)
+            items.push({ id: full, path: full, volume: path.parse(full).root, size: stat.size, fileCount: 1, modifiedAt: new Date(stat.mtimeMs).toISOString(), accessedAt: new Date(stat.atimeMs).toISOString(), ...c, evidence: [{ type: 'path', value: full }, { type: 'size', value: String(stat.size) }], actions: c.risk === 'low' ? ['inspect', 'trash'] : ['inspect', 'open', 'move', 'archive', 'ignore'] })
+          }
+        }
+      } catch (error) { errors.push({ path: full, reason: error.code || error.message }) }
+    }
+    hooks.onProgress?.({ visited, queued: queue.length, files, dirs, candidates: items.length, current })
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  return { items: items.sort((a, b) => b.size - a.size), errors, files, dirs, limited: items.length >= limit, cancelled: false, roots: options.roots || roots() }
+}
+module.exports = { scan, scanAsync, roots, classify }

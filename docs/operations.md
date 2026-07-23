@@ -16,7 +16,6 @@ The UI uses Vite HMR. The desktop process uses `desktop/preload.cjs` and the iso
 - Unknown files are not automatically classified as removable.
 - Cleaner actions use the Windows Recycle Bin.
 - Move/archive is explicit and separate from cleanup.
-- Agent context defaults to `mutateFiles: false`.
 
 ## Local state
 
