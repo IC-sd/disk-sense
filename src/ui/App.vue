@@ -1,30 +1,79 @@
 <template>
   <main class="shell">
-    <aside><div class="brand"><span class="brand-mark">◌</span><div><b>Disk Sense</b><small>空间记忆系统</small></div></div><nav><button :class="{active:view==='overview'}" @click="view='overview'">空间总览</button><button :class="{active:view==='cleaner'}" @click="view='cleaner'">常规清理</button><button :class="{active:view==='memory'}" @click="view='memory'">个人空间</button><button :class="{active:view==='growth'}" @click="view='growth'">增长趋势</button></nav><div class="aside-foot">新架构 · 只读原型<br><span>所有结论都显示证据</span></div></aside>
-    <section class="content" v-if="view==='cleaner'"><CleanerPanel /></section><section class="content" v-else-if="view==='memory'"><header><div><p class="kicker">PERSONAL SPACE</p><h1>个人空间</h1><p class="subtitle">查看长期未使用、来源不明和用户自己决定保留的内容。</p></div><button class="scan" @click="runScan">重新分析</button></header><div class="personal-list"><div v-for="source in sources.filter(x=>x.classification==='personal'||x.classification==='stale')" :key="source.id" class="source"><div class="source-dot"></div><div class="source-info"><b>{{ source.title }}</b><span>{{ source.count }} 个对象</span></div><strong>{{ format(source.bytes) }}</strong></div><p v-if="!sources.length" class="muted">先进行一次空间体检。</p></div></section><section class="content" v-else-if="view==='growth'"><header><div><p class="kicker">GROWTH TRACKING</p><h1>增长趋势</h1><p class="subtitle">每次扫描都会留下快照，用来识别会反复回来的空间。</p></div><button class="scan" @click="runScan">建立新快照</button></header><div class="trend-card"><b>{{ events.length ? '已发现变化' : '等待第二次快照' }}</b><p>{{ events.length ? `最近记录了 ${events.length} 条文件变化。` : '第一次扫描只能建立基线，第二次扫描后才能计算增长。' }}</p></div><div v-for="event in events" :key="event.path + event.observedAt" class="event"><span class="event-kind">{{ event.kind }}</span><div><b>{{ event.path }}</b><small>{{ event.observedAt }}</small></div></div></section><section class="content" v-else><header><div><p class="kicker">STORAGE OBSERVABILITY</p><h1>你的空间正在发生什么</h1><p class="subtitle">清理只是一次动作，理解增长来源才能让空间真正稳定下来。</p></div><div class="head-actions"><button class="quiet" @click="showAgent=true">Agent 上下文</button><button class="scan" @click="runScan">{{ scanning ? '分析中…' : '开始空间体检' }}</button></div></header>
-      <div class="notice"><span>◷</span><div><b>这次是只读分析</b><p>不会修改或删除任何文件。先建立第一张空间快照，再决定下一步。</p></div></div>
-      <div class="cards"><article><span>当前状态</span><strong>{{ scanning ? '正在建立快照' : '等待首次体检' }}</strong><small>{{ scanning ? '读取文件元数据和目录关系' : '建议先扫描用户目录和应用数据' }}</small></article><article><span>产品原则</span><strong>未知 ≠ 垃圾</strong><small>无法判断的内容会保留给你决定</small></article><article><span>长期目标</span><strong>找到反复增长</strong><small>比较多次快照，而不是只清理一次</small></article></div>
-      <section class="empty" v-if="!scanned"><div class="empty-orbit">◌</div><h2>先建立你的空间地图</h2><p>Disk Sense 会从文件、应用、时间和路径关系开始理解这台电脑。</p><button class="scan secondary" @click="runScan">建立第一张快照</button></section>
-      <section v-else class="result"><h2>空间来源</h2><div v-for="source in sources" :key="source.id" class="source"><div class="source-dot" :class="source.risk"></div><div class="source-info"><b>{{ source.title }}</b><span>{{ source.count }} 个对象 · {{ source.classification }}</span></div><strong>{{ format(source.bytes) }}</strong></div></section>
-      <section v-if="scanned" class="result"><h2>下一步建议</h2><div class="suggestion"><b>先观察，再清理</b><span>再次扫描后，Disk Sense 会告诉你哪些空间在持续增长，而不是只显示一次性占用。</span></div></section>
-      <section v-if="scanned && events.length" class="result"><h2>最近变化</h2><div v-for="event in events.slice(0,8)" :key="event.path + event.observedAt" class="event"><span class="event-kind">{{ event.kind === 'added' ? '新增' : '变更' }}</span><div><b>{{ event.path }}</b><small>{{ event.observedAt }}</small></div></div></section>
-      <section class="result"><div class="result-head"><h2>我的空间记忆</h2><button class="quiet" @click="showMemory=true">添加记忆</button></div><div v-if="memories.length" v-for="memory in memories" :key="memory.id" class="memory"><b>{{ memory.subject }}</b><span>{{ memory.content }}</span></div><p v-else class="muted">还没有记忆。扫描后可以记录目录用途和保留习惯。</p></section>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">◌</span><div><b>Disk Sense</b><small>文件功能解释器</small></div></div>
+      <nav>
+        <button :class="{ active: view === 'overview' }" @click="view = 'overview'">空间概览</button>
+        <button :class="{ active: view === 'inspect' }" @click="openInspect">目录与文件</button>
+        <button :class="{ active: view === 'cleaner' }" @click="view = 'cleaner'">常规清理</button>
+        <button :class="{ active: view === 'changes' }" @click="view = 'changes'">变化记录</button>
+      </nav>
+      <div class="aside-foot">核心目标<br><span>解释内容，再决定是否处理</span></div>
+    </aside>
+
+    <section v-if="view === 'overview'" class="content">
+      <header class="overview-hero"><div><p class="kicker">SPACE EXPLANATION</p><h1>先理解空间，<br>再决定处理什么</h1><p class="subtitle">Disk Sense 关注的不只是“占了多少”，还要说明“为什么在这里”。</p></div><button class="scan" @click="openInspect">开始探查 C 盘</button></header>
+      <div class="notice"><span>◈</span><div><b>本地优先分析</b><p>路径、名称、上下文和内容摘要在本机分析；未知内容保持谨慎，不会自动删除。</p></div></div>
+      <div class="cards"><article><span>第一步</span><strong>定位空间</strong><small>从 C:\ 开始，按目录结构查看真实占用。</small></article><article><span>第二步</span><strong>解释对象</strong><small>结合文件名、内容、上级目录和应用来源判断作用。</small></article><article><span>第三步</span><strong>再做决定</strong><small>保留、移动、归档或清理都由证据和用户确认决定。</small></article></div>
     </section>
-    <div v-if="showAgent" class="modal" @click.self="showAgent=false"><div class="modal-card"><h2>Agent 上下文</h2><p>可提供给其他 Agent 的内容默认只有文件元数据和空间分类，不包含文件内容，也不允许直接修改文件。</p><pre>{{ agentJson }}</pre><button class="scan" @click="copyAgent">复制上下文</button></div></div>
-    <div v-if="showMemory" class="modal" @click.self="showMemory=false"><div class="modal-card"><h2>记录空间记忆</h2><input v-model="memorySubject" placeholder="目录或应用名称" /><textarea v-model="memoryContent" placeholder="例如：这是正在使用的项目，不要建议删除"></textarea><button class="scan" @click="saveMemory">保存记忆</button></div></div>
+
+    <section v-else-if="view === 'inspect'" class="content">
+      <header><p class="kicker">EXPLAINER EXPLORER</p><h1>目录与文件</h1><p class="subtitle">像资源管理器一样浏览，但每个对象都展示功能、来源、上下文和风险。</p></header>
+      <div class="path-search"><input v-model="pathInput" @keyup.enter="loadDirectory(pathInput)" placeholder="输入 Windows 路径，例如 C:\\Users" /><button class="scan" @click="loadDirectory(pathInput)">打开路径</button><button class="quiet" @click="showAiSettings = true">AI 设置</button></div>
+      <p v-if="inspectError" class="error-message">{{ inspectError }}</p>
+      <div class="explorer-toolbar"><button title="返回" @click="goBack" :disabled="history.length < 2">←</button><button title="上级目录" @click="goUp">↑</button><button @click="loadDirectory(browsePath)">刷新</button><div class="breadcrumbs"><button v-for="crumb in crumbs" :key="crumb.path" @click="loadDirectory(crumb.path)">{{ crumb.name }}</button></div></div>
+      <div class="explorer-path">{{ browsePath || '尚未打开目录' }}</div>
+      <div class="explorer-layout">
+        <div class="file-list"><div class="list-head"><span>名称</span><span>初步判断</span><span>大小</span></div><button v-for="item in inspectItems" :key="item.path" class="file-row" :class="{ selected: selected?.path === item.path }" @click="selectItem(item)" @dblclick="item.isDirectory && loadDirectory(item.path)"><span class="file-name"><i>{{ item.isDirectory ? '▰' : '□' }}</i>{{ item.name }}</span><span class="row-classification">{{ item.source }}</span><span>{{ item.isDirectory ? format(item.size) + (item.sizeEstimated ? ' 估算' : '') : format(item.size) }}</span></button><div v-if="!inspectItems.length" class="list-empty">输入路径后打开，开始理解目录内容</div></div>
+        <aside class="explain-panel">
+          <div v-if="explanation">
+            <div class="explain-icon">{{ explanation.icon }}</div><p class="kicker">{{ explanation.kind }}</p><h2>{{ explanation.title }}</h2><p>{{ explanation.description }}</p>
+            <div class="explain-facts"><span>来源：{{ explanation.source || '待确认' }}</span><span>风险：{{ explanation.risk }}</span><span>置信度：{{ Math.round((explanation.confidence || 0) * 100) }}%</span><span>建议：{{ explanation.action }}</span></div>
+            <button class="ai-review" :disabled="aiBusy" @click="aiConfigured ? reviewWithAi() : (showAiSettings = true)">{{ aiBusy ? '分析中…' : (aiConfigured ? '请求 AI 深入解释' : '配置 AI 深入分析') }}</button>
+            <div v-if="aiError" class="error-message">{{ aiError }}</div><pre v-if="aiResult" class="ai-result">{{ aiResult }}</pre>
+            <div class="evidence"><b>判断依据</b><p>路径：{{ selected?.path }}</p><p>上级目录：{{ explanation.parent || '根目录' }}</p><p v-if="selected?.modifiedAt">修改：{{ new Date(selected.modifiedAt).toLocaleString() }}</p><p v-if="explanation.evidence?.siblingNames?.length">同级上下文：{{ explanation.evidence.siblingNames.join('、') }}</p><p v-if="explanation.relatedLocations?.length">关联位置：</p><ul v-if="explanation.relatedLocations?.length" class="related-list"><li v-for="location in explanation.relatedLocations" :key="location.path">{{ location.path }}<small>{{ location.reason }}</small></li></ul><details v-if="explanation.contentPreview"><summary>查看内容摘要</summary><pre>{{ explanation.contentPreview }}</pre></details></div>
+          </div>
+          <div v-else class="panel-empty"><span>◇</span><b>选择一个目录或文件</b><p>这里会结合路径、名称、内容和上下文解释它的作用。</p></div>
+        </aside>
+      </div>
+    </section>
+
+    <section v-else-if="view === 'cleaner'" class="content"><CleanerPanel /></section>
+    <section v-else-if="view === 'changes'" class="content"><ChangesPanel /></section>
+    <section v-else class="content"><header><p class="kicker">CHANGE HISTORY</p><h1>变化记录</h1><p class="subtitle">记录扫描发现的新增和修改内容。</p></header><div class="empty small"><h2>暂无变化记录</h2><p>完成至少两次扫描后，这里会显示空间变化。</p></div></section>
+    <AiSettingsModal v-if="showAiSettings" @close="showAiSettings = false" @saved="status => { aiConfigured = status.configured }" />
   </main>
 </template>
+
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { aggregateSources } from '../application/space-service'
-import { desktopApi } from '../platform/api'
+import { computed, onMounted, ref } from 'vue'
 import CleanerPanel from './CleanerPanel.vue'
-import type { SpaceSource } from '../domain/storage'
-const view = ref('overview'); const scanning = ref(false); const scanned = ref(false); const sources = ref<SpaceSource[]>([]); const showAgent = ref(false); const showMemory = ref(false); const events = ref<any[]>([]); const memories = ref<any[]>([]); const memorySubject = ref(''); const memoryContent = ref('')
-const agentJson = '{\n  "schemaVersion": 1,\n  "permissions": {\n    "readMetadata": true,\n    "readContent": false,\n    "mutateFiles": false\n  }\n}'
-function format(n:number){if(n<1024)return `${n} B`;const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return `${n.toFixed(n>=100?0:n>=10?1:2)} ${u[i]}`}
-async function runScan(){scanning.value=true;const api=desktopApi();if(api){const result=await api.scan();sources.value=aggregateSources(result.items);events.value=result.events||[];scanned.value=true;scanning.value=false;return}await new Promise(r=>setTimeout(r,500));const samples=[{id:'1',path:'C:/Users/You/AppData/Local/Chrome/Cache/a',volume:'C:',size:3.2e9,fileCount:1834,classification:'rebuildable-cache' as const,source:'浏览器缓存',risk:'low' as const,confidence:.95,evidence:[{type:'path',value:'Chrome Cache'}],actions:['inspect' as const,'trash' as const]},{id:'2',path:'C:/Users/You/Downloads/old.zip',volume:'C:',size:1.8e9,fileCount:1,classification:'stale' as const,source:'长期未使用内容',risk:'medium' as const,confidence:.71,evidence:[{type:'age',value:'超过 180 天未访问'}],actions:['inspect' as const,'move' as const,'archive' as const]}];sources.value=aggregateSources(samples);scanned.value=true;scanning.value=false}
-async function copyAgent(){await navigator.clipboard?.writeText(agentJson)}
-async function saveMemory(){const api=desktopApi();const item={subject:memorySubject.value,content:memoryContent.value,tags:[],source:'user',confidence:1};if(api)memories.value=[await (api as any).saveMemory(item),...memories.value];else memories.value=[{...item,id:Date.now()} as any,...memories.value];memorySubject.value='';memoryContent.value='';showMemory.value=false}
-onMounted(async()=>{const api=desktopApi();if(api){memories.value=await (api as any).listMemories();(api as any).onChange((change:any)=>{events.value=[{...change,kind:'live-change'},...events.value].slice(0,50)})}})
+import ChangesPanel from './ChangesPanel.vue'
+import AiSettingsModal from './AiSettingsModal.vue'
+import { desktopApi } from '../platform/api'
+
+const view = ref('overview')
+const pathInput = ref('C:\\')
+const browsePath = ref('')
+const history = ref<string[]>([])
+const inspectItems = ref<any[]>([])
+const selected = ref<any>(null)
+const explanation = ref<any>(null)
+const inspectError = ref('')
+const aiConfigured = ref(false)
+const aiBusy = ref(false)
+const aiError = ref('')
+const aiResult = ref('')
+const showAiSettings = ref(false)
+
+const crumbs = computed(() => { const parts = browsePath.value.split('\\').filter(Boolean); return parts.map((name, index) => ({ name: name + (index === 0 ? ':' : ''), path: index === 0 ? `${name}\\` : parts.slice(0, index + 1).join('\\') + '\\' })) })
+function format(bytes: number) { if (!bytes) return '0 B'; if (bytes < 1024) return `${bytes} B`; const units = ['KB', 'MB', 'GB', 'TB']; let value = bytes; let index = -1; do { value /= 1024; index++ } while (value >= 1024 && index < units.length - 1); return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[index]}` }
+function openInspect() { view.value = 'inspect'; if (!browsePath.value) loadDirectory(pathInput.value); loadAiStatus() }
+async function loadAiStatus() { const api = desktopApi(); if (api) aiConfigured.value = Boolean((await api.aiStatus()).configured) }
+async function loadDirectory(dir?: string) { const api = desktopApi(); if (!api) { inspectError.value = '请使用 Electron 开发模式打开项目'; return } try { inspectError.value = ''; const result = await api.inspectList(dir || 'C:\\'); browsePath.value = result.path; pathInput.value = result.path; history.value = [...history.value.filter(item => item !== result.path), result.path]; inspectItems.value = result.items; selected.value = null; explanation.value = null; aiResult.value = '' } catch (error) { inspectError.value = error instanceof Error ? error.message : String(error); inspectItems.value = [] } }
+async function selectItem(item: any) { selected.value = item; aiResult.value = ''; aiError.value = ''; const api = desktopApi(); if (!api) return; try { const result = await api.inspectExplain(item.path); explanation.value = { ...result, icon: result.isDirectory ? '▰' : '□', kind: result.source || '功能说明', title: `${result.isDirectory ? '目录：' : '文件：'}${item.name}`, description: result.reason || '暂时没有足够证据解释其用途。', action: result.risk === 'low' ? '可在确认后处理' : '建议保留并进一步确认' } } catch (error) { inspectError.value = error instanceof Error ? error.message : String(error) } }
+async function reviewWithAi() { const api = desktopApi(); if (!api || !explanation.value) return; aiBusy.value = true; aiError.value = ''; try { const result = await api.aiReview(explanation.value); if (!result.ok) { aiError.value = result.reason; return } const parsed = result.parsed; if (parsed) { explanation.value = { ...explanation.value, kind: 'AI 深入分析', source: parsed.belongsTo || explanation.value.source, description: `它是${parsed.what || '暂未确定的对象'}。用途：${parsed.purpose || '证据不足'}${parsed.whyHere ? `为什么在这里：${parsed.whyHere}` : ''}`, risk: parsed.risk || explanation.value.risk, confidence: Number(parsed.confidence) || explanation.value.confidence, action: parsed.handling || explanation.value.action, aiAnalyzed: true }; aiResult.value = Array.isArray(parsed.reasons) ? parsed.reasons.join('\n') : '' } else aiResult.value = result.result } catch (error) { aiError.value = error instanceof Error ? error.message : String(error) } finally { aiBusy.value = false } }
+function goBack() { if (history.value.length < 2) return; history.value.pop(); loadDirectory(history.value[history.value.length - 1]) }
+function goUp() { const clean = browsePath.value.replace(/[\\/]$/, ''); const parent = clean.split(/[\\/]/).slice(0, -1).join('\\') + '\\'; if (parent && parent !== browsePath.value) loadDirectory(parent) }
+onMounted(loadAiStatus)
 </script>
