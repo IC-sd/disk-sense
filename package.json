@@ -1,28 +1,75 @@
 {
-  "name": "disk-sense-rewrite",
+  "name": "disk-sense",
+  "productName": "Disk Sense",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "面向 Windows 的文件与目录解释、磁盘变化分析和安全空间清理工具",
+  "author": "IC-sd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IC-sd/disk-sense.git"
+  },
+  "main": "desktop/main.cjs",
   "type": "module",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "vite",
-    "dev:desktop": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron desktop/main.cjs --dev\"",
+    "dev:desktop": "node scripts/dev-desktop.cjs",
     "build": "vite build",
     "start:desktop": "electron desktop/main.cjs",
     "test": "vitest run",
-    "typecheck": "vue-tsc --noEmit"
-  },
-  "dependencies": {
-    "vue": "^3.5.0",
-    "vue-router": "^4.5.0"
+    "typecheck": "vue-tsc --noEmit",
+    "check:desktop": "node scripts/check-desktop.cjs",
+    "validate": "pnpm typecheck && pnpm test && pnpm check:desktop && pnpm build",
+    "pack": "pnpm validate && electron-builder --dir",
+    "smoke:desktop": "node scripts/smoke-desktop.mjs",
+    "release:win": "pnpm validate && electron-builder --win nsis portable --publish never && node scripts/checksums.cjs"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.0",
-    "typescript": "^5.6.0",
-    "vite": "^5.4.0",
-    "vitest": "^2.1.0",
-    "vue-tsc": "^2.1.0",
-    "concurrently": "^9.0.0",
-    "wait-on": "^8.0.0",
-    "electron": "^30.0.0"
+    "@vitejs/plugin-vue": "6.0.8",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.10",
+    "vue": "^3.5.0",
+    "vue-tsc": "3.3.8"
+  },
+  "build": {
+    "appId": "io.github.ic-sd.disk-sense",
+    "productName": "Disk Sense",
+    "electronDist": "node_modules/electron/dist",
+    "asar": true,
+    "compression": "maximum",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
+    }
   }
 }
