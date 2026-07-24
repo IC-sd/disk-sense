@@ -41,7 +41,7 @@
 
       <div class="ai-privacy">
         <b>发送范围</b>
-        <span>只发送当前对象的名称、路径层级、有限同级名称、本地判断和最多 1200 字内容摘要，不会上传完整文件。</span>
+        <span>只发送当前对象的名称、路径层级、有限同级名称、本地判断和最多 1200 字内容摘要；密钥、令牌和密码样式会先被遮盖，不会上传完整文件。</span>
       </div>
 
       <p v-if="message" :class="messageKind === 'error' ? 'error-message' : 'success-message'">{{ message }}</p>
@@ -59,13 +59,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { desktopApi } from '../platform/api'
+import type { AiConfigStatus, AiModelOption } from '../domain/desktop'
 
-type ModelOption = { id: string; name: string; ownedBy?: string | null }
-
-const emit = defineEmits<{ close: []; saved: [status: any] }>()
+const emit = defineEmits<{ close: []; saved: [status: AiConfigStatus] }>()
 const form = reactive({ endpoint: '', model: '', apiKey: '' })
-const status = reactive<any>({ configured: false, keyStored: false })
-const models = ref<ModelOption[]>([])
+const status = reactive<AiConfigStatus>({ configured: false, keyStored: false })
+const models = ref<AiModelOption[]>([])
 const savedEndpoint = ref('')
 const preferredModel = ref('')
 const busy = ref(false)
@@ -78,7 +77,7 @@ let modelRequestId = 0
 const endpointValid = computed(() => {
   try {
     const parsed = new URL(form.endpoint)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+    return parsed.protocol === 'https:'
   } catch {
     return false
   }
@@ -131,7 +130,7 @@ async function fetchModels(automatic = false) {
   try {
     const result = await api.aiModels({ endpoint: form.endpoint, apiKey: form.apiKey })
     if (requestId !== modelRequestId) return
-    const available: ModelOption[] = Array.isArray(result.models) ? result.models : []
+    const available = Array.isArray(result.models) ? result.models : []
     models.value = available
     const preferred = available.find(item => item.id === preferredModel.value)
     form.model = preferred?.id || available[0]?.id || ''

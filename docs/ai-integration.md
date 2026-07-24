@@ -1,6 +1,9 @@
 # AI 分析接入
 
-Disk Sense 的 AI 能力是可选增强层，本地规则仍是基础。用户需要在“目录与文件 → AI 设置”中主动配置，并在选中对象后主动点击“请求 AI 深入解释”。
+Disk Sense 的 AI 能力是可选增强层，本地规则仍是基础。用户需要在“目录与文件 → AI 设置”中主动配置，并在选中对象后主动选择“普通分析”或“深入分析”。
+
+- 普通分析：低思考，响应更快，最大输出预算较低。
+- 深入分析：高思考，交叉检查更多上下文，最大输出预算更高。
 
 ## 支持的接口
 
@@ -55,7 +58,7 @@ DISK_SENSE_AI_MODEL
   "purpose": "有什么用",
   "belongsTo": "属于哪个系统或应用",
   "whyHere": "为什么出现在这个位置",
-  "risk": "low|medium|high|unknown",
+  "risk": "danger|elevated|attention|low|safe",
   "confidence": 0.8,
   "handling": "处理建议",
   "reasons": ["关键依据"]

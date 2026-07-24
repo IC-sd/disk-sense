@@ -1,4 +1,7 @@
 node_modules/
 dist/
+.pnpm-store/
+release/
 .dev-*.log
+.dev-desktop.pid.json
 *.local
