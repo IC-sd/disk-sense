@@ -47,9 +47,18 @@ describe('explainer engine', () => {
   })
 
   it('limits directory size estimation work', async () => {
-    const result = await estimateDirectory('C:\\Windows')
-    expect(result.sampledNodes).toBeLessThanOrEqual(300)
-    expect(result.bytes).toBeGreaterThanOrEqual(0)
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-estimate-'))
+    try {
+      for (let index = 0; index < 220; index++) {
+        fs.mkdirSync(path.join(temporary, `directory-${String(index).padStart(3, '0')}`))
+      }
+      const result = await estimateDirectory(temporary)
+      expect(result.sampledNodes).toBeLessThanOrEqual(180)
+      expect(result.complete).toBe(false)
+      expect(result.bytes).toBeGreaterThanOrEqual(0)
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true })
+    }
   })
 
   it('reads only a bounded file prefix for content evidence', () => {
