@@ -36,18 +36,18 @@ Unsigned artifacts are release candidates for local validation. They should not 
 
 ## Latest local validation
 
-Validated on Windows x64 on 2026-07-24:
+Validated on Windows x64 on 2026-07-26:
 
 - 13 test files and 67 unit, safety, fault-injection, state-recovery, and performance-boundary tests passed.
 - 15 Electron desktop modules passed recursive syntax checks.
 - The unpacked build, portable executable, and silently installed application all passed the real preload/IPC/Windows smoke suite.
 - The isolated installer completed installation and clean uninstallation with exit code 0.
-- Production dependency audit reported no known vulnerabilities.
+- Full production and development dependency audit reported no known vulnerabilities; the build chain pins `brace-expansion` 5.0.8 for GHSA-mh99-v99m-4gvg.
 - Authenticode status is `NotSigned`; this remains the only trust blocker that can be resolved without a separate clean Windows VM.
 
 Artifact checksums:
 
 ```text
-59a07a40a674c3f11251ce6684cbc0fbfc396163957ecbe3a4ed86185fc8e85f  Disk Sense-Setup-1.0.0-x64.exe
-1610e6f74d259cd660e1bdfe09c531c7cbc1af21f6df2f7f5dfcde26e96f2c58  Disk Sense-Portable-1.0.0-x64.exe
+bd73c57fbcbb2100dba89f221d011f1f4ceb969c1df1f04539aa7bddec8bcae8  Disk Sense-Setup-1.0.0-x64.exe
+be19fcd80dc3293b989c52332a5ed31d150e6dee6eee33e945559cbe3445f7de  Disk Sense-Portable-1.0.0-x64.exe
 ```

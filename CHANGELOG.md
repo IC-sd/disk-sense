@@ -36,3 +36,4 @@ The generated local installer and portable executable are suitable for functiona
 - Added cleanup traversal/time limits, guarded-process refresh, fail-closed enumeration errors, and recycle-bin retry coverage.
 - Added recursive desktop syntax checks, rotating local diagnostics, and automatic single-window main-process restart in desktop development mode.
 - Added three-way cleanup scan limit reporting, credential redaction across all remote evidence text fields, packaged-app smoke screenshots, and installed/portable release verification.
+- Pinned all build-chain `brace-expansion` paths to patched version 5.0.8 after GHSA-mh99-v99m-4gvg, including legacy minimatch consumers used by electron-builder.
