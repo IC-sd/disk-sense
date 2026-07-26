@@ -17,6 +17,7 @@ app.setPath('userData', process.env.DISK_SENSE_USER_DATA
 let win
 let db
 const smokeTest = process.argv.includes('--smoke-test')
+const developmentMode = process.argv.includes('--dev')
 const applicationVersion = () => app.isPackaged ? app.getVersion() : packageMetadata.version
 const aiConfig = createAiConfigService({ getDb: () => db, safeStorage })
 const diagnostics = createDiagnostics(path.join(app.getPath('userData'), 'disk-sense.log'))
@@ -36,7 +37,10 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     backgroundColor: '#08111d',
     autoHideMenuBar: true,
-    show: false,
+    // Vite may briefly re-optimize dependencies after a lockfile change.
+    // Keep the development shell visible instead of waiting indefinitely for
+    // ready-to-show while the renderer is being rebuilt.
+    show: developmentMode && !smokeTest,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -44,6 +48,12 @@ function createWindow() {
       sandbox: true,
       webSecurity: true
     }
+  })
+  diagnostics.log('info', 'window-created', {
+    id: win.id,
+    visible: win.isVisible(),
+    bounds: win.getBounds(),
+    developmentMode
   })
   win.setMenuBarVisibility(false)
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -53,15 +63,28 @@ function createWindow() {
   })
   win.webContents.on('render-process-gone', (_event, details) => diagnostics.log('error', 'renderer-process-gone', details))
   win.on('unresponsive', () => diagnostics.log('warn', 'window-unresponsive'))
+  let revealLogged = false
   const revealWindow = () => {
-    if (win && !win.isDestroyed() && !win.isVisible()) win.show()
+    if (!win || win.isDestroyed()) return
+    if (!win.isVisible()) win.show()
+    if (developmentMode) win.focus()
+    if (!revealLogged) {
+      revealLogged = true
+      diagnostics.log('info', 'window-revealed', {
+        id: win.id,
+        visible: win.isVisible(),
+        focused: win.isFocused(),
+        bounds: win.getBounds()
+      })
+    }
   }
   if (!smokeTest) {
     win.once('ready-to-show', revealWindow)
     win.webContents.once('did-finish-load', revealWindow)
+    if (developmentMode) setTimeout(revealWindow, 800).unref()
   }
   win.on('closed', () => { win = null })
-  const rendererLoad = process.argv.includes('--dev')
+  const rendererLoad = developmentMode
     ? win.loadURL('http://127.0.0.1:5173')
     : win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   rendererLoad

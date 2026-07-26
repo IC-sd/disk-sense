@@ -37,3 +37,4 @@ The generated local installer and portable executable are suitable for functiona
 - Added recursive desktop syntax checks, rotating local diagnostics, and automatic single-window main-process restart in desktop development mode.
 - Added three-way cleanup scan limit reporting, credential redaction across all remote evidence text fields, packaged-app smoke screenshots, and installed/portable release verification.
 - Pinned all build-chain `brace-expansion` paths to patched version 5.0.8 after GHSA-mh99-v99m-4gvg, including legacy minimatch consumers used by electron-builder.
+- Kept the development window visible during Vite dependency optimization and verified single-window Electron restarts with real main-process file changes.
