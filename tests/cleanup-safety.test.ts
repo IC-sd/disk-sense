@@ -138,7 +138,10 @@ describe('cleanup safety boundary', () => {
       getRunningProcesses: async () => new Set()
     })
 
-    expect(trashed).toEqual([filePath])
+    // The executor intentionally sends the canonical path to the recycle bin.
+    // Windows runners may expose the temp directory through an 8.3 alias
+    // (RUNNER~1) while realpath resolves it to the long user name.
+    expect(trashed).toEqual([candidate.canonicalPath])
     expect(result.succeeded).toBe(1)
     expect(result.movedToTrashBytes).toBe(Buffer.byteLength('cache-data'))
     expect(result.reclaimedBytes).toBe(0)
