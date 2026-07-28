@@ -3,10 +3,11 @@ const path = require('node:path')
 
 function defaults() {
   return {
-    version: 4,
+    version: 5,
     snapshots: [],
     events: [],
     cleanupJobs: [],
+    maintenanceJobs: [],
     changeScans: [],
     changeBaseline: null,
     lastChangeScan: null,
@@ -52,10 +53,11 @@ function store(file) {
     ...stored,
     changeBaseline: storedChanges.changeBaseline ?? stored.changeBaseline ?? null,
     lastChangeScan: storedChanges.lastChangeScan ?? stored.lastChangeScan ?? null,
-    version: 4
+    version: 5
   }
   delete data.memories
   if (!Array.isArray(data.cleanupJobs)) data.cleanupJobs = []
+  if (!Array.isArray(data.maintenanceJobs)) data.maintenanceJobs = []
   if (!Array.isArray(data.changeScans)) data.changeScans = []
   if (!Array.isArray(data.cleanupExclusions)) data.cleanupExclusions = []
   let needsHeavyMigration = Boolean(
@@ -81,7 +83,7 @@ function store(file) {
         needsHeavyMigration = false
       }
       const { changeBaseline, lastChangeScan, ...lightState } = data
-      atomicWrite(file, { ...lightState, version: 4 }, true)
+      atomicWrite(file, { ...lightState, version: 5 }, true)
     }
   }
 }

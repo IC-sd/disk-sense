@@ -39,6 +39,7 @@ export interface AppInfo {
     contextIsolation: boolean
     permanentDelete: boolean
     remoteAiRequiresHttps: boolean
+    systemMaintenanceAllowlist: boolean
   }
 }
 
@@ -183,7 +184,9 @@ export interface CleanerRule {
   selectable: boolean
   requiresAdmin: boolean
   minimumAgeDays: number
+  maximumAgeDays: number | null
   processNames: string[]
+  summaryOnly?: boolean
 }
 
 export interface CleanerFile {
@@ -205,18 +208,28 @@ export interface CleanerScanResult {
   configuredSelectable: boolean
   requiresAdmin: boolean
   minimumAgeDays: number
+  maximumAgeDays: number | null
   processNames: string[]
   blockedProcesses: string[]
   processCheckFailed: boolean
   blockedReason: string | null
   files: CleanerFile[]
+  itemCount: number
   total: number
+  summaryOnly: boolean
+  volumeBreakdown: Array<{
+    root: string
+    code: number
+    items: number
+    bytes: number
+  }>
   truncated: boolean
   limitReason: 'max-files' | 'max-visited' | 'max-time' | null
   durationMs: number
   visited: number
   skipped: {
     recent: number
+    older: number
     links: number
     inaccessible: number
     outsideRoot: number
@@ -229,14 +242,68 @@ export interface CleanerScanResult {
 export interface SlimmingItem {
   id: string
   title: string
+  category: string
   description: string
   risk: Risk
   impact: string
   action: string
   requiresAdmin: boolean
   detected: boolean
-  bytes: number
+  bytes: number | null
   status: string
+  actions: SlimmingAction[]
+}
+
+export interface SlimmingAction {
+  id: string
+  label: string
+  description: string
+  kind: 'command' | 'open-path' | 'open-external'
+  risk: Risk
+  requiresAdmin: boolean
+  irreversible: boolean
+  confirmationPhrase: string
+  readOnly: boolean
+  enabled: boolean
+  disabledReason: string | null
+}
+
+export interface MaintenanceStatus {
+  platform: string
+  elevated: boolean
+  commands: Record<string, boolean>
+  activeTask: {
+    id: string
+    actionId: string
+    startedAt: string
+  } | null
+}
+
+export interface MaintenanceProgress {
+  id: string
+  actionId: string
+  phase: 'running' | 'completed' | 'failed'
+  percent: number | null
+  message: string
+}
+
+export interface MaintenanceJob {
+  id: string
+  actionId: string
+  ruleId: string
+  title: string
+  risk: Risk
+  readOnly: boolean
+  irreversible: boolean
+  requiresAdmin: boolean
+  success: boolean
+  exitCode: number
+  startedAt: string
+  finishedAt: string
+  reclaimedBytes: number
+  message: string
+  stdoutTail: string
+  stderrTail: string
 }
 
 export interface CleanupResult extends CleanerFile {

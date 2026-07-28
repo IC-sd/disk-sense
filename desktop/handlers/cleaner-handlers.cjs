@@ -1,7 +1,12 @@
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
-const { rules, publicRule, scanRuleAsync, inspectSlimming, isPathExcluded } = require('../cleaner.cjs')
+const { rules, publicRule, scanRuleAsync, isPathExcluded } = require('../cleaner.cjs')
 const { CandidateVault, compactCleanupJob, executeCleanup } = require('../cleanup-executor.cjs')
+const {
+  inspectSlimming,
+  maintenanceStatus,
+  executeMaintenanceAction
+} = require('../system-maintenance.cjs')
 
 function historySummary(job) {
   return {
@@ -37,11 +42,43 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
   const candidateVault = new CandidateVault()
   const activeScans = new Map()
   let activeCleanup = null
+  let activeMaintenance = null
+  let maintenanceStatusCache = null
+  let maintenanceStatusPromise = null
   const exclusions = () => db.read().cleanupExclusions || []
+  const maintenanceHistory = () => db.read().maintenanceJobs || []
+
+  const baseMaintenanceStatus = async () => {
+    if (maintenanceStatusCache && Date.now() - maintenanceStatusCache.readAt < 5000) {
+      return maintenanceStatusCache.value
+    }
+    if (!maintenanceStatusPromise) {
+      maintenanceStatusPromise = maintenanceStatus()
+        .then(value => {
+          maintenanceStatusCache = { value, readAt: Date.now() }
+          return value
+        })
+        .finally(() => { maintenanceStatusPromise = null })
+    }
+    return maintenanceStatusPromise
+  }
+
+  const readMaintenanceStatus = async () => ({
+    ...(await baseMaintenanceStatus()),
+    activeTask: activeMaintenance
+      ? {
+          id: activeMaintenance.id,
+          actionId: activeMaintenance.actionId,
+          startedAt: activeMaintenance.startedAt
+        }
+      : null
+  })
 
   ipcMain.handle('cleaner:rules', () => rules.map(publicRule))
   ipcMain.handle('cleaner:scan', async (_event, id) => {
     const ruleId = String(id || '')
+    if (activeMaintenance) throw new Error('系统维护正在执行，完成后才能扫描垃圾文件')
+    if (activeCleanup) throw new Error('垃圾清理正在执行，完成后才能重新扫描')
     if (activeScans.has(ruleId)) throw new Error('该规则正在扫描')
     const controller = new AbortController()
     activeScans.set(ruleId, controller)
@@ -71,7 +108,41 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     return { cancelled: cancelled > 0, count: cancelled }
   })
 
-  ipcMain.handle('cleaner:slimming', () => inspectSlimming())
+  ipcMain.handle('cleaner:slimming', async () => inspectSlimming(await readMaintenanceStatus()))
+  ipcMain.handle('cleaner:slimming-status', () => readMaintenanceStatus())
+  ipcMain.handle('cleaner:slimming-history', () => maintenanceHistory())
+  ipcMain.handle('cleaner:slimming-execute', async (_event, input) => {
+    if (activeMaintenance) throw new Error('已有系统维护任务正在执行')
+    if (activeCleanup || activeScans.size) throw new Error('请先等待垃圾扫描或清理任务结束')
+    const task = {
+      id: `maintenance-${Date.now()}`,
+      actionId: String(input?.actionId || ''),
+      startedAt: new Date().toISOString()
+    }
+    activeMaintenance = task
+    try {
+      const status = await baseMaintenanceStatus()
+      const result = await executeMaintenanceAction({
+        actionId: task.actionId,
+        confirmation: String(input?.confirmation || '')
+      }, {
+        status,
+        openPath: target => shell.openPath(target),
+        openExternal: target => shell.openExternal(target),
+        onProgress: progress => sendToRenderer('cleaner:slimming-progress', {
+          id: task.id,
+          ...progress
+        })
+      })
+      const job = { ...result, id: task.id }
+      db.read().maintenanceJobs = [job, ...maintenanceHistory()].slice(0, 30)
+      db.save()
+      maintenanceStatusCache = null
+      return job
+    } finally {
+      activeMaintenance = null
+    }
+  })
   ipcMain.handle('cleaner:history', () => (db.read().cleanupJobs || []).map(historySummary))
   ipcMain.handle('cleaner:history-detail', (_event, id) => {
     const job = (db.read().cleanupJobs || []).find(item => item.id === String(id || ''))
@@ -79,15 +150,16 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     return { ...historySummary(job), results: job.results || [] }
   })
   ipcMain.handle('cleaner:history-clear', () => {
-    if (activeCleanup) throw new Error('清理任务执行中，暂时不能清空记录')
+    if (activeCleanup || activeMaintenance) throw new Error('清理或系统维护任务执行中，暂时不能清空记录')
     db.read().cleanupJobs = []
+    db.read().maintenanceJobs = []
     db.save()
     return { cleared: true }
   })
 
   ipcMain.handle('cleaner:exclusions', () => exclusions())
   ipcMain.handle('cleaner:exclusion-add', (_event, input) => {
-    if (activeCleanup || activeScans.size) throw new Error('请等待扫描或清理任务结束')
+    if (activeCleanup || activeMaintenance || activeScans.size) throw new Error('请等待扫描、清理或系统维护任务结束')
     const exclusion = validateExclusion(input)
     const duplicate = exclusions().find(item => (
       item.mode === exclusion.mode &&
@@ -100,7 +172,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     return exclusion
   })
   ipcMain.handle('cleaner:exclusion-remove', (_event, id) => {
-    if (activeCleanup || activeScans.size) throw new Error('请等待扫描或清理任务结束')
+    if (activeCleanup || activeMaintenance || activeScans.size) throw new Error('请等待扫描、清理或系统维护任务结束')
     const before = exclusions()
     db.read().cleanupExclusions = before.filter(item => item.id !== String(id || ''))
     const removed = before.length !== db.read().cleanupExclusions.length
@@ -113,6 +185,8 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
 
   ipcMain.handle('cleaner:execute', async (_event, files) => {
     if (activeCleanup) throw new Error('已有清理任务正在执行')
+    if (activeMaintenance) throw new Error('系统维护正在执行，完成后才能清理垃圾文件')
+    if (activeScans.size) throw new Error('请等待垃圾扫描完成后再执行清理')
     const id = `cleanup-${Date.now()}`
     const controller = new AbortController()
     activeCleanup = { id, controller }

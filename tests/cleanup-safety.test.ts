@@ -56,6 +56,27 @@ describe('cleanup safety boundary', () => {
     expect(result.skipped.recent).toBe(1)
   })
 
+  it('can observe a recent age window without mixing in older safe candidates', async () => {
+    const root = createRoot()
+    const recentFile = path.join(root, 'recent.tmp')
+    const threeDayFile = path.join(root, 'three-days.tmp')
+    const oldFile = path.join(root, 'old.tmp')
+    fs.writeFileSync(recentFile, 'recent')
+    fs.writeFileSync(threeDayFile, 'three days')
+    fs.writeFileSync(oldFile, 'old')
+    makeOld(threeDayFile, 3)
+    makeOld(oldFile, 30)
+
+    const result = await collectRuleFiles(ruleFor(root, {
+      minimumAgeDays: 0,
+      maximumAgeDays: 7,
+      selectable: false
+    }))
+
+    expect(result.files.map((item: { path: string }) => item.path).sort()).toEqual([recentFile, threeDayFile].sort())
+    expect(result.skipped.older).toBe(1)
+  })
+
   it('bounds traversal even when files do not match a cleanup rule', async () => {
     const root = createRoot()
     for (let index = 0; index < 30; index++) fs.writeFileSync(path.join(root, `ignored-${index}.txt`), 'x')
@@ -166,6 +187,28 @@ describe('cleanup safety boundary', () => {
 
     expect(result.succeeded).toBe(0)
     expect(result.results[0].error).toContain('正在运行')
+  })
+
+  it('blocks elevated or unknown risk even if a future scan result is marked selectable by mistake', async () => {
+    const root = createRoot()
+    const filePath = path.join(root, 'cache.tmp')
+    fs.writeFileSync(filePath, 'cache')
+    makeOld(filePath)
+    const scan = await collectRuleFiles(ruleFor(root, { risk: 'attention' }))
+    const candidate = scan.files[0]
+    const vault = new CandidateVault()
+    vault.registerScan({ id: 'test-cache', selectable: true, configuredSelectable: true, files: [candidate] })
+    let trashCalls = 0
+
+    const result = await executeCleanup({
+      requests: [{ candidateId: candidate.candidateId }],
+      vault,
+      trashItem: async () => { trashCalls++ },
+      getRunningProcesses: async () => new Set()
+    })
+
+    expect(trashCalls).toBe(0)
+    expect(result.results[0].error).toContain('风险等级')
   })
 
   it('rechecks user exclusions immediately before moving a file to the recycle bin', async () => {

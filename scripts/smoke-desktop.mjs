@@ -88,10 +88,12 @@ async function evaluate(webSocketUrl) {
             api = window.diskSense
           }
           if (!api) throw new Error('preload-bridge-not-ready')
-          const [rules, root, slimming, ai, changes, overview, appInfo, history, exclusions] = await Promise.all([
+          const [rules, root, slimming, slimmingStatus, maintenanceHistory, ai, changes, overview, appInfo, history, exclusions] = await Promise.all([
             api.cleanerRules(),
             api.inspectList('C:\\\\'),
             api.cleanerSlimming(),
+            api.cleanerSlimmingStatus(),
+            api.cleanerSlimmingHistory(),
             api.aiStatus(),
             api.changesState(),
             api.overviewGet(),
@@ -129,6 +131,43 @@ async function evaluate(webSocketUrl) {
           const captureButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes(${JSON.stringify(captureLabel)}))
           captureButton?.click()
           await new Promise(resolve => setTimeout(resolve, 180))
+          let slimmingRendered = null
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_CLEANER_TAB === 'slimming')} && ${JSON.stringify(captureView)} === 'cleaner') {
+            const slimmingButton = [...document.querySelectorAll('.cleanup-tabs button')].find(button => button.textContent.includes('系统瘦身'))
+            slimmingButton?.click()
+            for (let attempt = 0; attempt < 80; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 100))
+              if (document.body.innerText.includes('执行边界') && document.querySelectorAll('.slimming-rule').length >= 4) break
+            }
+            slimmingRendered = (
+              document.body.innerText.includes('命令和参数由程序白名单固定生成') &&
+              document.body.innerText.includes('ResetBase') &&
+              document.querySelectorAll('.slimming-rule').length >= 4
+            )
+          }
+          let cleanerScanRendered = null
+          let cleanerCategoryCount = 0
+          let cleanerRuleDetailCount = 0
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_SCAN_CLEANER === '1')} && ${JSON.stringify(captureView)} === 'cleaner') {
+            const scanButton = [...document.querySelectorAll('.cleaner-command-actions button')].find(button => (
+              button.textContent.includes('开始扫描') || button.textContent.includes('重新扫描')
+            ))
+            scanButton?.click()
+            for (let attempt = 0; attempt < 450; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 200))
+              if (document.body.innerText.includes('扫描完成：')) break
+            }
+            cleanerCategoryCount = document.querySelectorAll('.cleaner-category').length
+            document.querySelector('.cleaner-category-row')?.click()
+            await new Promise(resolve => setTimeout(resolve, 80))
+            cleanerRuleDetailCount = document.querySelectorAll('.compact-rule').length
+            cleanerScanRendered = (
+              document.body.innerText.includes('当前可处理') &&
+              document.body.innerText.includes('发现占用') &&
+              cleanerCategoryCount > 0 &&
+              cleanerRuleDetailCount > 0
+            )
+          }
           return {
             title: document.title,
             rendered: document.body.innerText.includes('目录与文件'),
@@ -137,6 +176,14 @@ async function evaluate(webSocketUrl) {
             rootItems: root.items.length,
             rootPath: root.path,
             slimmingCount: slimming.length,
+            slimmingActionCount: slimming.flatMap(item => item.actions || []).length,
+            maintenanceElevated: slimmingStatus.elevated,
+            maintenanceActive: Boolean(slimmingStatus.activeTask),
+            maintenanceHistoryCount: maintenanceHistory.length,
+            maintenanceActionsOpaque: slimming.flatMap(item => item.actions || []).every(action => (
+              !Object.prototype.hasOwnProperty.call(action, 'args') &&
+              !Object.prototype.hasOwnProperty.call(action, 'executable')
+            )),
             aiConfigured: ai.configured,
             hasChangeState: Boolean(changes),
             changeHistoryCount: changes.history.length,
@@ -158,6 +205,10 @@ async function evaluate(webSocketUrl) {
             settingsRendered,
             historyRendered,
             overviewRendered,
+            cleanerScanRendered,
+            cleanerCategoryCount,
+            cleanerRuleDetailCount,
+            slimmingRendered,
             historyCount: history.length,
             exclusionCount: exclusions.length
           }
@@ -171,9 +222,9 @@ async function evaluate(webSocketUrl) {
   const value = result.result?.result?.value
   if (!value) throw new Error(`renderer-returned-no-smoke-result: ${JSON.stringify(result)}`)
   let screenshot = null
-  try {
+  if (process.env.DISK_SENSE_SMOKE_SKIP_SCREENSHOT !== '1') try {
     screenshot = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('cdp-screenshot-timeout')), 10000)
+      const timeout = setTimeout(() => reject(new Error('cdp-screenshot-timeout')), 30000)
       const listener = event => {
         const message = JSON.parse(String(event.data))
         if (message.id !== 2) return
@@ -213,19 +264,24 @@ try {
     result?.ruleCount < 8 ||
     result?.rootPath !== 'C:\\' ||
     result?.slimmingCount < 4 ||
+    result?.slimmingActionCount < 5 ||
+    !result?.maintenanceActionsOpaque ||
     result?.scanRule !== 'crash-dumps' ||
     result?.volumeCount < 1 ||
-    result?.stateVersion !== 4 ||
+    result?.stateVersion !== 5 ||
     !result?.packaged ||
     !result?.security?.rendererSandbox ||
     !result?.security?.contextIsolation ||
     result?.security?.permanentDelete ||
+    !result?.security?.systemMaintenanceAllowlist ||
     !result?.invalidPathRejected ||
     !result?.explanation?.what ||
     !result?.explanation?.purpose ||
     !result?.settingsRendered ||
     !result?.historyRendered ||
-    !result?.overviewRendered
+    !result?.overviewRendered ||
+    (process.env.DISK_SENSE_SMOKE_CLEANER_TAB === 'slimming' && !result?.slimmingRendered) ||
+    (process.env.DISK_SENSE_SMOKE_SCAN_CLEANER === '1' && !result?.cleanerScanRendered)
   ) {
     throw new Error(`packaged-smoke-assertion-failed: ${JSON.stringify(result)}`)
   }

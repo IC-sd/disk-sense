@@ -14,6 +14,7 @@ Electron main
   ├─ isolated IPC handler modules
   ├─ explainer + app attribution
   ├─ cleanup scanner + candidate vault + executor
+  ├─ allowlisted Windows maintenance adapter
   ├─ change tracker
   ├─ AI adapter
   └─ atomic local state
@@ -45,6 +46,8 @@ rule scan
 ```
 
 扫描和执行之间最多间隔 30 分钟。规则只能生成候选项，不能直接删除。清理执行器不接受 renderer 提供的任意路径，只接受主进程候选保险库中仍有效的随机标识。每个任务保留完整汇总，长期逐文件审计最多保存 1,000 条并优先保留失败项，避免状态文件无限增长。
+
+系统维护不复用普通文件清理入口。渲染层只能提交预定义操作标识和确认词；主进程从固定白名单选择 Windows `System32` 下的绝对可执行文件与参数，以 `shell: false` 运行，并在执行前再次确认管理员权限。DISM 常规清理与不可逆 ResetBase 分开建模，虚拟内存和 Windows.old 只打开 Windows 官方设置。
 
 ## 变化记录
 

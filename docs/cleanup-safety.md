@@ -34,7 +34,18 @@
 
 ## System slimming
 
-WinSxS, ResetBase, hibernation, virtual memory and Windows.old are read-only explanations in this version. Disk Sense never deletes files from those locations and does not run DISM or power configuration commands.
+System slimming is isolated from ordinary file cleanup. It never accepts an executable, argument list or filesystem path from the renderer.
+
+| Capability | Execution boundary |
+| --- | --- |
+| Hibernation | Calls the fixed `powercfg.exe /hibernate on|off` action after elevation and phrase confirmation |
+| Component analysis | Calls DISM `AnalyzeComponentStore`; read-only |
+| Component cleanup | Calls DISM `StartComponentCleanup /NoRestart`; never deletes WinSxS files directly |
+| ResetBase | Separate danger-level action, marked irreversible and gated by the exact `RESETBASE` phrase |
+| Virtual memory | Opens Windows Advanced System Settings; Disk Sense does not edit or delete `pagefile.sys` |
+| Windows.old | Opens Windows Storage Settings; Windows remains responsible for removal |
+
+All system actions are selected from a main-process allowlist, use absolute executables under Windows `System32`, run with `shell: false`, recheck administrator privileges, emit progress and retain a bounded local audit result.
 
 ## Space reporting
 

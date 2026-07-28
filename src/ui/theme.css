@@ -1,19 +1,20 @@
 :root {
-  font-family: Inter, "Segoe UI Variable", "Microsoft YaHei UI", ui-sans-serif, system-ui, sans-serif;
-  color: #edf4ff;
-  background: #07101b;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  color: #f3f6fb;
+  color-scheme: dark;
+  background: #080f18;
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  --bg: #07101b;
-  --surface: #0d1928;
-  --surface-strong: #111f31;
-  --surface-soft: #14243a;
-  --line: #21344c;
-  --line-bright: #315070;
-  --text: #edf4ff;
-  --muted: #91a2b9;
-  --subtle: #647992;
+  text-rendering: auto;
+  -webkit-font-smoothing: auto;
+  --bg: #080f18;
+  --surface: #0f1926;
+  --surface-strong: #131f2d;
+  --surface-soft: #172536;
+  --line: #2b3a4d;
+  --line-bright: #405773;
+  --text: #f3f6fb;
+  --muted: #b2becd;
+  --subtle: #8495a9;
   --blue: #6b8cff;
   --blue-strong: #4d72f4;
   --cyan: #55d7df;
@@ -26,10 +27,37 @@
   --radius: 16px;
   --radius-lg: 24px;
   --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+  --scrollbar-thumb: rgba(105, 130, 164, .18);
+  --scrollbar-thumb-hover: rgba(119, 147, 186, .42);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 html,
@@ -42,11 +70,13 @@ body,
 
 body {
   min-height: 100vh;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 82% -10%, rgba(76, 111, 212, .2), transparent 34%),
-    radial-gradient(circle at 28% 115%, rgba(34, 158, 153, .12), transparent 30%),
-    var(--bg);
+  overscroll-behavior-y: none;
+  background: var(--bg);
 }
 
 button,
@@ -87,11 +117,9 @@ textarea:focus-visible {
   width: 254px;
   flex-direction: column;
   padding: 28px 18px 20px;
-  border-right: 1px solid rgba(73, 101, 137, .28);
-  background:
-    linear-gradient(180deg, rgba(14, 26, 42, .98), rgba(7, 16, 27, .98)),
-    var(--bg);
-  box-shadow: 12px 0 40px rgba(0, 0, 0, .12);
+  border-right: 1px solid #263548;
+  background: #0c1622;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, .1);
 }
 
 .brand {
@@ -215,14 +243,14 @@ textarea:focus-visible {
 .main-nav small {
   margin-top: 3px;
   overflow: hidden;
-  color: #647991;
-  font-size: 10px;
+  color: #8293a8;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .main-nav button.active small {
-  color: #8297b3;
+  color: #a2b2c6;
 }
 
 .sidebar-insight {
@@ -232,14 +260,12 @@ textarea:focus-visible {
   overflow: hidden;
   border: 1px solid rgba(54, 80, 111, .45);
   border-radius: 16px;
-  background:
-    radial-gradient(circle at 92% 8%, rgba(80, 119, 219, .22), transparent 35%),
-    rgba(12, 25, 41, .72);
+  background: #111e2e;
 }
 
 .sidebar-insight small {
-  color: #6f89aa;
-  font-size: 9px;
+  color: #8da3bf;
+  font-size: 11px;
   letter-spacing: .12em;
 }
 
@@ -252,7 +278,7 @@ textarea:focus-visible {
 .sidebar-insight p {
   margin: 5px 0 0;
   color: var(--subtle);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -309,14 +335,14 @@ textarea:focus-visible {
 }
 
 .sidebar-footer b {
-  color: #9fb0c5;
-  font-size: 11px;
+  color: #bac7d7;
+  font-size: 12px;
 }
 
 .sidebar-footer small {
   margin-top: 2px;
-  color: #5f7187;
-  font-size: 9px;
+  color: #8292a5;
+  font-size: 11px;
 }
 
 .workspace {
@@ -358,8 +384,8 @@ textarea:focus-visible {
   display: flex;
   gap: 9px;
   align-items: center;
-  color: #7e98c4;
-  font-size: 10px;
+  color: #8fa8d2;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: .18em;
 }
@@ -374,7 +400,7 @@ textarea:focus-visible {
 .kicker {
   margin: 0;
   color: #7e98c4;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: .16em;
 }
@@ -395,7 +421,7 @@ textarea:focus-visible {
 .secondary-button {
   min-height: 44px;
   padding: 0 16px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   border-radius: 11px;
 }
@@ -451,7 +477,7 @@ textarea:focus-visible {
 .text-button {
   padding: 4px 0;
   color: #8faeff;
-  font-size: 11px;
+  font-size: 12px;
   border: 0;
   background: transparent;
 }
@@ -467,7 +493,7 @@ textarea:focus-visible {
   align-items: center;
   width: max-content;
   padding: 5px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
   border: 1px solid;

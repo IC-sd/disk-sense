@@ -5,6 +5,7 @@ const MAX_EXECUTE_FILES = 5000
 const MAX_PERSISTED_RESULTS = 1000
 const PROCESS_REFRESH_FILES = 25
 const PROCESS_REFRESH_MS = 2000
+const EXECUTABLE_RISKS = new Set(['safe', 'low'])
 
 class CandidateVault {
   constructor(options = {}) {
@@ -137,6 +138,10 @@ async function executeCleanup(input = {}) {
       record(publicResult(candidate, { success: false, error: '该规则当前不允许执行清理' }))
       continue
     }
+    if (!EXECUTABLE_RISKS.has(candidate.risk)) {
+      record(publicResult(candidate, { success: false, error: '该风险等级不允许执行自动清理' }))
+      continue
+    }
     if (isExcluded(candidate.path)) {
       record(publicResult(candidate, { success: false, error: '该文件已加入用户排除项，已阻止处理' }))
       continue
@@ -208,5 +213,6 @@ module.exports = {
   MAX_PERSISTED_RESULTS,
   PROCESS_REFRESH_FILES,
   PROCESS_REFRESH_MS,
+  EXECUTABLE_RISKS,
   compactCleanupJob
 }

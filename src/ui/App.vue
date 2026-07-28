@@ -15,7 +15,7 @@
           :key="item.id"
           :class="{ active: view === item.id }"
           :aria-current="view === item.id ? 'page' : undefined"
-          @click="view = item.id"
+          @click="navigate(item.id)"
         >
           <span class="nav-icon"><AppIcon :name="item.icon" /></span>
           <span><b>{{ item.label }}</b><small>{{ item.description }}</small></span>
@@ -73,5 +73,8 @@ const componentByView = {
 }
 
 const currentComponent = computed(() => componentByView[view.value])
-function navigate(target: View) { view.value = target }
+function navigate(target: View) {
+  view.value = target
+  requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
+}
 </script>

@@ -19,6 +19,9 @@ import type {
   DirectoryEstimate,
   DirectoryListResult,
   FileExplanation,
+  MaintenanceJob,
+  MaintenanceProgress,
+  MaintenanceStatus,
   OverviewSummary,
   SlimmingItem
 } from '../domain/desktop'
@@ -49,6 +52,10 @@ export interface DesktopApi {
   cleanerScanCancel: (id?: string) => Promise<{ cancelled: boolean; count: number }>
   onCleanerScanProgress: (callback: (data: CleanerScanProgress) => void) => Unsubscribe
   cleanerSlimming: () => Promise<SlimmingItem[]>
+  cleanerSlimmingStatus: () => Promise<MaintenanceStatus>
+  cleanerSlimmingExecute: (input: { actionId: string; confirmation: string }) => Promise<MaintenanceJob>
+  cleanerSlimmingHistory: () => Promise<MaintenanceJob[]>
+  onCleanerSlimmingProgress: (callback: (data: MaintenanceProgress) => void) => Unsubscribe
   cleanerHistory: () => Promise<CleanupJobSummary[]>
   cleanerHistoryDetail: (id: string) => Promise<CleanupJob>
   cleanerHistoryClear: () => Promise<{ cleared: boolean }>

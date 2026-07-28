@@ -6,11 +6,15 @@ const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const { randomUUID } = require('node:crypto')
 const { normalizeRisk } = require('./risk.cjs')
+const { slimmingRules, inspectSlimming } = require('./system-maintenance.cjs')
 
 const execFileAsync = promisify(execFile)
 const home = os.homedir()
 const windows = process.env.WINDIR || 'C:\\Windows'
 const local = path.join(home, 'AppData', 'Local')
+const roaming = process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+const powershell = path.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+const tasklist = path.join(windows, 'System32', 'tasklist.exe')
 const MAX_FILES_PER_RULE = 20000
 const MAX_VISITED_PER_RULE = 100000
 const MAX_SCAN_MS = 20000
@@ -42,6 +46,29 @@ function existingRoots(values) {
   })
 }
 
+function electronCacheRoots(productRoots) {
+  return existingRoots(productRoots.flatMap(productRoot => [
+    path.join(productRoot, 'Cache'),
+    path.join(productRoot, 'Code Cache'),
+    path.join(productRoot, 'GPUCache')
+  ]))
+}
+
+function jetbrainsCacheRoots() {
+  const productRoot = path.join(local, 'JetBrains')
+  if (!fs.existsSync(productRoot)) return []
+  try {
+    return existingRoots(fs.readdirSync(productRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .flatMap(entry => [
+        path.join(productRoot, entry.name, 'caches'),
+        path.join(productRoot, entry.name, 'tmp')
+      ]))
+  } catch {
+    return []
+  }
+}
+
 function firefoxCacheRoots() {
   const profilesRoot = path.join(local, 'Mozilla', 'Firefox', 'Profiles')
   if (!fs.existsSync(profilesRoot)) return []
@@ -55,7 +82,103 @@ function firefoxCacheRoots() {
   }
 }
 
+const RECYCLE_BIN_QUERY_SCRIPT = String.raw`
+$source = @'
+using System;
+using System.Runtime.InteropServices;
+public static class DiskSenseRecycleBinQuery {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct SHQUERYRBINFO {
+    public int cbSize;
+    public long i64Size;
+    public long i64NumItems;
+  }
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+  public static extern int SHQueryRecycleBin(string rootPath, ref SHQUERYRBINFO info);
+}
+'@
+Add-Type -TypeDefinition $source
+$roots = @(
+  [System.IO.DriveInfo]::GetDrives() |
+    Where-Object { $_.DriveType -eq [System.IO.DriveType]::Fixed -and $_.IsReady } |
+    ForEach-Object { $_.Name }
+)
+$results = foreach ($root in $roots) {
+  $info = New-Object DiskSenseRecycleBinQuery+SHQUERYRBINFO
+  $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($info)
+  $code = [DiskSenseRecycleBinQuery]::SHQueryRecycleBin($root, [ref]$info)
+  [pscustomobject]@{
+    root = $root
+    code = $code
+    items = if ($code -eq 0) { $info.i64NumItems } else { 0 }
+    bytes = if ($code -eq 0) { $info.i64Size } else { 0 }
+  }
+}
+[pscustomobject]@{
+  items = [long](($results | Measure-Object -Property items -Sum).Sum)
+  bytes = [long](($results | Measure-Object -Property bytes -Sum).Sum)
+  volumes = @($results)
+} | ConvertTo-Json -Compress -Depth 4
+`
+
+function parseRecycleBinOutput(stdout) {
+  const lines = String(stdout || '').trim().split(/\r?\n/).filter(Boolean)
+  const parsed = JSON.parse(lines.at(-1) || '{}')
+  const volumes = Array.isArray(parsed.volumes)
+    ? parsed.volumes
+    : parsed.volumes
+      ? [parsed.volumes]
+      : []
+  return {
+    items: Math.max(0, Number(parsed.items || 0)),
+    bytes: Math.max(0, Number(parsed.bytes || 0)),
+    volumes: volumes.map(item => ({
+      root: String(item.root || ''),
+      code: Number(item.code || 0),
+      items: Math.max(0, Number(item.items || 0)),
+      bytes: Math.max(0, Number(item.bytes || 0))
+    }))
+  }
+}
+
+async function queryRecycleBin() {
+  if (process.platform !== 'win32') return { items: 0, bytes: 0, volumes: [] }
+  const { stdout } = await execFileAsync(powershell, [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    RECYCLE_BIN_QUERY_SCRIPT
+  ], {
+    windowsHide: true,
+    encoding: 'utf8',
+    timeout: 10000,
+    maxBuffer: 1024 * 1024
+  })
+  const result = parseRecycleBinOutput(stdout)
+  if (!result.volumes.length) throw new Error('未找到可查询的本地磁盘')
+  if (result.volumes.every(item => item.code !== 0)) {
+    throw new Error('Windows 拒绝了回收站容量查询')
+  }
+  return result
+}
+
 const rules = [
+  {
+    id: 'recycle-bin',
+    title: '回收站',
+    category: 'Windows',
+    roots: [],
+    pattern: /.*/,
+    risk: 'attention',
+    reason: '统计各本地磁盘回收站中仍可恢复的文件数量和占用空间。',
+    safetyNote: '当前只读取容量，不提供清空操作；清空回收站属于永久删除，需要单独设计确认和恢复边界。',
+    minimumAgeDays: 0,
+    selectable: false,
+    probe: queryRecycleBin
+  },
   {
     id: 'user-temp',
     title: '用户临时文件',
@@ -79,6 +202,20 @@ const rules = [
     safetyNote: '部分文件需要管理员权限，本版本不会自动提权或强制删除。',
     minimumAgeDays: 7,
     selectable: true,
+    requiresAdmin: true
+  },
+  {
+    id: 'recent-temp-activity',
+    title: '近期临时活动（仅观察）',
+    category: 'Windows',
+    roots: [path.join(local, 'Temp'), path.join(windows, 'Temp')],
+    pattern: /.*/,
+    risk: 'attention',
+    reason: '统计最近 7 天新增或修改的临时文件，用于解释磁盘空间为什么会在安装、更新或运行应用后快速回涨。',
+    safetyNote: '其中可能包含正在使用的安装包、诊断追踪和程序工作文件；当前只显示占用，不允许直接清理。',
+    minimumAgeDays: 0,
+    maximumAgeDays: 7,
+    selectable: false,
     requiresAdmin: true
   },
   {
@@ -114,6 +251,18 @@ const rules = [
     risk: 'safe',
     reason: '资源管理器生成的图片和视频缩略图，可由 Windows 自动重新生成。',
     safetyNote: '只匹配 thumbcache 数据库，不处理该目录中的其他文件。',
+    minimumAgeDays: 1,
+    selectable: true
+  },
+  {
+    id: 'icon-cache',
+    title: '图标缓存',
+    category: 'Windows',
+    roots: [path.join(local, 'Microsoft', 'Windows', 'Explorer')],
+    pattern: /^(iconcache|tilecache).*\.db$/i,
+    risk: 'safe',
+    reason: '资源管理器生成的文件和应用图标索引，损坏或删除后可由 Windows 自动重建。',
+    safetyNote: '只匹配 Explorer 目录中的图标缓存数据库，不处理用户文件或其他数据库。',
     minimumAgeDays: 1,
     selectable: true
   },
@@ -203,6 +352,58 @@ const rules = [
     processNames: ['Discord.exe']
   },
   {
+    id: 'teams-cache',
+    title: 'Microsoft Teams 传统客户端缓存',
+    category: '应用缓存',
+    roots: () => electronCacheRoots([path.join(roaming, 'Microsoft', 'Teams')]),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '只扫描传统 Teams 客户端的界面缓存、代码缓存和 GPU 缓存。',
+    safetyNote: '不处理登录状态、聊天数据库、下载文件或新 Teams 应用数据；Teams 运行时禁止执行。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['Teams.exe', 'ms-teams.exe']
+  },
+  {
+    id: 'slack-cache',
+    title: 'Slack 客户端缓存',
+    category: '应用缓存',
+    roots: () => electronCacheRoots([path.join(roaming, 'Slack')]),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '只扫描 Slack 的界面缓存、代码缓存和 GPU 缓存。',
+    safetyNote: '不处理账号、工作区配置、数据库或下载文件；Slack 运行时禁止执行。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['slack.exe']
+  },
+  {
+    id: 'jetbrains-cache',
+    title: 'JetBrains IDE 可重建缓存',
+    category: '开发工具',
+    roots: jetbrainsCacheRoots,
+    pattern: /.*/,
+    risk: 'low',
+    reason: '扫描 JetBrains IDE 各版本的索引缓存和临时目录，后续启动时会重新生成。',
+    safetyNote: '不处理项目、配置、插件、Local History 或 Maven/Gradle 仓库；IDE 运行时禁止执行。',
+    minimumAgeDays: 14,
+    selectable: true,
+    processNames: ['idea64.exe', 'webstorm64.exe', 'pycharm64.exe', 'rider64.exe']
+  },
+  {
+    id: 'windows-minidumps',
+    title: 'Windows 小型内存转储',
+    category: '诊断',
+    roots: [path.join(windows, 'Minidump')],
+    pattern: /\.dmp$/i,
+    risk: 'low',
+    reason: '至少 14 天前的系统蓝屏小型转储，仅用于故障诊断。',
+    safetyNote: '如果仍在排查蓝屏问题应保留；无权限文件会跳过，不会自动提权。',
+    minimumAgeDays: 14,
+    selectable: true,
+    requiresAdmin: true
+  },
+  {
     id: 'npm-cache',
     title: 'npm 下载缓存',
     category: '开发工具',
@@ -260,6 +461,7 @@ const rules = [
   risk: normalizeRisk(rule.risk),
   kind: 'junk',
   minimumAgeDays: Math.max(0, Number(rule.minimumAgeDays || 0)),
+  maximumAgeDays: rule.maximumAgeDays == null ? null : Math.max(0, Number(rule.maximumAgeDays)),
   processNames: rule.processNames || []
 }))
 
@@ -293,7 +495,7 @@ function resolvedRoots(rule) {
 async function runningExecutableNames() {
   if (process.platform !== 'win32') return new Set()
   try {
-    const { stdout } = await execFileAsync('tasklist.exe', ['/FO', 'CSV', '/NH'], {
+    const { stdout } = await execFileAsync(tasklist, ['/FO', 'CSV', '/NH'], {
       windowsHide: true,
       timeout: 10000,
       maxBuffer: 4 * 1024 * 1024
@@ -327,7 +529,9 @@ function publicRule(rule) {
     selectable: rule.selectable,
     requiresAdmin: Boolean(rule.requiresAdmin),
     minimumAgeDays: rule.minimumAgeDays,
-    processNames: [...rule.processNames]
+    maximumAgeDays: rule.maximumAgeDays,
+    processNames: [...rule.processNames],
+    summaryOnly: typeof rule.probe === 'function'
   }
 }
 
@@ -349,7 +553,7 @@ async function collectRuleFiles(rule, options = {}) {
   const startedAt = Date.now()
   const files = []
   const queue = []
-  const skipped = { recent: 0, links: 0, inaccessible: 0, outsideRoot: 0, unsupported: 0, excluded: 0 }
+  const skipped = { recent: 0, older: 0, links: 0, inaccessible: 0, outsideRoot: 0, unsupported: 0, excluded: 0 }
   let visited = 0
   let truncated = false
   let limitReason = null
@@ -440,6 +644,10 @@ async function collectRuleFiles(rule, options = {}) {
           skipped.recent++
           continue
         }
+        if (rule.maximumAgeDays != null && stat.mtimeMs <= now - rule.maximumAgeDays * DAY_MS) {
+          skipped.older++
+          continue
+        }
         const canonicalPath = await fsp.realpath(filePath)
         if (!isWithinRoot(canonicalPath, current.canonicalRoot)) {
           skipped.outsideRoot++
@@ -460,6 +668,7 @@ async function collectRuleFiles(rule, options = {}) {
           ruleId: rule.id,
           risk: rule.risk,
           minimumAgeDays: rule.minimumAgeDays,
+          maximumAgeDays: rule.maximumAgeDays,
           processNames: [...rule.processNames]
         })
       } catch {
@@ -489,7 +698,10 @@ function resultFor(rule, scan, guard) {
         ? `请先关闭 ${guard.blocked.join('、')}，然后重新扫描`
         : null,
     files: scan.files,
+    itemCount: scan.files.length,
     total: scan.files.reduce((sum, item) => sum + item.size, 0),
+    volumeBreakdown: [],
+    summaryOnly: false,
     truncated: scan.truncated,
     limitReason: scan.limitReason,
     durationMs: scan.durationMs,
@@ -499,9 +711,59 @@ function resultFor(rule, scan, guard) {
   }
 }
 
+async function scanSummaryRule(rule, options = {}) {
+  const startedAt = Date.now()
+  if (options.signal?.aborted) throw abortError()
+  try {
+    const result = await rule.probe(options)
+    if (options.signal?.aborted) throw abortError()
+    return {
+      ...publicRule(rule),
+      selectable: false,
+      configuredSelectable: false,
+      blockedProcesses: [],
+      processCheckFailed: false,
+      blockedReason: null,
+      files: [],
+      itemCount: Math.max(0, Number(result.items || 0)),
+      total: Math.max(0, Number(result.bytes || 0)),
+      volumeBreakdown: Array.isArray(result.volumes) ? result.volumes : [],
+      summaryOnly: true,
+      truncated: false,
+      limitReason: null,
+      durationMs: Date.now() - startedAt,
+      visited: Math.max(0, Number(result.items || 0)),
+      skipped: { recent: 0, older: 0, links: 0, inaccessible: 0, outsideRoot: 0, unsupported: 0, excluded: 0 },
+      scannedAt: Date.now()
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
+    return {
+      ...publicRule(rule),
+      selectable: false,
+      configuredSelectable: false,
+      blockedProcesses: [],
+      processCheckFailed: false,
+      blockedReason: `无法读取系统汇总：${error?.message || '未知错误'}`,
+      files: [],
+      itemCount: 0,
+      total: 0,
+      volumeBreakdown: [],
+      summaryOnly: true,
+      truncated: false,
+      limitReason: null,
+      durationMs: Date.now() - startedAt,
+      visited: 0,
+      skipped: { recent: 0, older: 0, links: 0, inaccessible: 1, outsideRoot: 0, unsupported: 0, excluded: 0 },
+      scannedAt: Date.now()
+    }
+  }
+}
+
 async function scanRuleAsync(id, options = {}) {
   const rule = rules.find(item => item.id === id)
   if (!rule) throw new Error('rule-not-found')
+  if (typeof rule.probe === 'function') return scanSummaryRule(rule, options)
   const processNames = options.processNames || await runningExecutableNames()
   const [scan, guard] = await Promise.all([
     collectRuleFiles(rule, options),
@@ -545,40 +807,14 @@ async function validateCandidate(candidate, options = {}) {
   }
 }
 
-function fileState(filePath) {
-  try {
-    const stat = fs.statSync(filePath)
-    return { exists: true, bytes: stat.isFile() ? stat.size : null }
-  } catch {
-    return { exists: false, bytes: 0 }
-  }
-}
-
-const slimmingRules = [
-  { id: 'hibernation', title: '休眠文件', category: '系统功能', risk: 'elevated', path: 'C:\\hiberfil.sys', description: 'Windows 休眠功能会在 C 盘保存与内存容量相关的 hiberfil.sys。', impact: '关闭休眠会同时影响休眠功能，并可能影响快速启动。', action: '通过系统电源设置调整', requiresAdmin: true },
-  { id: 'component-store', title: '系统组件存储', category: 'WinSxS', risk: 'attention', path: path.join(windows, 'WinSxS'), description: '可通过 DISM 分析和清理已被替代的组件版本。', impact: '不得直接删除 WinSxS 中的文件；只应使用 Windows 官方维护命令。', action: 'DISM 常规组件清理', requiresAdmin: true },
-  { id: 'component-reset-base', title: '组件基线压缩', category: 'WinSxS', risk: 'danger', path: path.join(windows, 'WinSxS'), description: 'ResetBase 会进一步清理所有已替代组件版本。', impact: '执行后当前已安装的 Windows 更新将无法卸载，属于不可逆系统维护。', action: '仅展示风险，不自动执行', requiresAdmin: true },
-  { id: 'virtual-memory', title: '虚拟内存', category: '系统功能', risk: 'danger', path: 'C:\\pagefile.sys', description: 'pagefile.sys 是 Windows 内存管理和崩溃转储的重要组成部分。', impact: '不建议直接删除；调整不当可能导致程序崩溃、内存不足或无法生成转储。', action: '通过 Windows 高级系统设置调整', requiresAdmin: true },
-  { id: 'previous-windows', title: '旧版 Windows 安装', category: '系统升级', risk: 'elevated', path: 'C:\\Windows.old', description: '系统大版本升级后保留的旧系统文件，用于在期限内回退。', impact: '清理后将无法通过这些文件回退到旧版本。', action: '使用 Windows 存储设置处理', requiresAdmin: true }
-].map(rule => ({ ...rule, risk: normalizeRisk(rule.risk), kind: 'slimming' }))
-
-function inspectSlimming() {
-  return slimmingRules.map(rule => {
-    const state = fileState(rule.path)
-    return {
-      ...rule,
-      detected: state.exists,
-      bytes: state.bytes,
-      status: state.exists ? (state.bytes ? '已检测到占用' : '已检测到系统组件') : '当前未检测到'
-    }
-  })
-}
-
 module.exports = {
   rules,
   publicRule,
   scanRuleAsync,
+  scanSummaryRule,
   collectRuleFiles,
+  parseRecycleBinOutput,
+  queryRecycleBin,
   validateCandidate,
   runningExecutableNames,
   processGuard,

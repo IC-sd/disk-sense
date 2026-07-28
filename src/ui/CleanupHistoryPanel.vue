@@ -3,20 +3,30 @@
     <header class="history-intro">
       <div>
         <span>LOCAL OPERATION AUDIT</span>
-        <h2>每一次清理都有结果可查</h2>
-        <p>记录哪些文件成功移入回收站、哪些被安全阻止，以及失败的具体原因。</p>
+        <h2>每一次清理和系统维护都有结果可查</h2>
+        <p>记录文件回收站操作、Windows 官方维护命令、被安全阻止的内容和失败原因。</p>
       </div>
       <button class="secondary-button" :disabled="loading" @click="loadHistory">
         <AppIcon name="scan" />{{ loading ? '读取中…' : '刷新记录' }}
       </button>
     </header>
 
-    <div v-if="history.length" class="history-metrics">
-      <article><span>任务</span><b>{{ history.length }}</b><small>本地最多保留 50 次</small></article>
+    <div v-if="hasHistory" class="history-metrics">
+      <article><span>任务</span><b>{{ history.length + maintenanceHistory.length }}</b><small>垃圾清理 50 次 · 维护 30 次</small></article>
       <article><span>移入回收站</span><b>{{ formatBytes(totalMoved) }}</b><small>清空回收站后才释放</small></article>
-      <article><span>成功文件</span><b>{{ totalSucceeded.toLocaleString() }}</b><small>逐文件重新校验后执行</small></article>
-      <article><span>未处理</span><b>{{ totalFailed.toLocaleString() }}</b><small>失败或被安全边界阻止</small></article>
+      <article><span>系统维护</span><b>{{ maintenanceHistory.length }}</b><small>{{ successfulMaintenance }} 次成功完成</small></article>
+      <article><span>未处理</span><b>{{ (totalFailed + failedMaintenance).toLocaleString() }}</b><small>失败或被安全边界阻止</small></article>
     </div>
+
+    <section v-if="maintenanceHistory.length" class="maintenance-history audit-maintenance-history">
+      <header><div><span>WINDOWS MAINTENANCE</span><b>系统维护记录</b></div><small>命令参数来自固定白名单</small></header>
+      <article v-for="job in maintenanceHistory" :key="job.id">
+        <span class="maintenance-result-icon" :class="{ success: job.success }"><AppIcon :name="job.success ? 'shield' : 'close'" /></span>
+        <div><b>{{ job.title }}</b><small>{{ formatDateTime(job.finishedAt) }} · {{ job.readOnly ? '只读分析' : job.irreversible ? '不可逆维护' : '系统维护' }}</small></div>
+        <p>{{ job.message }}</p>
+        <strong :class="{ success: job.success }">{{ job.success ? '成功' : `失败 ${job.exitCode}` }}</strong>
+      </article>
+    </section>
 
     <div v-if="history.length" class="history-list">
       <article v-for="job in history" :key="job.id" :class="{ open: openJobId === job.id }">
@@ -49,13 +59,13 @@
       </article>
     </div>
 
-    <div v-else-if="!loading" class="empty-state compact-empty">
+    <div v-if="!hasHistory && !loading" class="empty-state compact-empty">
       <div class="empty-rings"><AppIcon name="history" /></div>
       <h2>还没有清理记录</h2>
       <p>执行垃圾清理后，这里会保留本地审计结果。</p>
     </div>
 
-    <div v-if="history.length" class="history-footer">
+    <div v-if="hasHistory" class="history-footer">
       <span>记录只保存在本机应用数据中。</span>
       <button class="danger-quiet" @click="clearHistory">清空操作记录</button>
     </div>
@@ -66,12 +76,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { desktopApi } from '../platform/api'
-import type { CleanupJob, CleanupJobSummary } from '../domain/desktop'
+import type { CleanupJob, CleanupJobSummary, MaintenanceJob } from '../domain/desktop'
 import { formatBytes, formatDateTime } from '../shared/format'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{ refreshKey: number }>()
 const history = ref<CleanupJobSummary[]>([])
+const maintenanceHistory = ref<MaintenanceJob[]>([])
 const detail = ref<CleanupJob | null>(null)
 const openJobId = ref<string | null>(null)
 const loading = ref(false)
@@ -79,15 +90,20 @@ const detailLoading = ref(false)
 const message = ref('')
 
 const totalMoved = computed(() => history.value.reduce((sum, job) => sum + job.movedToTrashBytes, 0))
-const totalSucceeded = computed(() => history.value.reduce((sum, job) => sum + job.succeeded, 0))
 const totalFailed = computed(() => history.value.reduce((sum, job) => sum + job.failed, 0))
+const successfulMaintenance = computed(() => maintenanceHistory.value.filter(job => job.success).length)
+const failedMaintenance = computed(() => maintenanceHistory.value.filter(job => !job.success).length)
+const hasHistory = computed(() => history.value.length > 0 || maintenanceHistory.value.length > 0)
 
 async function loadHistory() {
   const api = desktopApi()
   if (!api || loading.value) return
   loading.value = true
   try {
-    history.value = await api.cleanerHistory()
+    ;[history.value, maintenanceHistory.value] = await Promise.all([
+      api.cleanerHistory(),
+      api.cleanerSlimmingHistory()
+    ])
     if (openJobId.value && !history.value.some(job => job.id === openJobId.value)) {
       openJobId.value = null
       detail.value = null
@@ -122,13 +138,14 @@ async function toggleDetail(id: string) {
 }
 
 async function clearHistory() {
-  if (!confirm('确认清空本机保存的清理操作记录？这不会影响回收站中的文件。')) return
+  if (!confirm('确认清空本机保存的垃圾清理与系统维护记录？这不会撤销已经完成的操作。')) return
   const api = desktopApi()
   if (!api) return
   try {
     await api.cleanerHistoryClear()
     openJobId.value = null
     detail.value = null
+    maintenanceHistory.value = []
     await loadHistory()
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)

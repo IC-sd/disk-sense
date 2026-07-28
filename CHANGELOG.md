@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Expanded conventional cleanup to 22 rules across Windows, browsers, application caches, developer tools, diagnostics, graphics caches, and Windows Update detection.
+- Added executable Windows maintenance with a fixed action allowlist: hibernation on/off, DISM component-store analysis, `StartComponentCleanup`, and separately gated `ResetBase`.
+- Added Windows-owned settings entry points for virtual memory and previous Windows installations.
+- Added maintenance progress, administrator detection, actual free-space deltas, bounded local history, and explicit success/failure results.
+
+### Safety
+
+- System maintenance accepts only predefined action ids; executable paths and arguments never come from renderer input.
+- Every maintenance action requires an exact confirmation phrase and rechecks elevation immediately before execution.
+- `ResetBase` is isolated as an irreversible danger-level action and requires the dedicated `RESETBASE` confirmation phrase.
+- Ordinary cleanup remains candidate-vault based and Recycle-Bin-only; unknown and personal content is never selected automatically.
+
+### Changed
+
+- Reworked the cleanup center into garbage cleanup, system slimming, and operation-audit views with a shared five-level risk language.
+- Unified the cleanup and system-maintenance visual design with a restrained dark palette; risk colors are now reserved for labels and necessary warnings.
+- Improved category progress, scan cancellation, exclusion management, lock/process reporting, and real desktop smoke coverage.
+
 ## 1.0.0 - 2026-07-24
 
 First complete desktop release candidate of the clean Disk Sense rewrite.

@@ -107,7 +107,9 @@ function addOverviewHandlers() {
       rendererSandbox: true,
       contextIsolation: true,
       permanentDelete: false,
-      remoteAiRequiresHttps: true
+      remoteAiRequiresHttps: true,
+      // Maintenance commands are resolved from main-process allowlists only.
+      systemMaintenanceAllowlist: true
     }
   }))
   ipcMain.handle('app:open-data-directory', async () => {

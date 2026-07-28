@@ -54,8 +54,9 @@ describe('local state durability', () => {
 
     const migrated = store(file).read()
 
-    expect(migrated.version).toBe(4)
+    expect(migrated.version).toBe(5)
     expect(migrated.cleanupJobs).toEqual([{ id: 'legacy' }])
+    expect(migrated.maintenanceJobs).toEqual([])
     expect(migrated.cleanupExclusions).toEqual([])
   })
 
