@@ -32,6 +32,7 @@ layouts. The earlier `v1.0.0` tag remains available only as historical context.
 - Reduced the shipped UI stylesheet by removing obsolete component rules from replaced explorer, cleanup, and settings views; added a regression check so deleted templates cannot leave dead CSS behind.
 - Reused the shared desktop risk normalizer, cached per-result search rankings, bounded renderer-side native file presentation caching, and narrowed CommonJS exports to the APIs actually consumed outside each module.
 - Removed tracked development logs and the obsolete credential-reading release helper; releases continue through the validated package and GitHub workflow paths.
+- Removed the machine-specific Electron distribution path from packaging so clean Windows release runners resolve the official Electron build reliably.
 - Made global search results update smoothly during continuous typing, added Arrow Up/Down selection and Enter-to-explain, improved ranking of Windows application shortcuts, and kept the previous result set stable while a new query is running.
 - Reduced background disk pressure by keeping the persisted search index immediately available, relying on live filesystem monitoring for active sessions, and deferring full-drive startup reconciliation until the index is meaningfully stale.
 - Replaced full-directory materialization with bounded directory streams in the explorer and cleanup scanners, and added bounded batched cleanup execution for large plans without weakening per-file validation.

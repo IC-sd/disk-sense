@@ -39,7 +39,6 @@
   "build": {
     "appId": "io.github.ic-sd.disk-sense",
     "productName": "Disk Sense",
-    "electronDist": "node_modules/electron/dist",
     "asar": true,
     "compression": "maximum",
     "directories": {
