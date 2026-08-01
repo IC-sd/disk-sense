@@ -23,6 +23,39 @@
       <path d="M6 2.5h8l4 4v15H6z" />
       <path d="M14 2.5v4h4" />
     </template>
+    <template v-else-if="name === 'application'">
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M3 8h18M8 8v13" />
+    </template>
+    <template v-else-if="name === 'document'">
+      <path d="M6 2.5h8l4 4v15H6z" />
+      <path d="M14 2.5v4h4M9 11h6M9 15h6M9 19h4" />
+    </template>
+    <template v-else-if="name === 'image'">
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <circle cx="9" cy="9" r="1.5" />
+      <path d="M4 17l5-5 3 3 2-2 6 5" />
+    </template>
+    <template v-else-if="name === 'video'">
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M10 9l5 3-5 3z" />
+    </template>
+    <template v-else-if="name === 'audio'">
+      <path d="M9 18V7l9-2v11" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="15.5" cy="16" r="2.5" />
+    </template>
+    <template v-else-if="name === 'archive'">
+      <path d="M5 3h14v18H5zM5 8h14M10 3v5M14 3v5" />
+      <path d="M10 12h4v4h-4z" />
+    </template>
+    <template v-else-if="name === 'installer'">
+      <path d="M6 3h12v18H6zM9 7h6" />
+      <path d="M12 10v7M9 14l3 3 3-3" />
+    </template>
+    <template v-else-if="name === 'code'">
+      <path d="M9 7l-5 5 5 5M15 7l5 5-5 5M13 4l-2 16" />
+    </template>
     <template v-else-if="name === 'clean'">
       <path d="M4 7h16" />
       <path d="M9 7V4h6v3" />
@@ -45,6 +78,10 @@
     <template v-else-if="name === 'scan'">
       <path d="M8 3H4a1 1 0 0 0-1 1v4M16 3h4a1 1 0 0 1 1 1v4M8 21H4a1 1 0 0 1-1-1v-4M16 21h4a1 1 0 0 0 1-1v-4" />
       <circle cx="12" cy="12" r="3.5" />
+    </template>
+    <template v-else-if="name === 'search'">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L21 21" />
     </template>
     <template v-else-if="name === 'database'">
       <ellipse cx="12" cy="5" rx="8" ry="3" />

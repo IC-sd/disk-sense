@@ -33,6 +33,11 @@ async function mapConcurrent(values, concurrency, mapper) {
 
 function normalize(value) { return String(value || '').replaceAll('/', '\\').replace(/[\\]+/g, '\\').toLowerCase() }
 function labels(filePath) { return normalize(filePath).split('\\').filter(Boolean) }
+function absoluteTarget(value, fallback = '') {
+  const input = String(value || fallback)
+  if (!path.isAbsolute(input)) throw new Error('路径必须是 Windows 绝对路径')
+  return path.resolve(input)
+}
 function humanBytes(bytes) { if (bytes < 1024) return `${bytes} B`; const units = ['KB', 'MB', 'GB', 'TB']; let i = -1; let value = bytes; do { value /= 1024; i++ } while (value >= 1024 && i < units.length - 1); return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[i]}` }
 
 function readHead(filePath, maxBytes) {
@@ -59,19 +64,29 @@ function pathSignals(filePath) {
   if (/(^|\\)perflogs(\\|$)/.test(p)) return add('performance-logs', 'Windows 性能日志目录', 'low', .96, '这是 Windows 性能监视器和诊断工具保存数据收集日志的位置。')
   if (/(^|\\)onedrivetemp(\\|$)/.test(p)) return add('cloud-temp', 'OneDrive 同步临时目录', 'attention', .94, '这是 OneDrive 在上传、下载或更新文件时使用的临时工作目录，正在同步时不应处理。')
   if (/(^|\\)inetpub(\\|$)/.test(p)) return add('web-server-root', 'IIS Web 服务目录', 'elevated', .98, '这是 Windows IIS Web 服务器的默认内容、日志和配置相关目录，启用 IIS 的电脑可能正在使用它。')
+  if (/(^|\\)config\.msi(\\|$)/.test(p)) return add('windows-installer-rollback', 'Windows Installer 回滚数据', 'danger', .99, '这是 Windows Installer 在安装、修复或回滚 MSI 软件时使用的受保护目录；安装事务结束前删除可能导致安装或卸载失败。')
+  if (/(^|\\)(boot|efi)(\\|$)/.test(p)) return add('boot-data', 'Windows 启动数据', 'danger', .99, '这里保存启动管理器、启动配置或 EFI 引导文件，删除或移动可能导致系统无法启动。')
+  if (/(^|\\)(msocache|esd|\$windows\.~bt|\$windows\.~ws)(\\|$)/.test(p)) return add('installation-source', 'Windows 或 Office 安装源', 'elevated', .97, '这是系统升级、重置、Office 修复或安装过程保留的安装源；应通过对应的 Windows 或 Office 官方维护入口处理。')
+  if (/(^|\\)found\.\d{3}(\\|$)/.test(p)) return add('recovered-file-fragments', '磁盘检查恢复片段', 'attention', .96, '这是 Windows 磁盘检查从文件系统错误中恢复出的片段，可能包含用户数据残片；确认不需要恢复内容后才能处理。')
   if (/(^|\\)(recovery|\$winreagent)(\\|$)/.test(p)) return add('recovery-data', 'Windows 恢复环境数据', 'danger', .98, '这是 Windows 恢复、升级或回滚流程使用的系统数据，不应直接删除。')
   if (/(^|\\)(pagefile\.sys|hiberfil\.sys|swapfile\.sys|dumpstack\.log(?:\.tmp)?)(\\|$)/.test(p)) return add('system-managed-file', 'Windows 系统管理文件', 'danger', .99, '这是 Windows 管理虚拟内存、休眠、快速启动或故障转储时使用的文件。')
-  if (/(^|\\)(windows|system32|syswow64|winsxs|servicing|driverstore)(\\|$)/.test(p)) return add('system-component', 'Windows 系统组件', 'high', .96, '路径位于 Windows 系统组件区域，文件可能参与系统启动、更新或硬件驱动。')
+  if (/^[a-z]:\\windows(?:\\|$)/.test(p)) return add('system-component', 'Windows 系统组件', 'high', .96, '路径位于 Windows 系统目录，文件可能参与系统启动、更新或硬件驱动。')
   if (/(^|\\)users$/.test(p)) return add('user-profile-root', 'Windows 用户配置根目录', 'high', .98, '这是 Windows 保存用户配置、桌面、下载和应用数据的根目录，不是单一用户文件夹。')
   if (/(^|\\)users\\[^\\]+$/.test(p)) return add('user-profile', 'Windows 用户配置目录', 'unknown', .94, '这是一个 Windows 用户配置目录，里面同时包含个人文件、应用数据和系统配置，不能整体清理。')
   if (/(^|\\)(programdata)$/.test(p)) return add('shared-application-data', '应用共享数据目录', 'unknown', .9, 'ProgramData 用于保存多个用户共享的应用数据、许可、索引和更新内容，不能按缓存目录整体删除。')
   if (/(^|\\)program files( \(x86\))?$/.test(p)) return add('application-install-root', '应用安装根目录', 'high', .98, '这是 Windows 应用安装目录，里面通常是程序本体和运行依赖，不应直接删除。')
+  if (/\\start menu\\programs\\.*\.lnk$/.test(p)) {
+    const applicationName = path.basename(filePath, path.extname(filePath))
+    return add('application-shortcut', `${applicationName} 应用快捷方式`, 'low', .96, `这是开始菜单中的 ${applicationName} 应用入口；它指向应用程序，本身不保存应用数据。`)
+  }
   if (/(^|\\)(appdata\\(local|roaming)|programdata)(\\|$)/.test(p)) signals.push(add('application-data', '应用运行数据', 'unknown', .72, '路径位于应用数据区域，可能包含缓存、配置、登录状态或用户数据。'))
   if (/(^|\\)(cache|code cache|gpucache|temp|tmp|crashdumps?|minidump|logs?)(\\|$)/.test(p)) signals.push(add('rebuildable-cache', '可重建缓存或日志', 'low', .9, '目录名称和路径符合应用缓存、临时文件或日志的常见模式。'))
   if (/(node_modules|\\.gradle|\\.m2|\\.nuget|__pycache__|\\target|\\.npm|\\.pnpm-store)/.test(p)) signals.push(add('development-data', '开发工具数据', 'low', .88, '路径包含开发工具依赖或构建缓存，通常可以由工具重新生成，但正在使用的项目可能需要它。'))
   if (/(^|\\)(desktop|downloads|documents|pictures|videos|music)(\\|$)/.test(p)) signals.push(add('user-content', '用户内容', 'unknown', .9, '路径位于用户常用内容目录，应结合文件名、内容和最近使用时间判断，不能直接当作垃圾。'))
   if (/\.(zip|rar|7z|iso|img|msi|exe|dmg)$/.test(name)) signals.push(add('archive-or-installer', '压缩包或安装程序', 'medium', .8, '文件类型可能是安装包、镜像或归档，既可能遗忘，也可能仍有用途。'))
-  if (/\.(lnk|url|website)$/.test(name)) signals.push(add('shortcut', '快捷方式', 'low', .8, '这是快捷方式文件，真正内容需要查看它指向的目标。'))
+  if (/\.(lnk|url|website)$/.test(name)) {
+    signals.push(add('shortcut', '快捷方式', 'low', .8, '这是快捷方式文件，真正内容需要查看它指向的目标。'))
+  }
   if (/\.(db|sqlite|sqlite3|dat)$/.test(name)) signals.push(add('application-database', '应用数据库', 'high', .78, '文件可能保存应用配置、索引、会话或用户数据，不应按缓存直接删除。'))
   return signals[0] || add('unclassified', '暂未确定', 'unknown', .25, '仅凭当前路径还不足以判断用途，需要结合名称、内容和上下文进一步分析。')
 }
@@ -146,6 +161,10 @@ function meaningFor(info, filePath, isDirectory) {
     'performance-logs': ['Windows 性能日志目录', '保存性能监视器、数据收集器和部分系统诊断生成的日志。', '确认没有正在进行的性能诊断后，可检查具体日志；不必删除目录本身。'],
     'cloud-temp': ['OneDrive 同步临时目录', '在云文件上传、下载、合并或更新期间保存临时工作数据。', '先确认 OneDrive 已完成同步并关闭，再判断遗留内容；不要在同步过程中清理。'],
     'web-server-root': ['IIS Web 服务目录', '保存 IIS 默认网站内容、日志或 Web 服务运行数据。', '如果使用本机 Web 服务必须保留；不使用 IIS 时也应先从 Windows 功能中关闭组件。'],
+    'windows-installer-rollback': ['Windows Installer 回滚目录', '保存 MSI 安装、修复、更新或卸载事务的回滚数据。', '不要手动删除；如果长期残留，应先确认没有安装任务并使用官方安装修复工具处理。'],
+    'boot-data': ['Windows 启动数据目录', '保存系统启动管理器、启动配置和固件引导所需文件。', '必须保留，不要删除、移动或修改。'],
+    'installation-source': ['系统或 Office 安装源', '支持 Windows 升级、系统重置、版本回滚或 Office 修复。', '不要直接删除；只通过 Windows 存储设置、磁盘清理或 Office 官方维护入口处理。'],
+    'recovered-file-fragments': ['磁盘检查恢复目录', '保存文件系统修复时找回但无法自动归属的文件片段。', '先检查是否包含需要恢复的个人数据，确认无用后再处理。'],
     'recovery-data': ['Windows 恢复环境数据', '支持系统恢复、升级回滚、启动修复和重置电脑。', '不要直接删除，应交给 Windows 存储或恢复设置管理。'],
     'user-profile-root': ['Windows 用户配置根目录', '组织本机用户的个人文件、桌面、下载、应用配置和用户数据库。', '不能整体删除；应进入具体用户目录和具体数据类别判断。'],
     'user-profile': ['Windows 用户配置目录', '同时承载个人文件、应用运行数据和用户配置。', '不能整体删除；应分别查看 Desktop、Downloads、AppData 等子目录。'],
@@ -162,8 +181,9 @@ function meaningFor(info, filePath, isDirectory) {
     'application-database': ['应用数据库或索引', '保存应用状态、索引、会话或用户数据。', '不要按缓存处理；必须先确认所属应用和数据用途。'],
     'diagnostic-data': ['系统诊断或崩溃记录', '帮助定位系统或应用故障。', '确认不再需要排查问题后通常可以归档或清理。'],
     'user-content': ['用户内容', '可能是文档、图片、视频、项目或个人资料。', '不能自动删除，应由用户决定保留、移动或归档。'],
-    'archive-or-installer': ['压缩包、镜像或安装程序', '可能是下载的安装介质、备份或归档文件。', '结合来源和最近使用时间判断，不要仅凭扩展名删除。']
-    ,
+    'archive-or-installer': ['压缩包、镜像或安装程序', '可能是下载的安装介质、备份或归档文件。', '结合来源和最近使用时间判断，不要仅凭扩展名删除。'],
+    'application-shortcut': ['应用快捷方式', '从开始菜单启动对应应用；快捷方式只保存入口信息，不包含程序本体和用户数据。', '可以保留作为应用入口；删除它只会移除快捷方式，不等于卸载应用。'],
+    'shortcut': ['文件或网页快捷方式', '把用户带到另一个文件、目录、应用或网页，本身通常只保存目标位置。', '确认不再需要这个入口后可以删除快捷方式，但这不会删除它指向的内容。'],
     'filesystem-link': ['文件系统链接或目录联接', '把当前路径重定向到另一个文件或目录，常用于兼容旧路径、共享数据或避免复制。', '不要把它当成重复文件直接删除；应先确认链接目标和创建它的系统或应用。']
   }
   const locations = {
@@ -174,11 +194,16 @@ function meaningFor(info, filePath, isDirectory) {
     'performance-logs': 'Windows 把性能监视器和诊断工具的默认输出集中放在系统盘根目录下的 PerfLogs。',
     'cloud-temp': 'OneDrive 在系统盘根目录使用这个临时位置完成部分同步和更新任务。',
     'web-server-root': '启用 IIS 后，Windows 默认在系统盘根目录创建 inetpub 作为 Web 服务数据入口。',
+    'windows-installer-rollback': 'Windows Installer 会在磁盘根目录创建受保护的回滚工作区，以保证安装失败时能够恢复。',
+    'boot-data': 'Windows 启动链需要在系统分区或 EFI 分区的固定位置读取这些文件。',
+    'installation-source': 'Windows 或 Office 会把升级、修复和恢复所需的安装文件放在磁盘根目录的约定位置。',
+    'recovered-file-fragments': 'Windows 磁盘检查无法确定原目录时，会把恢复片段放入磁盘根目录下的 FOUND.xxx 文件夹。',
     'recovery-data': 'Windows 把恢复和升级流程所需的数据放在受保护的系统位置，确保故障时仍可访问。',
     'system-managed-file': 'Windows 需要在系统卷直接访问这个文件，以支持内存管理、休眠或故障恢复。',
     'user-profile-root': 'Windows 使用系统盘的 Users 作为默认用户配置根目录，应用也会通过系统变量定位它。',
     'shared-application-data': 'Windows 约定 ProgramData 存放跨用户共享的应用数据，因此它位于系统盘根目录。',
-    'application-install-root': 'Windows 和安装程序默认把桌面应用安装到 Program Files，并通过注册信息引用这里。'
+    'application-install-root': 'Windows 和安装程序默认把桌面应用安装到 Program Files，并通过注册信息引用这里。',
+    'application-shortcut': 'Windows 把已安装应用的快捷入口集中放在开始菜单 Programs 目录，便于搜索和启动。'
   }
   const fallback = [isDirectory ? '暂未识别的目录' : '暂未识别的文件', '当前证据不足以确定它的具体用途。', '建议保留并进一步分析，不要自动删除。']
   const [what, purpose, handling] = meanings[info.classification] || fallback
@@ -207,7 +232,7 @@ function directoryShape(entries) {
 }
 
 async function estimateDirectory(dir) {
-  const cacheKey = path.resolve(dir).toLowerCase()
+  const cacheKey = absoluteTarget(dir).toLowerCase()
   const cached = cacheRead(estimateCache, cacheKey)
   if (cached && Date.now() - cached.cachedAt < ESTIMATE_CACHE_TTL_MS) return cached.value
   if (cached) estimateCache.delete(cacheKey)
@@ -259,11 +284,28 @@ function explain(filePath, stat, siblings = [], directoryContext = null, directo
   return { path: filePath, name, parent, size: stat.size, modifiedAt: stat.mtimeMs, isDirectory: stat.isDirectory(), isLink, ...merged, risk: normalizeRisk(merged.risk), ...meaning, analysisMode: 'local-evidence', needsReview: merged.confidence < .6, aiEligible: merged.confidence < .6, evidence: { pathSegments: labels(filePath).slice(-8), parent, siblingNames, childNames, directoryShape: stat.isDirectory() ? directoryShape(directoryChildren) : null, content, directoryContext }, contentPreview: content?.preview || null }
 }
 
+async function readDirectoryEntries(directory, limit = MAX_ITEMS) {
+  const maximum = Math.max(1, Math.floor(Number(limit) || 1))
+  const handle = await fsp.opendir(directory)
+  const entries = []
+  try {
+    for await (const entry of handle) {
+      entries.push(entry)
+      if (entries.length > maximum) break
+    }
+  } finally {
+    try { await handle.close() } catch { /* iterator already closed the handle */ }
+  }
+  return {
+    entries: entries.slice(0, maximum),
+    truncated: entries.length > maximum
+  }
+}
+
 async function listDirectory(dir) {
-  const root = path.resolve(dir || 'C:\\')
-  const entries = await fsp.readdir(root, { withFileTypes: true })
-  const visibleEntries = entries.slice(0, MAX_ITEMS)
-  const inspected = await mapConcurrent(visibleEntries, LIST_STAT_CONCURRENCY, async entry => {
+  const root = absoluteTarget(dir, 'C:\\')
+  const listing = await readDirectoryEntries(root, MAX_ITEMS)
+  const inspected = await mapConcurrent(listing.entries, LIST_STAT_CONCURRENCY, async entry => {
     const filePath = path.join(root, entry.name)
     try {
       const stat = await fsp.lstat(filePath)
@@ -282,21 +324,21 @@ async function listDirectory(dir) {
   })
   const items = inspected.filter(Boolean)
   const siblings = items.map(item => ({ name: item.name }))
-  return { path: root, items: items.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name)), truncated: entries.length > visibleEntries.length, context: { siblingCount: siblings.length, analyzed: 'path-name-parent-lazy-size' } }
+  return { path: root, items: items.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name)), truncated: listing.truncated, context: { siblingCount: siblings.length, analyzed: 'path-name-parent-lazy-size' } }
 }
 
 async function explainPath(filePath) {
-  const target = path.resolve(filePath)
+  const target = absoluteTarget(filePath)
   const stat = await fsp.lstat(target)
   const cacheKey = `${target.toLowerCase()}|${stat.size}|${stat.mtimeMs}`
   const cached = cacheRead(explanationCache, cacheKey)
   if (cached) return cached
   let siblings = []
-  try { siblings = (await fsp.readdir(path.dirname(target), { withFileTypes: true })).slice(0, MAX_CONTEXT_SIBLINGS) } catch { /* parent may be protected */ }
+  try { siblings = (await readDirectoryEntries(path.dirname(target), MAX_CONTEXT_SIBLINGS)).entries } catch { /* parent may be protected */ }
   let directoryChildren = []
-  if (stat.isDirectory()) try { directoryChildren = (await fsp.readdir(target, { withFileTypes: true })).slice(0, MAX_CONTEXT_SIBLINGS) } catch { /* protected directory */ }
+  if (stat.isDirectory()) try { directoryChildren = (await readDirectoryEntries(target, MAX_CONTEXT_SIBLINGS)).entries } catch { /* protected directory */ }
   const directoryContext = stat.isDirectory() ? summarizeDirectory(directoryChildren) : null
   return cacheWrite(explanationCache, cacheKey, explain(target, stat, siblings, directoryContext, directoryChildren))
 }
 
-module.exports = { listDirectory, explainPath, explain, pathSignals, readHead, readContent, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, ESTIMATE_CACHE_TTL_MS }
+module.exports = { listDirectory, explainPath, explain, pathSignals, readHead, readContent, readDirectoryEntries, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, ESTIMATE_CACHE_TTL_MS }

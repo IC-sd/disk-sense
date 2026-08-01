@@ -1,7 +1,7 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
 import { collectRuleFiles, isPathExcluded, isWithinRoot, PROCESS_CHECK_FAILED, validateCandidate } from '../desktop/cleaner.cjs'
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
-import { CandidateVault, compactCleanupJob, executeCleanup } from '../desktop/cleanup-executor.cjs'
+import { CandidateVault, MAX_EXECUTE_FILES, compactCleanupJob, executeCleanup, executeCleanupPlan } from '../desktop/cleanup-executor.cjs'
 import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -328,6 +328,48 @@ describe('cleanup safety boundary', () => {
     expect(trashCalls).toBe(1)
     expect(result.succeeded).toBe(1)
     expect(result.failed).toBe(1)
+  })
+
+  it('executes large cleanup plans in bounded batches with continuous progress', async () => {
+    const vault = new CandidateVault()
+    const files = Array.from({ length: MAX_EXECUTE_FILES + 2 }, (_, index) => ({
+      candidateId: `candidate-${index}`,
+      path: `C:\\cache\\${index}.tmp`,
+      canonicalPath: `C:\\cache\\${index}.tmp`,
+      size: 1,
+      modifiedAt: 1,
+      birthtimeMs: 1,
+      dev: 1,
+      ino: index + 1,
+      ruleId: 'test-cache',
+      root: 'C:\\cache',
+      canonicalRoot: 'C:\\cache',
+      risk: 'safe',
+      processNames: []
+    }))
+    vault.registerScan({
+      id: 'test-cache',
+      selectable: true,
+      configuredSelectable: true,
+      files
+    })
+    const progress: number[] = []
+
+    const result = await executeCleanupPlan({
+      requests: files.map(file => ({ candidateId: file.candidateId })),
+      vault,
+      trashItem: async () => undefined,
+      getRunningProcesses: async () => new Set(),
+      onProgress: (item: { processed: number }) => progress.push(item.processed),
+      // Avoid filesystem access: this test focuses on plan batching, while
+      // validateCandidate behavior is covered independently above.
+      now: () => 1
+    })
+
+    expect(result.requested).toBe(MAX_EXECUTE_FILES + 2)
+    expect(result.processed).toBe(MAX_EXECUTE_FILES + 2)
+    expect(result.rejectedOverflow).toBe(0)
+    expect(progress.at(-1)).toBe(MAX_EXECUTE_FILES + 2)
   })
 
   it('bounds persisted audit detail while keeping failures first and summary fields intact', () => {

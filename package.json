@@ -2,8 +2,8 @@
   "name": "disk-sense",
   "productName": "Disk Sense",
   "private": true,
-  "version": "1.0.0",
-  "description": "面向 Windows 的文件与目录解释、磁盘变化分析和安全空间清理工具",
+  "version": "0.9.0-beta.1",
+  "description": "面向 Windows 的文件与目录解释、全盘搜索、磁盘变化分析和安全空间清理工具",
   "author": "IC-sd",
   "license": "MIT",
   "repository": {
@@ -16,9 +16,9 @@
   "scripts": {
     "dev": "vite",
     "dev:desktop": "node scripts/dev-desktop.cjs",
-    "build": "vite build",
+    "build": "node node_modules/vite/bin/vite.js build --configLoader runner",
     "start:desktop": "electron desktop/main.cjs",
-    "test": "vitest run",
+    "test": "node node_modules/vitest/vitest.mjs run --configLoader runner",
     "typecheck": "vue-tsc --noEmit",
     "check:desktop": "node scripts/check-desktop.cjs",
     "validate": "pnpm typecheck && pnpm test && pnpm check:desktop && pnpm build",

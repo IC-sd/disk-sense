@@ -54,10 +54,11 @@ describe('local state durability', () => {
 
     const migrated = store(file).read()
 
-    expect(migrated.version).toBe(5)
+    expect(migrated.version).toBe(6)
     expect(migrated.cleanupJobs).toEqual([{ id: 'legacy' }])
     expect(migrated.maintenanceJobs).toEqual([])
     expect(migrated.cleanupExclusions).toEqual([])
+    expect(migrated.appearance).toEqual({ theme: 'dark' })
   })
 
   it('stores large change snapshots separately from frequently updated settings', () => {
@@ -81,5 +82,16 @@ describe('local state durability', () => {
     const reloaded = store(file).read()
     expect(reloaded.changeBaseline.entries).toHaveLength(1000)
     expect(reloaded.cleanupExclusions).toEqual([{ id: 'keep' }])
+  })
+
+  it('persists the selected interface theme', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-state-'))
+    temporaryRoots.push(root)
+    const file = path.join(root, 'state.json')
+    const database = store(file)
+    database.read().appearance = { theme: 'light' }
+    database.save()
+
+    expect(store(file).read().appearance).toEqual({ theme: 'light' })
   })
 })

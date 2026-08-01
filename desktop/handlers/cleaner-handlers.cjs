@@ -1,9 +1,10 @@
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { rules, publicRule, scanRuleAsync, isPathExcluded } = require('../cleaner.cjs')
-const { CandidateVault, compactCleanupJob, executeCleanup } = require('../cleanup-executor.cjs')
+const { CandidateVault, compactCleanupJob, executeCleanupPlan } = require('../cleanup-executor.cjs')
 const {
   inspectSlimming,
+  maintenanceActions,
   maintenanceStatus,
   executeMaintenanceAction
 } = require('../system-maintenance.cjs')
@@ -35,6 +36,29 @@ function validateExclusion(input) {
     mode,
     reason: String(input?.reason || '用户手动排除').trim().slice(0, 120) || '用户手动排除',
     createdAt: new Date().toISOString()
+  }
+}
+
+function failedMaintenanceJob(task, error) {
+  const action = maintenanceActions.find(item => item.id === task.actionId)
+  const message = error instanceof Error ? error.message : String(error || '系统维护执行失败')
+  return {
+    id: task.id,
+    actionId: task.actionId,
+    ruleId: action?.ruleId || '',
+    title: action?.label || '系统维护',
+    risk: action?.risk || 'danger',
+    readOnly: Boolean(action?.readOnly),
+    irreversible: Boolean(action?.irreversible),
+    requiresAdmin: Boolean(action?.requiresAdmin),
+    success: false,
+    exitCode: -1,
+    startedAt: task.startedAt,
+    finishedAt: new Date().toISOString(),
+    reclaimedBytes: 0,
+    message,
+    stdoutTail: '',
+    stderrTail: message.slice(-2000)
   }
 }
 
@@ -139,6 +163,12 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
       db.save()
       maintenanceStatusCache = null
       return job
+    } catch (error) {
+      const job = failedMaintenanceJob(task, error)
+      db.read().maintenanceJobs = [job, ...maintenanceHistory()].slice(0, 30)
+      db.save()
+      maintenanceStatusCache = null
+      throw error
     } finally {
       activeMaintenance = null
     }
@@ -191,7 +221,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     const controller = new AbortController()
     activeCleanup = { id, controller }
     try {
-      const execution = await executeCleanup({
+      const execution = await executeCleanupPlan({
         requests: files,
         vault: candidateVault,
         trashItem: filePath => shell.trashItem(filePath),
@@ -225,5 +255,6 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
 module.exports = {
   registerCleanerHandlers,
   historySummary,
-  validateExclusion
+  validateExclusion,
+  failedMaintenanceJob
 }

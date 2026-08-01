@@ -2,6 +2,7 @@ const { validateCandidate, runningExecutableNames, PROCESS_CHECK_FAILED } = requ
 
 const CANDIDATE_TTL_MS = 30 * 60 * 1000
 const MAX_EXECUTE_FILES = 5000
+const MAX_CLEANUP_PLAN_FILES = 50000
 const MAX_PERSISTED_RESULTS = 1000
 const PROCESS_REFRESH_FILES = 25
 const PROCESS_REFRESH_MS = 2000
@@ -93,7 +94,7 @@ async function executeCleanup(input = {}) {
   const requested = Array.isArray(requests) ? requests.slice(0, MAX_EXECUTE_FILES) : []
   const rejectedOverflow = Math.max(0, (Array.isArray(requests) ? requests.length : 0) - requested.length)
   const results = []
-  const seen = new Set()
+  const seen = input.seenCandidateIds instanceof Set ? input.seenCandidateIds : new Set()
   const readRunningProcesses = async () => {
     try {
       const value = await getRunningProcesses()
@@ -205,11 +206,58 @@ async function executeCleanup(input = {}) {
   }
 }
 
+async function executeCleanupPlan(input = {}) {
+  const allRequests = Array.isArray(input.requests) ? input.requests : []
+  const requests = allRequests.slice(0, MAX_CLEANUP_PLAN_FILES)
+  const rejectedOverflow = Math.max(0, allRequests.length - requests.length)
+  const results = []
+  const seenCandidateIds = new Set()
+  let succeeded = 0
+  let failed = 0
+  let movedToTrashBytes = 0
+  let cancelled = Boolean(input.signal?.aborted)
+
+  for (let offset = 0; offset < requests.length && !cancelled; offset += MAX_EXECUTE_FILES) {
+    const batch = requests.slice(offset, offset + MAX_EXECUTE_FILES)
+    const batchResult = await executeCleanup({
+      ...input,
+      requests: batch,
+      seenCandidateIds,
+      onProgress: progress => input.onProgress?.({
+        ...progress,
+        processed: offset + progress.processed,
+        total: requests.length,
+        succeeded: succeeded + progress.succeeded,
+        failed: failed + progress.failed
+      })
+    })
+    results.push(...batchResult.results)
+    succeeded += batchResult.succeeded
+    failed += batchResult.failed
+    movedToTrashBytes += batchResult.movedToTrashBytes
+    cancelled = batchResult.cancelled
+  }
+
+  return {
+    results,
+    requested: allRequests.length,
+    processed: results.length,
+    succeeded,
+    failed,
+    cancelled,
+    rejectedOverflow,
+    movedToTrashBytes,
+    reclaimedBytes: 0
+  }
+}
+
 module.exports = {
   CandidateVault,
   executeCleanup,
+  executeCleanupPlan,
   CANDIDATE_TTL_MS,
   MAX_EXECUTE_FILES,
+  MAX_CLEANUP_PLAN_FILES,
   MAX_PERSISTED_RESULTS,
   PROCESS_REFRESH_FILES,
   PROCESS_REFRESH_MS,

@@ -2,10 +2,10 @@ const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
 
-const MAX_ENTRIES = 120000
-const MAX_MS = 20000
+const MAX_ENTRIES = 500000
+const MAX_MS = 60000
 const SKIP_NAMES = new Set(['System Volume Information', '$Recycle.Bin'])
-const INVENTORY_SCHEMA_VERSION = 3
+const INVENTORY_SCHEMA_VERSION = 4
 const INVENTORY_STAT_CONCURRENCY = 24
 
 function key(value) {
@@ -52,6 +52,14 @@ async function inventory(options = {}, hooks = {}) {
     truncated: state.truncated || state.queueIndex < state.queue.length
   }))
 
+  const limitReason = cancelled => {
+    if (cancelled) return 'cancelled'
+    if (entries.length >= maxEntries) return 'max-entries'
+    if (Date.now() - started >= maxMs) return 'max-time'
+    if (rootStates.some(state => state.truncated || state.queueIndex < state.queue.length)) return 'root-budget'
+    return null
+  }
+
   const snapshot = (cancelled, forcedTruncated = false) => ({
     schemaVersion: INVENTORY_SCHEMA_VERSION,
     roots,
@@ -60,6 +68,7 @@ async function inventory(options = {}, hooks = {}) {
     rootCoverage: publicRootCoverage(),
     cancelled,
     truncated: forcedTruncated || rootStates.some(state => state.truncated || state.queueIndex < state.queue.length),
+    limitReason: limitReason(cancelled),
     durationMs: Date.now() - started
   })
 
@@ -237,6 +246,8 @@ function diff(before, after) {
   const effectiveBytes = item => item.kind === 'directory'
     ? Number(item.treeBytes || 0)
     : Number(item.size || 0)
+  const normalizedRoots = snapshot => [...new Set((snapshot?.roots || []).map(key))].sort()
+  const rootsChanged = JSON.stringify(normalizedRoots(before)) !== JSON.stringify(normalizedRoots(after))
   return {
     added: actualAdded,
     removed: actualRemoved,
@@ -247,7 +258,10 @@ function diff(before, after) {
       currentDirectories: newCoverage?.size || 0,
       baselineTruncated: Boolean(before?.truncated),
       currentTruncated: Boolean(after?.truncated),
-      partial: Boolean(before?.truncated || after?.truncated),
+      baselineLimitReason: before?.limitReason || null,
+      currentLimitReason: after?.limitReason || null,
+      rootsChanged,
+      partial: Boolean(before?.truncated || after?.truncated || rootsChanged),
       baselineRoots: before?.rootCoverage || [],
       currentRoots: after?.rootCoverage || []
     },

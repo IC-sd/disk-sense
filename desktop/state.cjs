@@ -3,7 +3,7 @@ const path = require('node:path')
 
 function defaults() {
   return {
-    version: 5,
+    version: 6,
     snapshots: [],
     events: [],
     cleanupJobs: [],
@@ -12,7 +12,10 @@ function defaults() {
     changeBaseline: null,
     lastChangeScan: null,
     aiSettings: null,
-    cleanupExclusions: []
+    cleanupExclusions: [],
+    appearance: {
+      theme: 'dark'
+    }
   }
 }
 
@@ -53,13 +56,15 @@ function store(file) {
     ...stored,
     changeBaseline: storedChanges.changeBaseline ?? stored.changeBaseline ?? null,
     lastChangeScan: storedChanges.lastChangeScan ?? stored.lastChangeScan ?? null,
-    version: 5
+    version: 6
   }
   delete data.memories
   if (!Array.isArray(data.cleanupJobs)) data.cleanupJobs = []
   if (!Array.isArray(data.maintenanceJobs)) data.maintenanceJobs = []
   if (!Array.isArray(data.changeScans)) data.changeScans = []
   if (!Array.isArray(data.cleanupExclusions)) data.cleanupExclusions = []
+  if (!data.appearance || typeof data.appearance !== 'object') data.appearance = { theme: 'dark' }
+  data.appearance.theme = data.appearance.theme === 'light' ? 'light' : 'dark'
   let needsHeavyMigration = Boolean(
     (stored.changeBaseline || stored.lastChangeScan) &&
     storedChanges.changeBaseline === undefined &&
@@ -83,7 +88,7 @@ function store(file) {
         needsHeavyMigration = false
       }
       const { changeBaseline, lastChangeScan, ...lightState } = data
-      atomicWrite(file, { ...lightState, version: 5 }, true)
+      atomicWrite(file, { ...lightState, version: 6 }, true)
     }
   }
 }

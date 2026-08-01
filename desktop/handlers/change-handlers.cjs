@@ -6,6 +6,7 @@ function publicSnapshot(snapshot) {
     createdAt: snapshot.createdAt,
     roots: snapshot.roots,
     truncated: Boolean(snapshot.truncated),
+    limitReason: snapshot.limitReason || null,
     durationMs: snapshot.durationMs,
     entryCount: snapshot.entries?.length || snapshot.entryCount || 0,
     directoryCount: snapshot.scannedDirectories?.length || snapshot.directoryCount || 0,
@@ -120,6 +121,5 @@ function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
 module.exports = {
   registerChangeHandlers,
   publicSnapshot,
-  publicLast,
   historyRecord
 }

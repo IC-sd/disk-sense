@@ -1,5 +1,7 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
 import { executeMaintenanceAction, inspectSlimming, maintenanceActions, parseDismAnalysis, systemExecutable } from '../desktop/system-maintenance.cjs'
+// @ts-expect-error CommonJS desktop handler helper is intentionally tested from the TypeScript suite.
+import { failedMaintenanceJob } from '../desktop/handlers/cleaner-handlers.cjs'
 import { describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
 
@@ -15,6 +17,25 @@ const elevatedStatus = {
 }
 
 describe('Windows system maintenance safety boundary', () => {
+  it('builds a durable failure record when an approved maintenance action cannot start', () => {
+    const job = failedMaintenanceJob({
+      id: 'maintenance-test',
+      actionId: 'component-cleanup',
+      startedAt: '2026-01-01T00:00:00.000Z'
+    }, new Error('DISM 启动失败'))
+
+    expect(job).toMatchObject({
+      id: 'maintenance-test',
+      actionId: 'component-cleanup',
+      ruleId: 'component-store',
+      success: false,
+      exitCode: -1,
+      reclaimedBytes: 0,
+      message: 'DISM 启动失败'
+    })
+    expect(job.finishedAt).toBeTruthy()
+  })
+
   it('publishes actions without exposing executable paths or command arguments', () => {
     const items = inspectSlimming(elevatedStatus)
     const actions = items.flatMap((item: any) => item.actions)

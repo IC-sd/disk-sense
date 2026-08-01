@@ -590,7 +590,6 @@ async function collectRuleFiles(rule, options = {}) {
       continue
     }
     let canonicalDir
-    let entries
     try {
       const dirStat = await fsp.lstat(current.dir)
       if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) {
@@ -602,82 +601,90 @@ async function collectRuleFiles(rule, options = {}) {
         skipped.outsideRoot++
         continue
       }
-      entries = await fsp.readdir(current.dir, { withFileTypes: true })
     } catch {
       skipped.inaccessible++
       continue
     }
 
-    for (const entry of entries) {
-      if (signal?.aborted) throw abortError()
-      if (files.length >= maxFiles || visited >= maxVisited || Date.now() - startedAt >= maxMs) {
-        truncated = true
-        limitReason = files.length >= maxFiles ? 'max-files' : visited >= maxVisited ? 'max-visited' : 'max-time'
-        break
-      }
-      const filePath = path.join(current.dir, entry.name)
-      visited++
-      if (isPathExcluded(filePath, options.exclusions)) {
-        skipped.excluded++
-        continue
-      }
-      if (entry.isSymbolicLink()) {
-        skipped.links++
-        continue
-      }
-      if (entry.isDirectory()) {
-        queue.push({ ...current, dir: filePath })
-        continue
-      }
-      if (!entry.isFile() || !rule.pattern.test(entry.name)) {
-        if (!entry.isFile()) skipped.unsupported++
-        continue
-      }
-      try {
-        const stat = await fsp.lstat(filePath)
-        if (!stat.isFile() || stat.isSymbolicLink()) {
+    let handle
+    try {
+      handle = await fsp.opendir(current.dir)
+      for await (const entry of handle) {
+        if (signal?.aborted) throw abortError()
+        if (files.length >= maxFiles || visited >= maxVisited || Date.now() - startedAt >= maxMs) {
+          truncated = true
+          limitReason = files.length >= maxFiles ? 'max-files' : visited >= maxVisited ? 'max-visited' : 'max-time'
+          break
+        }
+        const filePath = path.join(current.dir, entry.name)
+        visited++
+        if (isPathExcluded(filePath, options.exclusions)) {
+          skipped.excluded++
+          continue
+        }
+        if (entry.isSymbolicLink()) {
           skipped.links++
           continue
         }
-        const minimumModifiedAt = now - rule.minimumAgeDays * DAY_MS
-        if (stat.mtimeMs > minimumModifiedAt) {
-          skipped.recent++
+        if (entry.isDirectory()) {
+          queue.push({ ...current, dir: filePath })
           continue
         }
-        if (rule.maximumAgeDays != null && stat.mtimeMs <= now - rule.maximumAgeDays * DAY_MS) {
-          skipped.older++
+        if (!entry.isFile() || !rule.pattern.test(entry.name)) {
+          if (!entry.isFile()) skipped.unsupported++
           continue
         }
-        const canonicalPath = await fsp.realpath(filePath)
-        if (!isWithinRoot(canonicalPath, current.canonicalRoot)) {
-          skipped.outsideRoot++
-          continue
+        try {
+          const stat = await fsp.lstat(filePath)
+          if (!stat.isFile() || stat.isSymbolicLink()) {
+            skipped.links++
+            continue
+          }
+          const minimumModifiedAt = now - rule.minimumAgeDays * DAY_MS
+          if (stat.mtimeMs > minimumModifiedAt) {
+            skipped.recent++
+            continue
+          }
+          if (rule.maximumAgeDays != null && stat.mtimeMs <= now - rule.maximumAgeDays * DAY_MS) {
+            skipped.older++
+            continue
+          }
+          const canonicalPath = await fsp.realpath(filePath)
+          if (!isWithinRoot(canonicalPath, current.canonicalRoot)) {
+            skipped.outsideRoot++
+            continue
+          }
+          files.push({
+            candidateId: randomUUID(),
+            path: filePath,
+            canonicalPath,
+            rootPath: current.rootPath,
+            canonicalRoot: current.canonicalRoot,
+            name: entry.name,
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+            birthtimeMs: stat.birthtimeMs,
+            dev: stat.dev,
+            ino: stat.ino,
+            ruleId: rule.id,
+            risk: rule.risk,
+            minimumAgeDays: rule.minimumAgeDays,
+            maximumAgeDays: rule.maximumAgeDays,
+            processNames: [...rule.processNames]
+          })
+        } catch {
+          skipped.inaccessible++
         }
-        files.push({
-          candidateId: randomUUID(),
-          path: filePath,
-          canonicalPath,
-          rootPath: current.rootPath,
-          canonicalRoot: current.canonicalRoot,
-          name: entry.name,
-          size: stat.size,
-          modifiedAt: stat.mtimeMs,
-          birthtimeMs: stat.birthtimeMs,
-          dev: stat.dev,
-          ino: stat.ino,
-          ruleId: rule.id,
-          risk: rule.risk,
-          minimumAgeDays: rule.minimumAgeDays,
-          maximumAgeDays: rule.maximumAgeDays,
-          processNames: [...rule.processNames]
-        })
-      } catch {
-        skipped.inaccessible++
+        if (visited % 200 === 0) {
+          onProgress?.({ ruleId: rule.id, visited, found: files.length, current: current.dir })
+          await new Promise(resolve => setImmediate(resolve))
+        }
       }
-      if (visited % 200 === 0) {
-        onProgress?.({ ruleId: rule.id, visited, found: files.length, current: current.dir })
-        await new Promise(resolve => setImmediate(resolve))
-      }
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error
+      skipped.inaccessible++
+    } finally {
+      try { await handle?.close() } catch { /* iterator already closed the handle */ }
     }
   }
 

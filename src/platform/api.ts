@@ -4,6 +4,7 @@ import type {
   AiModelOption,
   AiReviewResult,
   AnalysisMode,
+  AppearanceSettings,
   AppInfo,
   ChangeProgress,
   ChangeResult,
@@ -18,10 +19,17 @@ import type {
   CleanupJobSummary,
   DirectoryEstimate,
   DirectoryListResult,
+  DataMigrationResult,
+  DeviceInfo,
   FileExplanation,
+  FileSearchIndexStartResult,
+  FileSearchIndexStatus,
+  FileSearchQuery,
+  FileSearchResult,
   MaintenanceJob,
   MaintenanceProgress,
   MaintenanceStatus,
+  NativeFilePresentation,
   OverviewSummary,
   SlimmingItem
 } from '../domain/desktop'
@@ -31,10 +39,22 @@ type Unsubscribe = () => void
 export interface DesktopApi {
   overviewGet: () => Promise<OverviewSummary>
   appInfo: () => Promise<AppInfo>
+  appAppearanceGet: () => Promise<AppearanceSettings>
+  appAppearanceSet: (input: AppearanceSettings) => Promise<AppearanceSettings>
+  appDeviceInfo: () => Promise<DeviceInfo>
   appOpenDataDirectory: () => Promise<{ opened: boolean }>
+  appOpenInstallDirectory: () => Promise<{ opened: boolean }>
+  appMoveDataDirectory: () => Promise<DataMigrationResult>
+  appRestart: () => Promise<{ restarted: boolean }>
   inspectList: (dir?: string) => Promise<DirectoryListResult>
   inspectEstimate: (dir: string) => Promise<DirectoryEstimate>
   inspectExplain: (filePath: string) => Promise<FileExplanation>
+  inspectIndexStatus: () => Promise<FileSearchIndexStatus>
+  inspectIndexStart: (input: { scope: 'drive' | 'all'; root?: string }) => Promise<FileSearchIndexStartResult>
+  inspectIndexCancel: () => Promise<{ cancelled: boolean; generation?: string }>
+  inspectSearch: (input: FileSearchQuery) => Promise<FileSearchResult>
+  inspectFilePresentations: (paths: string[]) => Promise<Record<string, NativeFilePresentation>>
+  onInspectIndexProgress: (callback: (data: FileSearchIndexStatus) => void) => Unsubscribe
   aiStatus: () => Promise<AiConfigStatus>
   aiConfigGet: () => Promise<AiConfigStatus>
   aiConfigSave: (input: AiConfigDraft) => Promise<AiConfigStatus>

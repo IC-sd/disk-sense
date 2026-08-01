@@ -193,9 +193,5 @@ function findRelatedLocations(filePath) {
 module.exports = {
   attribute,
   storageRelationship,
-  signatures,
-  findRelatedLocations,
-  locationTemplates,
-  installFolderNames,
-  normalizedPath
+  findRelatedLocations
 }

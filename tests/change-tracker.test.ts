@@ -65,6 +65,24 @@ describe('change tracker', () => {
     expect(result.coverage.partial).toBe(true)
   })
 
+  it('marks comparisons partial when the set of available disks changed', () => {
+    const before = {
+      roots: ['C:\\'],
+      scannedDirectories: ['C:\\'],
+      entries: []
+    }
+    const after = {
+      roots: ['C:\\', 'D:\\'],
+      scannedDirectories: ['C:\\', 'D:\\'],
+      entries: []
+    }
+
+    const result = diff(before, after)
+
+    expect(result.coverage.rootsChanged).toBe(true)
+    expect(result.coverage.partial).toBe(true)
+  })
+
   it('aggregates descendant bytes when a whole directory appears or disappears', () => {
     const before = {
       scannedDirectories: ['C:/'],
@@ -111,6 +129,7 @@ describe('change tracker', () => {
       expect(snapshot.rootCoverage.every((root: any) => root.entries > 0)).toBe(true)
       expect(snapshot.rootCoverage.map((root: any) => root.entries)).toEqual([5, 5])
       expect(snapshot.truncated).toBe(true)
+      expect(snapshot.limitReason).toBeTruthy()
     } finally {
       fs.rmSync(temporary, { recursive: true, force: true })
     }

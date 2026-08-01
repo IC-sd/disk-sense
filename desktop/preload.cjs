@@ -6,10 +6,16 @@ function subscribe(channel, callback) {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
-contextBridge.exposeInMainWorld('diskSense', {
+const bridge = {
   overviewGet: () => ipcRenderer.invoke('overview:get'),
   appInfo: () => ipcRenderer.invoke('app:info'),
+  appAppearanceGet: () => ipcRenderer.invoke('app:appearance:get'),
+  appAppearanceSet: input => ipcRenderer.invoke('app:appearance:set', input),
+  appDeviceInfo: () => ipcRenderer.invoke('app:device-info'),
   appOpenDataDirectory: () => ipcRenderer.invoke('app:open-data-directory'),
+  appOpenInstallDirectory: () => ipcRenderer.invoke('app:open-install-directory'),
+  appMoveDataDirectory: () => ipcRenderer.invoke('app:data-directory:move'),
+  appRestart: () => ipcRenderer.invoke('app:restart'),
 
   changesState: () => ipcRenderer.invoke('changes:state'),
   changesBaseline: () => ipcRenderer.invoke('changes:baseline'),
@@ -20,6 +26,12 @@ contextBridge.exposeInMainWorld('diskSense', {
   inspectList: dir => ipcRenderer.invoke('inspect:list', dir),
   inspectEstimate: dir => ipcRenderer.invoke('inspect:estimate', dir),
   inspectExplain: file => ipcRenderer.invoke('inspect:explain', file),
+  inspectIndexStatus: () => ipcRenderer.invoke('inspect:index-status'),
+  inspectIndexStart: input => ipcRenderer.invoke('inspect:index-start', input),
+  inspectIndexCancel: () => ipcRenderer.invoke('inspect:index-cancel'),
+  inspectSearch: input => ipcRenderer.invoke('inspect:search', input),
+  inspectFilePresentations: paths => ipcRenderer.invoke('inspect:file-presentations', paths),
+  onInspectIndexProgress: callback => subscribe('inspect:index-progress', callback),
 
   aiStatus: () => ipcRenderer.invoke('analysis:ai-status'),
   aiConfigGet: () => ipcRenderer.invoke('analysis:ai-config:get'),
@@ -47,4 +59,10 @@ contextBridge.exposeInMainWorld('diskSense', {
   cleanerExecute: files => ipcRenderer.invoke('cleaner:execute', files),
   cleanerCancel: () => ipcRenderer.invoke('cleaner:cancel'),
   onCleanerExecuteProgress: callback => subscribe('cleaner:execute-progress', callback)
-})
+}
+
+if (process.argv.includes('--disk-sense-smoke')) {
+  bridge.smokeCapture = () => ipcRenderer.invoke('smoke:capture')
+}
+
+contextBridge.exposeInMainWorld('diskSense', bridge)

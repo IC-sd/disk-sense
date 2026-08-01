@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=moderate
+
+      - name: Validate and package Windows builds
+        run: pnpm release:win
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$packageVersion") {
+            throw "Tag $env:GITHUB_REF_NAME does not match package version $packageVersion"
+          }
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $assets = @(
+            "release/Disk Sense-Setup-$packageVersion-x64.exe",
+            "release/Disk Sense-Portable-$packageVersion-x64.exe",
+            "release/SHA256SUMS-$packageVersion.txt",
+            "release/SHA256SUMS.txt"
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset)) {
+              throw "Missing release asset: $asset"
+            }
+          }
+          $releaseArgs = @(
+            "release",
+            "create",
+            $env:GITHUB_REF_NAME,
+            "--title",
+            "Disk Sense $packageVersion",
+            "--generate-notes"
+          )
+          if ($packageVersion -match "-") {
+            $releaseArgs += "--prerelease"
+          }
+          $releaseArgs += $assets
+          & gh @releaseArgs

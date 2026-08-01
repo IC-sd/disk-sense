@@ -31,7 +31,12 @@ export interface AppInfo {
   platform: string
   architecture: string
   packaged: boolean
+  installPath: string
   userDataPath: string
+  defaultUserDataPath: string
+  dataExternallyManaged: boolean
+  dataUsage: DirectoryUsage
+  appearance: AppearanceSettings
   stateVersion: number
   aiConfigured: boolean
   security: {
@@ -41,6 +46,52 @@ export interface AppInfo {
     remoteAiRequiresHttps: boolean
     systemMaintenanceAllowlist: boolean
   }
+}
+
+export type AppTheme = 'dark' | 'light'
+
+export interface AppearanceSettings {
+  theme: AppTheme
+}
+
+export interface DirectoryUsage {
+  bytes: number
+  files: number
+  directories: number
+  inaccessible: number
+  truncated: boolean
+}
+
+export interface DeviceInfo {
+  deviceName: string
+  manufacturer: string
+  model: string
+  operatingSystem: string
+  osVersion: string
+  osBuild: string
+  architecture: string
+  processor: string
+  logicalProcessors: number
+  totalMemoryBytes: number
+  freeMemoryBytes: number
+  uptimeSeconds: number
+  graphics: Array<{
+    name: string
+    memoryBytes: number
+  }>
+  installPath: string
+  dataPath: string
+}
+
+export interface DataMigrationResult {
+  cancelled: boolean
+  changed?: boolean
+  source?: string
+  target?: string
+  copiedFiles?: string[]
+  copiedBytes?: number
+  restartRequired?: boolean
+  sourceRetained?: boolean
 }
 
 export interface DirectoryItem {
@@ -65,6 +116,86 @@ export interface DirectoryListResult {
   items: DirectoryItem[]
   truncated: boolean
   context: { siblingCount: number; analyzed: string }
+}
+
+export type FileSearchScope = 'directory' | 'drive' | 'all'
+export type FileSearchKind =
+  | 'all'
+  | 'folder'
+  | 'file'
+  | 'application'
+  | 'document'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'archive'
+  | 'installer'
+  | 'code'
+export type FileSearchModified = 'any' | 'day' | 'week' | 'month' | 'year'
+export type FileSearchSort = 'relevance' | 'name' | 'modified' | 'size'
+
+export interface FileSearchQuery {
+  query: string
+  scope: FileSearchScope
+  root?: string
+  kind: FileSearchKind
+  modified: FileSearchModified
+  sort: FileSearchSort
+  limit?: number
+}
+
+export interface FileSearchIndexStatus {
+  available: boolean
+  indexed: boolean
+  building: boolean
+  phase: 'idle' | 'building' | 'ready' | 'partial' | 'cancelled' | 'failed'
+  roots: string[]
+  entries: number
+  directories: number
+  inaccessible: number
+  skippedLinks: number
+  current: string
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number
+  truncated: boolean
+  cancelled: boolean
+  automatic: boolean
+  watching: boolean
+  watcherCount: number
+  pendingChanges: number
+  lastChangedAt: string | null
+  lastError: string | null
+  error?: string
+}
+
+export interface FileSearchItem extends DirectoryItem {
+  parent: string
+  displayName: string
+  searchKind: Exclude<FileSearchKind, 'all'>
+  searchPriority: 'primary' | 'standard' | 'secondary'
+  relevanceReason: string
+}
+
+export interface NativeFilePresentation {
+  dataUrl: string
+  displayName?: string
+  target?: string
+  description?: string
+}
+
+export interface FileSearchResult {
+  items: FileSearchItem[]
+  truncated: boolean
+  tookMs: number
+  index: FileSearchIndexStatus
+}
+
+export interface FileSearchIndexStartResult {
+  started: boolean
+  generation?: string
+  reason?: string
+  status: FileSearchIndexStatus
 }
 
 export interface DirectoryEstimate {
@@ -382,6 +513,9 @@ export interface ChangeResult {
     currentDirectories: number
     baselineTruncated: boolean
     currentTruncated: boolean
+    baselineLimitReason: 'max-entries' | 'max-time' | 'root-budget' | 'cancelled' | null
+    currentLimitReason: 'max-entries' | 'max-time' | 'root-budget' | 'cancelled' | null
+    rootsChanged: boolean
     partial: boolean
     baselineRoots: ChangeRootCoverage[]
     currentRoots: ChangeRootCoverage[]
@@ -404,6 +538,7 @@ export interface ChangeRootCoverage {
   skippedLinks: number
   pendingDirectories: number
   truncated: boolean
+  limitReason: 'max-entries' | 'max-time' | 'root-budget' | 'cancelled' | null
 }
 
 export interface ChangeBaseline {

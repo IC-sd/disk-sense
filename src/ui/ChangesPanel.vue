@@ -1,10 +1,26 @@
 <template>
-  <section class="page changes-page">
-    <header class="page-header">
+  <section :class="embedded ? 'overview-changes' : 'page changes-page'">
+    <header v-if="!embedded" class="page-header">
       <div>
         <div class="eyebrow"><span></span> CHANGE HISTORY</div>
         <h1>变化记录</h1>
         <p>比较两次磁盘状态，回答“刚才安装或下载的内容到底改变了什么”。</p>
+      </div>
+      <div class="header-actions">
+        <button class="secondary-button" :disabled="busy" @click="createBaseline">
+          <AppIcon name="database" />{{ baseline ? '重新建立基线' : '建立第一次基线' }}
+        </button>
+        <button class="primary-button" :disabled="busy || !baseline" @click="scanChanges">
+          <AppIcon name="scan" />扫描变化
+        </button>
+      </div>
+    </header>
+
+    <header v-else class="overview-changes-header">
+      <div>
+        <div class="eyebrow"><span></span> STORAGE CHANGES</div>
+        <h2>空间变化记录</h2>
+        <p>记录当前磁盘状态，再比较软件安装、下载和文件整理之后新增、删除、修改或移动了什么。</p>
       </div>
       <div class="header-actions">
         <button class="secondary-button" :disabled="busy" @click="createBaseline">
@@ -47,7 +63,7 @@
     <p v-if="error" class="inline-message error-message">{{ error }}</p>
     <p v-if="last?.result.coverage.partial" class="coverage-warning">
       <AppIcon name="shield" />
-      本次是限时覆盖扫描：只报告两次都实际访问过的目录中的变化，不代表整块磁盘的完整变更记录。
+      {{ coverageWarning }}
     </p>
 
     <div v-if="last?.result" class="change-summary">
@@ -101,6 +117,9 @@ import type { ChangeBaseline, ChangeHistoryRecord, ChangeProgress, ChangeResult 
 import { formatBytes, formatDateTime } from '../shared/format'
 import AppIcon from './AppIcon.vue'
 
+defineProps<{ embedded?: boolean }>()
+const emit = defineEmits<{ changed: [] }>()
+
 type ChangeGroup = {
   id: string
   title: string
@@ -118,6 +137,21 @@ const progress = ref<ChangeProgress>({})
 let unsubscribeProgress: (() => void) | null = null
 
 const progressText = computed(() => progress.value.current ? '正在扫描磁盘变化' : '正在准备扫描')
+const coverageWarning = computed(() => {
+  const coverage = last.value?.result.coverage
+  if (!coverage) return ''
+  if (coverage.rootsChanged) {
+    return '两次扫描识别到的磁盘范围不同。为避免误报，新增或移除磁盘中的内容不会被猜测成普通文件变化。'
+  }
+  const reasons = [coverage.baselineLimitReason, coverage.currentLimitReason].filter(Boolean)
+  if (reasons.includes('max-entries')) {
+    return '本次扫描达到 50 万项安全上限：只报告两次都实际访问过的目录中的变化，未覆盖区域不会被猜测。'
+  }
+  if (reasons.includes('root-budget')) {
+    return '部分磁盘目录数量超过本轮分配范围：结果只包含两次都实际访问过的位置，未覆盖区域不会被猜测。'
+  }
+  return '本次扫描达到 60 秒性能边界：只报告两次都实际访问过的目录中的变化，未覆盖区域不会被猜测。'
+})
 const groups = computed<ChangeGroup[]>(() => {
   const result = last.value?.result
   if (!result) return []
@@ -136,11 +170,16 @@ async function refresh() {
   baseline.value = state.baseline
   last.value = state.last
   history.value = state.history || []
+  emit('changed')
 }
 
 async function createBaseline() {
   const api = desktopApi()
   if (!api) return
+  if (
+    baseline.value &&
+    !confirm('重新建立基线会替换当前对照点，之前尚未比较的变化将无法再以旧基线计算。确认继续吗？')
+  ) return
   busy.value = true
   error.value = ''
   progress.value = {}

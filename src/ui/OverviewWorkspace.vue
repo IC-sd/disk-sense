@@ -10,7 +10,7 @@
             <AppIcon name="scan" />
             探查 C 盘
           </button>
-          <button class="secondary-button" @click="$emit('navigate', 'changes')">
+          <button class="secondary-button" @click="scrollToChanges">
             查看空间变化
             <AppIcon name="arrow" />
           </button>
@@ -96,28 +96,8 @@
       <span class="local-badge">LOCAL FIRST</span>
     </div>
 
-    <div class="feature-grid">
-      <article class="feature-card feature-blue">
-        <span class="feature-index">01</span>
-        <div class="feature-icon"><AppIcon name="folder" /></div>
-        <h2>像资源管理器一样浏览</h2>
-        <p>保留熟悉的目录结构，同时让每个文件和文件夹都拥有可理解的功能说明。</p>
-        <button @click="$emit('navigate', 'inspect')">打开目录解释器 <AppIcon name="arrow" /></button>
-      </article>
-      <article class="feature-card feature-green">
-        <span class="feature-index">02</span>
-        <div class="feature-icon"><AppIcon name="history" /></div>
-        <h2>看见空间为什么增长</h2>
-        <p>在两次扫描之间识别新增、删除、修改和移动，追踪安装软件后的真实变化。</p>
-        <button @click="$emit('navigate', 'changes')">建立变化基线 <AppIcon name="arrow" /></button>
-      </article>
-      <article class="feature-card feature-amber">
-        <span class="feature-index">03</span>
-        <div class="feature-icon"><AppIcon name="clean" /></div>
-        <h2>把清理放在证据之后</h2>
-        <p>垃圾清理和系统瘦身使用统一风险等级，高风险内容不会混入自动执行。</p>
-        <button @click="$emit('navigate', 'cleaner')">进入清理中心 <AppIcon name="arrow" /></button>
-      </article>
+    <div ref="changesSection" class="overview-changes-anchor">
+      <ChangesPanel embedded @changed="loadOverview" />
     </div>
   </section>
 </template>
@@ -128,10 +108,12 @@ import { desktopApi } from '../platform/api'
 import type { OverviewSummary } from '../domain/desktop'
 import { formatBytes, formatDateTime } from '../shared/format'
 import AppIcon from './AppIcon.vue'
+import ChangesPanel from './ChangesPanel.vue'
 
-defineEmits<{ navigate: [view: 'inspect' | 'changes' | 'cleaner'] }>()
+defineEmits<{ navigate: [view: 'inspect'] }>()
 
 const summary = ref<OverviewSummary | null>(null)
+const changesSection = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const overviewError = ref('')
 let loadedAt = 0
@@ -149,6 +131,10 @@ async function loadOverview() {
   } finally {
     loading.value = false
   }
+}
+
+function scrollToChanges() {
+  changesSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 onMounted(() => void loadOverview())

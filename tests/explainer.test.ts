@@ -1,5 +1,5 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
-import { explain, listDirectory, pathSignals, inferFromName, summarizeDirectory, estimateDirectory, readHead, MAX_CONTENT_BYTES } from '../desktop/explainer.cjs'
+import { explain, listDirectory, pathSignals, inferFromName, summarizeDirectory, estimateDirectory, readDirectoryEntries, readHead, MAX_CONTENT_BYTES } from '../desktop/explainer.cjs'
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -61,6 +61,20 @@ describe('explainer engine', () => {
     }
   })
 
+  it('stops reading a large directory once the requested display limit is reached', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-list-'))
+    try {
+      for (let index = 0; index < 12; index++) {
+        fs.writeFileSync(path.join(temporary, `${index}.tmp`), '')
+      }
+      const result = await readDirectoryEntries(temporary, 3)
+      expect(result.entries).toHaveLength(3)
+      expect(result.truncated).toBe(true)
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true })
+    }
+  })
+
   it('reads only a bounded file prefix for content evidence', () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-explainer-'))
     const target = path.join(temporary, 'large.bin')
@@ -105,8 +119,29 @@ describe('explainer engine', () => {
     expect(pathSignals('C:\\Documents and Settings').classification).toBe('compatibility-junction')
     expect(pathSignals('C:\\pagefile.sys').classification).toBe('system-managed-file')
     expect(pathSignals('C:\\inetpub').classification).toBe('web-server-root')
+    expect(pathSignals('C:\\Config.Msi').classification).toBe('windows-installer-rollback')
+    expect(pathSignals('C:\\Boot').classification).toBe('boot-data')
+    expect(pathSignals('C:\\$Windows.~BT').classification).toBe('installation-source')
+    expect(pathSignals('D:\\FOUND.000').classification).toBe('recovered-file-fragments')
     const stat = { size: 0, mtimeMs: Date.now(), isDirectory: () => true }
     expect(explain('C:\\$Recycle.Bin', stat).whyHere).toContain('每个磁盘卷')
+  })
+
+  it('distinguishes an application shortcut from the real Windows system directory', () => {
+    const shortcutPath = 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Word.lnk'
+    const shortcut = pathSignals(shortcutPath)
+    const systemFile = pathSignals('C:\\Windows\\System32\\kernel32.dll')
+
+    expect(shortcut).toMatchObject({
+      classification: 'application-shortcut',
+      source: 'Word 应用快捷方式'
+    })
+    expect(systemFile.classification).toBe('system-component')
+    expect(explain(shortcutPath, {
+      size: 1024,
+      mtimeMs: Date.now(),
+      isDirectory: () => false
+    }).purpose).toContain('启动对应应用')
   })
 
   it('identifies filesystem links without following them for content analysis', () => {

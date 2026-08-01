@@ -2,6 +2,11 @@ node_modules/
 dist/
 .pnpm-store/
 release/
+release-*/
+release-search-validation*/
+release-responsive/
+release-verify*/
 .dev-*.log
+.manual-*.log
 .dev-desktop.pid.json
 *.local

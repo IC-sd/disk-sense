@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
 import { validateExclusion, historySummary } from '../desktop/handlers/cleaner-handlers.cjs'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
 import { publicSnapshot, historyRecord } from '../desktop/handlers/change-handlers.cjs'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
-import { createAiConfigService } from '../desktop/handlers/inspect-handlers.cjs'
+import { createAiConfigService, findOfficeBrandIcon, resolveFilePresentation } from '../desktop/handlers/inspect-handlers.cjs'
 
 describe('desktop handler boundaries', () => {
   it('validates exclusions before they enter persisted state', () => {
@@ -75,5 +78,42 @@ describe('desktop handler boundaries', () => {
     })
     expect(state.aiSettings.apiKeyEncrypted).toBe('')
     expect(saves).toBe(2)
+  })
+
+  it('resolves Office shortcuts to their real application identity and icon target', () => {
+    const presentation = resolveFilePresentation(
+      'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Word.lnk',
+      {
+        readShortcutLink: () => ({
+          target: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE',
+          icon: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\wordicon.exe',
+          description: 'Create and edit documents'
+        })
+      }
+    )
+
+    expect(presentation).toMatchObject({
+      displayName: 'Microsoft Word',
+      iconTarget: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\wordicon.exe',
+      target: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE'
+    })
+    expect(resolveFilePresentation('C:\\Documents\\word-plan.docx', {})).toMatchObject({
+      displayName: '',
+      iconTarget: 'C:\\Documents\\word-plan.docx'
+    })
+  })
+
+  it('finds a bounded Office brand icon beside the installed application tree', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-office-'))
+    try {
+      const officeDirectory = path.join(root, 'Office16')
+      const iconDirectory = path.join(officeDirectory, 'sdxs', 'package', 'OfflineFiles')
+      fs.mkdirSync(iconDirectory, { recursive: true })
+      const iconPath = path.join(iconDirectory, 'word-icon_fixture.png')
+      fs.writeFileSync(iconPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      expect(findOfficeBrandIcon(path.join(officeDirectory, 'WINWORD.EXE'))).toBe(iconPath)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })

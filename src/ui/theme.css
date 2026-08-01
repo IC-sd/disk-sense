@@ -23,12 +23,68 @@
   --orange: #ff9c55;
   --red: #ff6f78;
   --purple: #a98aff;
+  --field-bg: #091522;
+  --control-bg: #102033;
+  --control-hover: #172c43;
+  --control-text: #aebed2;
+  --icon-bg: rgba(15, 29, 46, .7);
+  --icon-border: rgba(70, 91, 120, .42);
+  --icon-text: #7f96b8;
+  --folder-icon-bg: rgba(45, 69, 125, .22);
+  --folder-icon-border: rgba(84, 116, 192, .38);
+  --folder-icon-text: #759bff;
+  --info-bg: rgba(29, 51, 83, .3);
+  --info-border: rgba(74, 104, 150, .38);
+  --danger-control-bg: rgba(80, 27, 36, .44);
+  --danger-control-border: rgba(163, 61, 72, .48);
+  --danger-control-text: #e8a2aa;
   --radius-sm: 10px;
   --radius: 16px;
   --radius-lg: 24px;
   --shadow: 0 18px 50px rgba(0, 0, 0, .28);
   --scrollbar-thumb: rgba(105, 130, 164, .18);
   --scrollbar-thumb-hover: rgba(119, 147, 186, .42);
+}
+
+:root[data-theme="light"] {
+  color: #152235;
+  color-scheme: light;
+  background: #edf1f5;
+  --bg: #edf1f5;
+  --surface: #ffffff;
+  --surface-strong: #f5f7fa;
+  --surface-soft: #e8edf3;
+  --line: #cbd5e1;
+  --line-bright: #9eafc2;
+  --text: #152235;
+  --muted: #4e6074;
+  --subtle: #6a7c91;
+  --blue: #4267dc;
+  --blue-strong: #3456c1;
+  --cyan: #127f8d;
+  --green: #137a55;
+  --amber: #946109;
+  --orange: #b85718;
+  --red: #b93948;
+  --purple: #6948c8;
+  --field-bg: #ffffff;
+  --control-bg: #f7f9fc;
+  --control-hover: #edf2f7;
+  --control-text: #32465e;
+  --icon-bg: #eef3f8;
+  --icon-border: #c5d1de;
+  --icon-text: #536a85;
+  --folder-icon-bg: #e8effd;
+  --folder-icon-border: #b9c9e7;
+  --folder-icon-text: #355fc2;
+  --info-bg: #f1f5fb;
+  --info-border: #c8d5e6;
+  --danger-control-bg: #fff1f2;
+  --danger-control-border: #dfb3ba;
+  --danger-control-text: #a52f3d;
+  --shadow: 0 14px 36px rgba(35, 53, 75, .1);
+  --scrollbar-thumb: rgba(62, 82, 106, .24);
+  --scrollbar-thumb-hover: rgba(62, 82, 106, .48);
 }
 
 * {
@@ -79,6 +135,86 @@ body {
   background: var(--bg);
 }
 
+:root[data-theme="light"] .app-sidebar {
+  border-right-color: #cbd6e2;
+  background: #f8fafc;
+  box-shadow: 8px 0 24px rgba(45, 61, 80, .055);
+}
+
+:root[data-theme="light"] .brand small,
+:root[data-theme="light"] .main-nav small,
+:root[data-theme="light"] .sidebar-insight p,
+:root[data-theme="light"] .sidebar-footer small {
+  color: var(--subtle);
+}
+
+:root[data-theme="light"] .main-nav button {
+  color: #617085;
+}
+
+:root[data-theme="light"] .main-nav button:hover {
+  color: #26364a;
+  background: #f0f4f8;
+}
+
+:root[data-theme="light"] .main-nav button.active {
+  color: #1c3154;
+  border-color: #b9c9e3;
+  background: linear-gradient(90deg, #dfe8fa, #edf2fb);
+}
+
+:root[data-theme="light"] .nav-icon {
+  border-color: #d8e0e9;
+  background: #f7f9fb;
+}
+
+:root[data-theme="light"] .main-nav button.active .nav-icon {
+  color: #4568da;
+  border-color: #bdccee;
+  background: #edf2ff;
+}
+
+:root[data-theme="light"] .sidebar-insight {
+  border-color: #cad7e5;
+  background: #f1f5f9;
+}
+
+:root[data-theme="light"] .sidebar-footer {
+  border-top-color: #e0e6ed;
+}
+
+:root[data-theme="light"] .sidebar-footer b {
+  color: #526174;
+}
+
+:root[data-theme="light"] .secondary-button,
+:root[data-theme="light"] .icon-button {
+  color: #3f5167;
+  border-color: #ced8e3;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .inline-message {
+  color: #40556e;
+  background: #f8fafc;
+}
+
+:root[data-theme="light"] .error-message {
+  color: #a72938;
+  border-color: #e5b8be;
+  background: #fff2f3;
+}
+
+:root[data-theme="light"] .modal {
+  background: rgba(31, 42, 55, .48);
+}
+
+:root[data-theme="light"] .modal-card {
+  border-color: #cad5e2;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(31, 42, 55, .22);
+}
+
 button,
 input,
 select,
@@ -114,9 +250,9 @@ textarea:focus-visible {
   inset: 0 auto 0 0;
   z-index: 10;
   display: flex;
-  width: 254px;
+  width: 224px;
   flex-direction: column;
-  padding: 28px 18px 20px;
+  padding: 22px 14px 18px;
   border-right: 1px solid #263548;
   background: #0c1622;
   box-shadow: 12px 0 32px rgba(0, 0, 0, .1);
@@ -127,7 +263,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 12px;
   padding: 0 10px;
-  margin-bottom: 36px;
+  margin-bottom: 28px;
 }
 
 .brand-mark {
@@ -346,15 +482,15 @@ textarea:focus-visible {
 }
 
 .workspace {
-  width: calc(100% - 254px);
+  width: calc(100% - 224px);
   min-width: 0;
-  margin-left: 254px;
+  margin-left: 224px;
 }
 
 .page {
   width: 100%;
   min-height: 100vh;
-  padding: clamp(34px, 4vw, 62px) clamp(34px, 5vw, 78px) 70px;
+  padding: clamp(28px, 3.2vw, 44px) clamp(28px, 3.6vw, 52px) 48px;
 }
 
 .page-header {
@@ -362,7 +498,7 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: 32px;
   align-items: flex-start;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .page-header h1 {
@@ -559,9 +695,83 @@ textarea:focus-visible {
   box-shadow: 0 28px 90px rgba(0, 0, 0, .55);
 }
 
-@media (max-width: 1100px) {
-  .app-sidebar { width: 218px; }
-  .workspace { width: calc(100% - 218px); margin-left: 218px; }
-  .main-nav small { display: none; }
-  .page { padding-inline: 32px; }
+@media (max-width: 1180px) {
+  .app-sidebar {
+    width: 82px;
+    padding: 18px 10px 16px;
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0;
+    margin-bottom: 24px;
+  }
+
+  .brand > div:last-child,
+  .main-nav button > span:nth-child(2),
+  .sidebar-insight,
+  .sidebar-footer > div {
+    display: none;
+  }
+
+  .main-nav button {
+    grid-template-columns: minmax(0, 1fr) 3px;
+    gap: 4px;
+    justify-items: center;
+    padding: 8px 5px;
+  }
+
+  .main-nav button:hover {
+    transform: none;
+  }
+
+  .sidebar-footer {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .workspace {
+    width: calc(100% - 82px);
+    margin-left: 82px;
+  }
+
+  .page {
+    padding: 24px 24px 32px;
+  }
+}
+
+@media (max-height: 760px) {
+  .app-sidebar {
+    padding-top: 14px;
+  }
+
+  .brand {
+    margin-bottom: 14px;
+  }
+
+  .main-nav {
+    gap: 3px;
+  }
+
+  .main-nav button {
+    padding-block: 6px;
+  }
+
+  .sidebar-insight {
+    display: none;
+  }
+
+  .page {
+    padding-top: 20px;
+    padding-bottom: 24px;
+  }
+
+  .page-header {
+    margin-bottom: 14px;
+  }
+
+  .page-header h1 {
+    margin-block: 4px 5px;
+    font-size: 32px;
+  }
 }

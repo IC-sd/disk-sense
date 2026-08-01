@@ -3,7 +3,11 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const packageJson = require('../package.json')
 
-const releaseDirectory = path.resolve(__dirname, '..', 'release')
+const releaseDirectory = path.resolve(
+  process.argv[2] ||
+  process.env.DISK_SENSE_RELEASE_DIR ||
+  path.join(__dirname, '..', 'release')
+)
 const names = [
   `Disk Sense-Setup-${packageJson.version}-x64.exe`,
   `Disk Sense-Portable-${packageJson.version}-x64.exe`
