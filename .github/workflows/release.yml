@@ -48,8 +48,8 @@ jobs:
         run: |
           $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $assets = @(
-            "release/Disk Sense-Setup-$packageVersion-x64.exe",
-            "release/Disk Sense-Portable-$packageVersion-x64.exe",
+            "release/Disk-Sense-Setup-$packageVersion-x64.exe",
+            "release/Disk-Sense-Portable-$packageVersion-x64.exe",
             "release/SHA256SUMS-$packageVersion.txt",
             "release/SHA256SUMS.txt"
           )

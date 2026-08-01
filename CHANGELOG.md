@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0-beta.3 - 2026-08-01
+## 0.9.0-beta.4 - 2026-08-01
 
 Public beta of the expanded Disk Sense desktop experience. The project maturity
 has been intentionally re-baselined below 1.0 until real-user feedback and
@@ -16,6 +16,11 @@ exposed a Windows timestamp-precision edge case in the cleanup safety suite.
 Beta.3 skips the minimum-age comparison when a detection-only rule explicitly
 uses a zero-day lower bound; the focused safety suite passed 12 consecutive
 runs before this release.
+
+The `v0.9.0-beta.3` release built successfully, but GitHub normalized spaces in
+uploaded executable names while the checksum manifest retained them. Beta.4
+uses stable `Disk-Sense-*` artifact names end to end so downloaded files match
+the SHA-256 manifest exactly.
 
 ### Added
 

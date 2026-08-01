@@ -9,8 +9,8 @@ const releaseDirectory = path.resolve(
   path.join(__dirname, '..', 'release')
 )
 const names = [
-  `Disk Sense-Setup-${packageJson.version}-x64.exe`,
-  `Disk Sense-Portable-${packageJson.version}-x64.exe`
+  `Disk-Sense-Setup-${packageJson.version}-x64.exe`,
+  `Disk-Sense-Portable-${packageJson.version}-x64.exe`
 ]
 
 async function sha256(file) {
