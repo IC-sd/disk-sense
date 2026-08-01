@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.9.0--beta.1-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.1">
+  <img src="https://img.shields.io/badge/版本-0.9.0--beta.2-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.2">
   <img src="https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows11" alt="Windows">
   <img src="https://img.shields.io/badge/Electron-43.x-47848F?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue.js">
@@ -148,7 +148,7 @@ docs/                   产品基础、运维和发布验收文档
 
 ## 版本状态
 
-当前版本为 **0.9.0-beta.1 公开测试版**。它首次把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+当前版本为 **0.9.0-beta.2 公开测试版**。它首次把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
 
 仓库早期曾创建 `v1.0.0` 标签，但项目尚缺少足够的真实用户反馈和多设备长期验证。本次主动把成熟度重新校准到 0.9 测试阶段；历史标签保留用于追溯，不代表当前稳定性判断。
 
