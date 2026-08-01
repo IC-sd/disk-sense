@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0-beta.2 - 2026-08-01
+## 0.9.0-beta.3 - 2026-08-01
 
 Public beta of the expanded Disk Sense desktop experience. The project maturity
 has been intentionally re-baselined below 1.0 until real-user feedback and
@@ -10,6 +10,12 @@ layouts. The earlier `v1.0.0` tag remains available only as historical context.
 The `v0.9.0-beta.1` tag did not publish artifacts because its clean runner
 depended on a machine-specific Electron distribution path. Beta.2 removes that
 assumption and downloads the official Electron build during packaging.
+
+The `v0.9.0-beta.2` tag completed the main CI workflow but its release workflow
+exposed a Windows timestamp-precision edge case in the cleanup safety suite.
+Beta.3 skips the minimum-age comparison when a detection-only rule explicitly
+uses a zero-day lower bound; the focused safety suite passed 12 consecutive
+runs before this release.
 
 ### Added
 

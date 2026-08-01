@@ -641,7 +641,7 @@ async function collectRuleFiles(rule, options = {}) {
             continue
           }
           const minimumModifiedAt = now - rule.minimumAgeDays * DAY_MS
-          if (stat.mtimeMs > minimumModifiedAt) {
+          if (rule.minimumAgeDays > 0 && stat.mtimeMs > minimumModifiedAt) {
             skipped.recent++
             continue
           }
@@ -805,7 +805,7 @@ async function validateCandidate(candidate, options = {}) {
     ) {
       return { ok: false, reason: '文件在扫描后发生变化，请重新扫描' }
     }
-    if (stat.mtimeMs > now - Number(candidate.minimumAgeDays || 0) * DAY_MS) {
+    if (Number(candidate.minimumAgeDays || 0) > 0 && stat.mtimeMs > now - Number(candidate.minimumAgeDays) * DAY_MS) {
       return { ok: false, reason: '文件不再满足最短保留时间，已阻止处理' }
     }
     return { ok: true, canonicalPath, stat }
