@@ -33,7 +33,7 @@
       </div>
       <button class="primary-button compact" :disabled="loading" @click="loadDirectory(pathInput)">
         <AppIcon name="scan" />
-        {{ loading ? '正在打开' : '打开路径' }}
+        {{ loading ? '正在前往' : '前往' }}
       </button>
       <button class="icon-button labelled" @click="showAiSettings = true">
         <AppIcon name="settings" />AI 设置
@@ -217,9 +217,13 @@
               </span>
               <span v-if="mode === 'browse'" class="row-size">
                 {{
-                  row.item.isDirectory && row.item.size === null
-                    ? (estimatingPaths.has(row.item.path) ? '估算中…' : '待估算')
-                    : `${row.item.isDirectory && row.item.sizeEstimated ? '≥ ' : ''}${formatBytes(row.item.size)}`
+                  row.item.metadataPending
+                    ? '读取中…'
+                    : row.item.isDirectory && row.item.size === null
+                      ? (estimatingPaths.has(row.item.path) ? '估算中…' : '待估算')
+                      : row.item.size === null
+                        ? '大小未知'
+                        : `${row.item.isDirectory && row.item.sizeEstimated ? '≥ ' : ''}${formatBytes(row.item.size)}`
                 }}
                 <small v-if="row.item.isDirectory && row.item.sizeEstimated && row.item.size !== null">抽样估算</small>
               </span>
@@ -237,8 +241,15 @@
         </div>
       </section>
 
-      <aside class="explain-panel">
-        <div v-if="explanation" class="explanation-content">
+      <aside ref="explainPanel" class="explain-panel">
+        <div
+          v-if="explanation"
+          class="explanation-content"
+          :class="{
+            'ai-result': explanation.aiAnalyzed,
+            'ai-result-deep': explanation.aiAnalyzed && explanation.aiMode === 'deep'
+          }"
+        >
           <div class="object-heading">
             <div class="object-icon"><AppIcon :name="selected?.isDirectory ? 'folder' : 'file'" /></div>
             <div>
@@ -254,6 +265,14 @@
             <span>{{ explanation.aiAnalyzed ? (explanation.aiMode === 'deep' ? 'AI 深入分析' : 'AI 普通分析') : '本地证据分析' }}</span>
           </div>
 
+          <div v-if="explanation.aiAnalyzed" class="ai-result-banner" role="status">
+            <div>
+              <b>AI {{ explanation.aiMode === 'deep' ? '深入' : '普通' }}分析完成</b>
+              <small>已根据本地证据更新结论与处理建议</small>
+            </div>
+            <strong>{{ explanation.aiPersisted ? '已本地保存' : '已更新' }}</strong>
+          </div>
+
           <div class="meaning-list">
             <section v-for="detail in objectDetails" :key="detail.label">
               <span>{{ detail.label }}</span>
@@ -262,13 +281,29 @@
           </div>
 
           <div class="ai-actions">
-            <button class="ai-review normal" :disabled="aiBusy" @click="requestAi('normal')">
+            <button
+              class="ai-review normal"
+              :class="{ completed: explanation.aiAnalyzed && explanation.aiMode === 'normal' }"
+              :disabled="aiBusy"
+              @click="requestAi('normal')"
+            >
               <AppIcon name="spark" />
-              <span><b>{{ aiBusyMode === 'normal' ? '分析中…' : '普通分析' }}</b><small>低思考 · 更快</small></span>
+              <span>
+                <b>{{ aiBusyMode === 'normal' ? '分析中…' : explanation.aiAnalyzed && explanation.aiMode === 'normal' ? '普通分析已完成' : '普通分析' }}</b>
+                <small>{{ explanation.aiAnalyzed && explanation.aiMode === 'normal' ? '点击可重新分析' : '低思考 · 更快' }}</small>
+              </span>
             </button>
-            <button class="ai-review deep" :disabled="aiBusy" @click="requestAi('deep')">
+            <button
+              class="ai-review deep"
+              :class="{ completed: explanation.aiAnalyzed && explanation.aiMode === 'deep' }"
+              :disabled="aiBusy"
+              @click="requestAi('deep')"
+            >
               <AppIcon name="spark" />
-              <span><b>{{ aiBusyMode === 'deep' ? '分析中…' : '深入分析' }}</b><small>最大思考 · 更完整</small></span>
+              <span>
+                <b>{{ aiBusyMode === 'deep' ? '分析中…' : explanation.aiAnalyzed && explanation.aiMode === 'deep' ? '深入分析已完成' : '深入分析' }}</b>
+                <small>{{ explanation.aiAnalyzed && explanation.aiMode === 'deep' ? '点击可重新分析' : '最大思考 · 更完整' }}</small>
+              </span>
             </button>
           </div>
 
@@ -309,6 +344,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { desktopApi } from '../platform/api'
 import { createAiEvidence } from '../application/ai-evidence'
 import { appAiAnalysisSession, applyAiRecord } from '../application/ai-session'
+import type { AiSessionRecord } from '../application/ai-session'
 import type {
   AnalysisMode,
   DirectoryItem,
@@ -319,7 +355,8 @@ import type {
   FileSearchModified,
   FileSearchResult,
   FileSearchSort,
-  NativeFilePresentation
+  NativeFilePresentation,
+  StoredAiAnalysis
 } from '../domain/desktop'
 import { riskClass, riskLabel } from '../domain/risk'
 import { formatBytes, percent } from '../shared/format'
@@ -350,6 +387,7 @@ const aiBusyMode = ref<AnalysisMode | null>(null)
 const aiError = ref('')
 const showAiSettings = ref(false)
 const fileScroller = ref<HTMLElement | null>(null)
+const explainPanel = ref<HTMLElement | null>(null)
 const searchInputElement = ref<HTMLInputElement | null>(null)
 const nativePresentations = ref<Record<string, NativeFilePresentation>>({})
 const scrollTop = ref(0)
@@ -371,10 +409,14 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 let lastObservedChangedAt = ''
 let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let nativeIconTimer: ReturnType<typeof setTimeout> | null = null
+let visibleMetadataTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 let unsubscribeIndex: (() => void) | null = null
 const pendingNativeIcons = new Set<string>()
+const hydratingPaths = new Set<string>()
 const maximumNativePresentations = 600
+const localExplanationCache = new Map<string, FileExplanation>()
+const maximumLocalExplanations = 240
 
 const kindFilters: Array<{ value: FileSearchKind; label: string }> = [
   { value: 'all', label: '全部' },
@@ -417,12 +459,18 @@ const objectDetails = computed(() => {
   if (!explanation.value) return []
   const item = explanation.value
   const ai = item.aiDetails
+  const conclusion = [
+    ai?.what || item.what || item.description || item.reason || '当前证据还不足以明确识别这个对象。',
+    ai?.purpose || item.purpose
+  ].filter(Boolean).join(' ')
+  const relationship = [
+    ai?.belongsTo || item.belongsTo || item.source,
+    ai?.whyHere || item.whyHere
+  ].filter(Boolean).join('。') || `当前只能确认它位于 ${item.parent || '磁盘根目录'}，所属来源仍需进一步确认。`
   return [
-    { label: '它是什么', value: ai?.what || item.what || item.description || item.reason || '当前证据还不足以明确识别这个对象。' },
-    { label: '有什么用', value: ai?.purpose || item.purpose || '需要结合目录结构和应用来源继续确认具体用途。' },
-    { label: '属于什么', value: ai?.belongsTo || item.belongsTo || item.source || '尚未确认所属应用或系统组件。' },
-    { label: '为什么在这里', value: ai?.whyHere || item.whyHere || `它位于 ${item.parent || '磁盘根目录'}，当前由路径和周边结构形成初步判断。` },
-    { label: '如何处理', value: ai?.handling || item.handling || item.action || '建议先保留，确认用途后再决定是否处理。' }
+    { label: '识别结论', value: conclusion },
+    { label: '与系统的关系', value: relationship },
+    { label: '处理建议', value: ai?.handling || item.handling || item.action || '当前不建议直接处理；确认来源和影响后再决定。' }
   ]
 })
 
@@ -489,7 +537,7 @@ async function loadDirectory(dir?: string, addHistory = true) {
     loading.value = false
     await nextTick()
     attachScrollerObserver()
-    void estimateVisibleDirectories(currentRequest)
+    await refreshVisibleBrowseRows(currentRequest)
   } catch (error) {
     if (currentRequest !== navigationRequestId) return
     inspectError.value = error instanceof Error ? error.message : String(error)
@@ -505,7 +553,7 @@ async function estimateVisibleDirectories(currentRequest: number) {
   if (!api) return
   const queue = visibleRows.value
     .map(row => row.item)
-    .filter(item => item.isDirectory && item.size === null && !estimatingPaths.value.has(item.path))
+    .filter(item => item.isDirectory && !item.metadataPending && item.size === null && !estimatingPaths.value.has(item.path))
     .slice(0, 16)
   if (!queue.length) return
   const nextEstimating = new Set(estimatingPaths.value)
@@ -540,6 +588,60 @@ async function estimateVisibleDirectories(currentRequest: number) {
     }
   }
   await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker))
+}
+
+async function hydrateVisibleItems(currentRequest: number) {
+  if (mode.value !== 'browse') return
+  const api = desktopApi()
+  if (!api?.inspectHydrate) return
+  const queue = visibleRows.value
+    .map(row => row.item)
+    .filter(item => item.metadataPending && !hydratingPaths.has(item.path.toLowerCase()))
+    .slice(0, 64)
+  if (!queue.length) return
+  queue.forEach(item => hydratingPaths.add(item.path.toLowerCase()))
+  try {
+    const hydrated = await api.inspectHydrate(queue.map(item => item.path))
+    if (currentRequest !== navigationRequestId || mode.value !== 'browse') return
+    const byPath = new Map(hydrated.map(item => [item.path.toLowerCase(), item]))
+    const nextItems = [...inspectItems.value]
+    for (const requested of queue) {
+      const index = nextItems.findIndex(item => item.path.toLowerCase() === requested.path.toLowerCase())
+      if (index < 0) continue
+      const existing = nextItems[index]
+      const metadata = byPath.get(requested.path.toLowerCase())
+      if (!metadata) {
+        nextItems[index] = { ...existing, metadataPending: false }
+        continue
+      }
+      const updated = { ...existing, ...metadata }
+      if (existing.isDirectory && existing.size !== null) {
+        updated.size = existing.size
+        updated.fileCount = existing.fileCount
+        updated.sizeEstimated = existing.sizeEstimated
+      }
+      nextItems[index] = updated
+      if (selected.value?.path.toLowerCase() === updated.path.toLowerCase()) selected.value = updated
+    }
+    inspectItems.value = nextItems
+  } catch {
+    // Metadata is an optional enhancement; names and paths remain usable.
+  } finally {
+    queue.forEach(item => hydratingPaths.delete(item.path.toLowerCase()))
+  }
+}
+
+async function refreshVisibleBrowseRows(currentRequest: number) {
+  await hydrateVisibleItems(currentRequest)
+  if (currentRequest === navigationRequestId) await estimateVisibleDirectories(currentRequest)
+}
+
+function scheduleVisibleBrowseRefresh() {
+  if (visibleMetadataTimer) clearTimeout(visibleMetadataTimer)
+  visibleMetadataTimer = setTimeout(() => {
+    visibleMetadataTimer = null
+    void refreshVisibleBrowseRows(navigationRequestId)
+  }, 35)
 }
 
 function setMode(next: ExplorerMode) {
@@ -700,29 +802,87 @@ function fingerprint(item: DirectoryItem, result: FileExplanation) {
   return `${result.modifiedAt || item.modifiedAt || 0}:${item.size ?? result.size ?? 0}`
 }
 
+function localExplanationKey(item: DirectoryItem) {
+  return `${item.path.toLocaleLowerCase()}|${item.modifiedAt || 0}|${item.size ?? ''}|${item.fileCount ?? ''}`
+}
+
+function rememberLocalExplanation(key: string, result: FileExplanation) {
+  localExplanationCache.delete(key)
+  localExplanationCache.set(key, result)
+  while (localExplanationCache.size > maximumLocalExplanations) {
+    localExplanationCache.delete(localExplanationCache.keys().next().value as string)
+  }
+}
+
+function presentExplanation(item: DirectoryItem, result: FileExplanation) {
+  const base: FileExplanation = {
+    ...result,
+    size: item.size ?? result.size,
+    fileCount: item.fileCount ?? result.fileCount,
+    isDirectory: item.isDirectory,
+    kind: result.source || '本地功能分析',
+    title: mode.value === 'search' ? displayItemName(item) : item.name,
+    description: result.reason || '暂时没有足够证据解释其用途。',
+    action: ['safe', 'low'].includes(result.risk)
+      ? '确认内容后可以处理。'
+      : '建议保留，并在获得更多证据后再决定。'
+  }
+  const cached = aiSession.get(item.path, fingerprint(item, result))
+  return cached ? applyAiRecord(base, cached) : base
+}
+
+function storedSessionRecord(record: StoredAiAnalysis): AiSessionRecord {
+  return {
+    parsed: record.parsed as AiSessionRecord['parsed'],
+    raw: record.raw,
+    model: record.model,
+    analysisMode: record.analysisMode,
+    thinkingLevel: record.thinkingLevel,
+    tokenBudget: record.tokenBudget,
+    usage: record.usage,
+    analyzedAt: record.analyzedAt,
+    fingerprint: record.fingerprint
+  }
+}
+
+async function showExplanation(item: DirectoryItem, result: FileExplanation, currentRequest: number) {
+  const api = desktopApi()
+  if (!api || currentRequest !== selectionRequestId) return
+  const presented = presentExplanation(item, result)
+  explanation.value = presented
+  if (presented.aiAnalyzed) return
+  try {
+    const currentFingerprint = fingerprint(item, result)
+    const stored = await api.aiAnalysisGet({ path: item.path, fingerprint: currentFingerprint })
+    if (currentRequest !== selectionRequestId || selected.value?.path !== item.path) return
+    if (stored.status === 'current' && stored.record) {
+      const record = aiSession.remember(item.path, storedSessionRecord(stored.record))
+      explanation.value = { ...applyAiRecord(presented, record), aiPersisted: true }
+    }
+  } catch {
+    // Persistent analysis is an optimization; local inspection must remain available.
+  }
+}
+
 async function selectItem(item: DirectoryItem) {
   const api = desktopApi()
   if (!api) return
   const currentRequest = ++selectionRequestId
   selected.value = item
   aiError.value = ''
+  const cacheKey = localExplanationKey(item)
+  const cachedLocal = localExplanationCache.get(cacheKey)
+  if (cachedLocal) {
+    localExplanationCache.delete(cacheKey)
+    localExplanationCache.set(cacheKey, cachedLocal)
+    await showExplanation(item, cachedLocal, currentRequest)
+    return
+  }
   try {
     const result = await api.inspectExplain(item.path)
     if (currentRequest !== selectionRequestId) return
-    const base: FileExplanation = {
-      ...result,
-      size: item.size ?? result.size,
-      fileCount: item.fileCount ?? result.fileCount,
-      isDirectory: item.isDirectory,
-      kind: result.source || '本地功能分析',
-      title: mode.value === 'search' ? displayItemName(item) : item.name,
-      description: result.reason || '暂时没有足够证据解释其用途。',
-      action: ['safe', 'low'].includes(result.risk)
-        ? '确认内容后可以处理。'
-        : '建议保留，并在获得更多证据后再决定。'
-    }
-    const cached = aiSession.get(item.path, fingerprint(item, result))
-    explanation.value = cached ? applyAiRecord(base, cached) : base
+    rememberLocalExplanation(cacheKey, result)
+    await showExplanation(item, result, currentRequest)
   } catch (error) {
     if (currentRequest === selectionRequestId) {
       const target = mode.value === 'search' ? searchError : inspectError
@@ -771,7 +931,19 @@ async function requestAi(mode: AnalysisMode) {
       return
     }
     const record = aiSession.save(targetPath, currentFingerprint, result)
-    if (selected.value?.path === targetPath) explanation.value = applyAiRecord(explanation.value, record)
+    if (selected.value?.path === targetPath) {
+      explanation.value = applyAiRecord(explanation.value, record)
+      await nextTick()
+      explainPanel.value?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    try {
+      await api.aiAnalysisSave({ ...result, path: targetPath, fingerprint: currentFingerprint })
+      if (selected.value?.path === targetPath && explanation.value?.aiAnalyzed) {
+        explanation.value = { ...explanation.value, aiPersisted: true }
+      }
+    } catch (error) {
+      aiError.value = `分析已经完成，但本地保存失败：${error instanceof Error ? error.message : String(error)}`
+    }
   } catch (error) {
     aiError.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -799,7 +971,7 @@ function onListScroll(event: Event) {
   const element = event.currentTarget as HTMLElement
   scrollTop.value = element.scrollTop
   viewportHeight.value = element.clientHeight
-  if (mode.value === 'browse') void estimateVisibleDirectories(navigationRequestId)
+  if (mode.value === 'browse') scheduleVisibleBrowseRefresh()
   else scheduleNativeIconLoad()
 }
 
@@ -985,6 +1157,7 @@ onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
   if (backgroundRefreshTimer) clearTimeout(backgroundRefreshTimer)
   if (nativeIconTimer) clearTimeout(nativeIconTimer)
+  if (visibleMetadataTimer) clearTimeout(visibleMetadataTimer)
   unsubscribeIndex?.()
   resizeObserver?.disconnect()
 })

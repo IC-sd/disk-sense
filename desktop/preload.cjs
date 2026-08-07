@@ -9,6 +9,7 @@ function subscribe(channel, callback) {
 const bridge = {
   overviewGet: () => ipcRenderer.invoke('overview:get'),
   appInfo: () => ipcRenderer.invoke('app:info'),
+  appDataUsage: () => ipcRenderer.invoke('app:data-usage'),
   appAppearanceGet: () => ipcRenderer.invoke('app:appearance:get'),
   appAppearanceSet: input => ipcRenderer.invoke('app:appearance:set', input),
   appDeviceInfo: () => ipcRenderer.invoke('app:device-info'),
@@ -24,6 +25,7 @@ const bridge = {
   onChangesProgress: callback => subscribe('changes:progress', callback),
 
   inspectList: dir => ipcRenderer.invoke('inspect:list', dir),
+  inspectHydrate: paths => ipcRenderer.invoke('inspect:hydrate', paths),
   inspectEstimate: dir => ipcRenderer.invoke('inspect:estimate', dir),
   inspectExplain: file => ipcRenderer.invoke('inspect:explain', file),
   inspectIndexStatus: () => ipcRenderer.invoke('inspect:index-status'),
@@ -40,6 +42,8 @@ const bridge = {
   aiModels: draft => ipcRenderer.invoke('analysis:ai-models', draft),
   aiTest: draft => ipcRenderer.invoke('analysis:ai-test', draft),
   aiReview: request => ipcRenderer.invoke('analysis:ai-review', request),
+  aiAnalysisGet: request => ipcRenderer.invoke('analysis:ai-record:get', request),
+  aiAnalysisSave: request => ipcRenderer.invoke('analysis:ai-record:save', request),
 
   cleanerRules: () => ipcRenderer.invoke('cleaner:rules'),
   cleanerScan: id => ipcRenderer.invoke('cleaner:scan', id),

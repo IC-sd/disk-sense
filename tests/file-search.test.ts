@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
-import { createFileSearchService, fileKind, hasWildcard, searchRanking, searchRelevanceScore, wildcardToLike } from '../desktop/file-search.cjs'
+import { createFileSearchService, fileKind, hasWildcard, searchRanking, searchRelevanceScore, wildcardKind, wildcardSearchesPath, wildcardToLike } from '../desktop/file-search.cjs'
 
 const temporaryDirectories: string[] = []
 const services: Array<{ close: () => Promise<void> }> = []
@@ -130,6 +130,10 @@ describe('persistent file search index', () => {
     expect(hasWildcard('word*')).toBe(true)
     expect(hasWildcard('word')).toBe(false)
     expect(wildcardToLike('word?.doc*')).toBe('word_.doc%')
+    expect(wildcardSearchesPath('*.docx')).toBe(false)
+    expect(wildcardSearchesPath('D:\\Documents\\*.docx')).toBe(true)
+    expect(wildcardKind('*.docx')).toBe('document')
+    expect(wildcardKind('word*')).toBeNull()
   })
 
   it('prioritizes launchable exact-name matches over deep cache folders', async () => {

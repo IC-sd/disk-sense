@@ -253,6 +253,7 @@ import type {
   AppTheme,
   DataMigrationResult,
   DeviceInfo,
+  DirectoryUsage,
   FileSearchIndexStatus
 } from '../domain/desktop'
 import AppIcon from './AppIcon.vue'
@@ -270,6 +271,7 @@ const deviceLoading = ref(false)
 const migration = ref<DataMigrationResult | null>(null)
 const searchIndex = ref<FileSearchIndexStatus | null>(null)
 const rebuildingSearch = ref(false)
+const dataUsageLoading = ref(false)
 let stopIndexProgress: (() => void) | null = null
 
 const dataDrive = computed(() => driveOf(info.value?.userDataPath))
@@ -349,6 +351,20 @@ async function loadSearchIndexStatus() {
     searchIndex.value = await api.inspectIndexStatus()
   } catch (cause) {
     error.value = messageOf(cause)
+  }
+}
+
+async function loadDataUsage() {
+  const api = desktopApi()
+  if (!api || !info.value || dataUsageLoading.value) return
+  dataUsageLoading.value = true
+  try {
+    const usage: DirectoryUsage = await api.appDataUsage()
+    if (info.value) info.value = { ...info.value, dataUsage: usage }
+  } catch (cause) {
+    error.value = messageOf(cause)
+  } finally {
+    dataUsageLoading.value = false
   }
 }
 
@@ -447,13 +463,16 @@ async function openAbout() {
 }
 
 onMounted(() => {
+  stopIndexProgress = desktopApi()?.onInspectIndexProgress((status) => {
+    searchIndex.value = status
+  }) || null
   void (async () => {
     await load()
-    await loadSearchIndexStatus()
-    stopIndexProgress = desktopApi()?.onInspectIndexProgress((status) => {
-      searchIndex.value = status
-    }) || null
-    await openAbout()
+    await Promise.allSettled([
+      loadDataUsage(),
+      loadSearchIndexStatus(),
+      openAbout()
+    ])
   })()
 })
 

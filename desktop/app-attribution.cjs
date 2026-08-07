@@ -1,5 +1,6 @@
 const path = require('node:path')
 const fs = require('node:fs')
+const fsp = fs.promises
 const os = require('node:os')
 
 const signatures = [
@@ -51,18 +52,29 @@ function storageRelationship(filePath) {
   return { volume: root, owner, systemDisk: root.toLowerCase() === 'c:\\' }
 }
 
-function availableVolumes() {
+let availableVolumesCache = { expiresAt: 0, value: [], pending: null }
+
+async function availableVolumesAsync() {
   if (process.platform !== 'win32') return [path.parse(os.homedir()).root]
-  const result = []
-  for (let code = 65; code <= 90; code++) {
-    const root = `${String.fromCharCode(code)}:\\`
+  if (availableVolumesCache.expiresAt > Date.now()) return availableVolumesCache.value
+  if (availableVolumesCache.pending) return availableVolumesCache.pending
+  availableVolumesCache.pending = Promise.all(Array.from({ length: 26 }, async (_value, index) => {
+    const root = `${String.fromCharCode(65 + index)}:\\`
     try {
-      if (fs.existsSync(root)) result.push(root)
+      await fsp.access(root, fs.constants.R_OK)
+      return root
     } catch {
-      // Disconnected and protected volumes are omitted.
+      return null
     }
-  }
-  return result
+  })).then(values => {
+    const result = values.filter(Boolean)
+    availableVolumesCache = { expiresAt: Date.now() + 30_000, value: result, pending: null }
+    return result
+  }, error => {
+    availableVolumesCache.pending = null
+    throw error
+  })
+  return availableVolumesCache.pending
 }
 
 function locationTemplates(ownerId, context) {
@@ -153,7 +165,7 @@ function installFolderNames(ownerId) {
   }[ownerId] || []
 }
 
-function findRelatedLocations(filePath) {
+async function findRelatedLocationsAsync(filePath, knownVolumes = []) {
   const owner = attribute(filePath)
   if (!owner) return []
   const home = os.homedir()
@@ -162,36 +174,41 @@ function findRelatedLocations(filePath) {
     local: process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
     roaming: process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
   }
-  const candidates = []
   const current = path.resolve(filePath).toLowerCase()
-  const add = (value, reason) => {
-    try {
-      if (!value || !fs.existsSync(value) || path.resolve(value).toLowerCase() === current) return
-      candidates.push({ path: value, reason, volume: path.parse(value).root })
-    } catch {
-      // A related protected location is simply not exposed.
-    }
-  }
-
-  for (const [location, reason] of locationTemplates(owner.id, context)) add(location, reason)
-  for (const volume of availableVolumes()) {
+  const volumes = Array.isArray(knownVolumes) && knownVolumes.length
+    ? knownVolumes
+    : await availableVolumesAsync()
+  const definitions = [
+    ...locationTemplates(owner.id, context).map(([location, reason]) => ({ path: location, reason }))
+  ]
+  for (const volume of volumes) {
     for (const segments of installFolderNames(owner.id)) {
-      add(path.join(volume, 'Program Files', ...segments), `${owner.name} 安装位置`)
-      add(path.join(volume, 'Program Files (x86)', ...segments), `${owner.name} 安装位置`)
+      definitions.push({ path: path.join(volume, 'Program Files', ...segments), reason: `${owner.name} 安装位置` })
+      definitions.push({ path: path.join(volume, 'Program Files (x86)', ...segments), reason: `${owner.name} 安装位置` })
     }
   }
 
+  const unique = []
   const seen = new Set()
-  return candidates.filter(item => {
-    const itemKey = item.path.toLowerCase()
-    if (seen.has(itemKey)) return false
+  for (const item of definitions) {
+    const itemKey = path.resolve(item.path).toLowerCase()
+    if (itemKey === current || seen.has(itemKey)) continue
     seen.add(itemKey)
-    return true
-  }).slice(0, 16)
+    unique.push(item)
+  }
+  const existing = await Promise.all(unique.map(async item => {
+    try {
+      await fsp.access(item.path, fs.constants.R_OK)
+      return { ...item, volume: path.parse(item.path).root }
+    } catch {
+      return null
+    }
+  }))
+  return existing.filter(Boolean).slice(0, 16)
 }
 
 module.exports = {
   attribute,
   storageRelationship,
-  findRelatedLocations
+  findRelatedLocationsAsync
 }

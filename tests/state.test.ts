@@ -57,6 +57,7 @@ describe('local state durability', () => {
     expect(migrated.version).toBe(6)
     expect(migrated.cleanupJobs).toEqual([{ id: 'legacy' }])
     expect(migrated.maintenanceJobs).toEqual([])
+    expect(migrated.aiAnalyses).toEqual([])
     expect(migrated.cleanupExclusions).toEqual([])
     expect(migrated.appearance).toEqual({ theme: 'dark' })
   })

@@ -67,7 +67,8 @@ const child = spawn(executable, smokeArguments, {
   env: {
     ...process.env,
     DISK_SENSE_USER_DATA: isolatedUserData,
-    DISK_SENSE_SMOKE_SEARCH_ROOT: smokeSearchRoot
+    DISK_SENSE_SMOKE_SEARCH_ROOT: smokeSearchRoot,
+    DISK_SENSE_SMOKE_HEADLESS: '1'
   }
 })
 
@@ -125,7 +126,7 @@ async function evaluate(webSocketUrl) {
             api = window.diskSense
           }
           if (!api) throw new Error('preload-bridge-not-ready')
-          const [rules, root, slimming, slimmingStatus, maintenanceHistory, ai, changes, overview, appInfo, history, exclusions, appearance, deviceInfo, searchIndex] = await Promise.all([
+          const [rules, root, slimming, slimmingStatus, maintenanceHistory, ai, changes, overview, appInfo, dataUsage, history, exclusions, appearance, deviceInfo, searchIndex] = await Promise.all([
             api.cleanerRules(),
             api.inspectList('C:\\\\'),
             api.cleanerSlimming(),
@@ -135,6 +136,7 @@ async function evaluate(webSocketUrl) {
             api.changesState(),
             api.overviewGet(),
             api.appInfo(),
+            api.appDataUsage(),
             api.cleanerHistory(),
             api.cleanerExclusions(),
             api.appAppearanceGet(),
@@ -187,11 +189,19 @@ async function evaluate(webSocketUrl) {
           cleanerButton?.click()
           await new Promise(resolve => setTimeout(resolve, 80))
           let historyRendered = true
+          let historyWidthAligned = true
+          const cleanerSafetyElement = document.querySelector('.cleaner-safety-state')
+          const cleanerSafetyBackground = cleanerSafetyElement
+            ? getComputedStyle(cleanerSafetyElement).backgroundColor
+            : null
           if (${JSON.stringify(captureView)} !== 'cleaner') {
             const historyButton = [...document.querySelectorAll('.cleanup-tabs button')].find(button => button.textContent.includes('操作记录'))
             historyButton?.click()
             await new Promise(resolve => setTimeout(resolve, 80))
             historyRendered = document.body.innerText.includes('每一次清理和系统维护都有结果可查')
+            const historyPanel = document.querySelector('.history-panel')?.getBoundingClientRect()
+            const tabBar = document.querySelector('.cleaner-view-tabs')?.getBoundingClientRect()
+            historyWidthAligned = Boolean(historyPanel && tabBar && Math.abs(historyPanel.width - tabBar.width) <= 1)
           }
           const overviewButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('空间概览'))
           overviewButton?.click()
@@ -251,7 +261,7 @@ async function evaluate(webSocketUrl) {
               const explanationText = document.querySelector('.explanation-content')?.textContent || ''
               inspectSearchKeyboardSelection = Boolean(
                 selectedRow?.textContent.includes(${JSON.stringify(smokeSearchExpected)}) &&
-                explanationTitle?.textContent.trim() === ${JSON.stringify(smokeSearchExpected)} &&
+                explanationTitle?.textContent.trim().toLocaleLowerCase().includes(${JSON.stringify(smokeSearchExpected.toLocaleLowerCase())}) &&
                 explanationText.length > 20
               )
               if (inspectSearchKeyboardSelection) break
@@ -449,6 +459,7 @@ async function evaluate(webSocketUrl) {
             appVersion: appInfo.version,
             stateVersion: appInfo.stateVersion,
             dataPath: appInfo.userDataPath,
+            dataUsageFiles: dataUsage.files,
             installPath: appInfo.installPath,
             appearanceTheme: appearance.theme,
             renderedTheme: document.documentElement.dataset.theme,
@@ -479,6 +490,8 @@ async function evaluate(webSocketUrl) {
             searchMaintenanceRendered,
             settingsDetailRendered,
             historyRendered,
+            historyWidthAligned,
+            cleanerSafetyBackground,
             overviewRendered,
             overviewChangesRendered,
             cleanerScanRendered,
@@ -589,6 +602,7 @@ try {
     result?.volumeCount < 1 ||
     result?.stateVersion !== 6 ||
     !result?.dataPath ||
+    result?.dataUsageFiles < 1 ||
     !result?.installPath ||
     !['dark', 'light'].includes(result?.appearanceTheme) ||
     !['dark', 'light'].includes(result?.renderedTheme) ||
@@ -623,6 +637,11 @@ try {
     !result?.searchMaintenanceRendered ||
     !result?.settingsDetailRendered ||
     !result?.historyRendered ||
+    !result?.historyWidthAligned ||
+    (
+      process.env.DISK_SENSE_SMOKE_THEME === 'light' &&
+      !/^rgba?\(255, 255, 255(?:, 1)?\)$/u.test(String(result?.cleanerSafetyBackground || ''))
+    ) ||
     !result?.overviewRendered ||
     !result?.overviewChangesRendered ||
     (process.env.DISK_SENSE_SMOKE_CLEANER_TAB === 'slimming' && !result?.slimmingRendered) ||

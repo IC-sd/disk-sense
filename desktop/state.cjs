@@ -12,6 +12,7 @@ function defaults() {
     changeBaseline: null,
     lastChangeScan: null,
     aiSettings: null,
+    aiAnalyses: [],
     cleanupExclusions: [],
     appearance: {
       theme: 'dark'
@@ -62,6 +63,7 @@ function store(file) {
   if (!Array.isArray(data.cleanupJobs)) data.cleanupJobs = []
   if (!Array.isArray(data.maintenanceJobs)) data.maintenanceJobs = []
   if (!Array.isArray(data.changeScans)) data.changeScans = []
+  if (!Array.isArray(data.aiAnalyses)) data.aiAnalyses = []
   if (!Array.isArray(data.cleanupExclusions)) data.cleanupExclusions = []
   if (!data.appearance || typeof data.appearance !== 'object') data.appearance = { theme: 'dark' }
   data.appearance.theme = data.appearance.theme === 'light' ? 'light' : 'dark'

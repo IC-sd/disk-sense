@@ -119,10 +119,11 @@ async function directoryUsage(root, maximumEntries = 30_000) {
   let inaccessible = 0
   let truncated = false
   const queue = [path.resolve(root)]
+  let queueIndex = 0
   let visited = 0
 
-  while (queue.length && visited < maximumEntries) {
-    const current = queue.shift()
+  while (queueIndex < queue.length && visited < maximumEntries) {
+    const current = queue[queueIndex++]
     let entries
     try {
       entries = await fs.promises.readdir(current, { withFileTypes: true })
@@ -131,27 +132,32 @@ async function directoryUsage(root, maximumEntries = 30_000) {
       continue
     }
     directories++
-    for (const entry of entries) {
-      if (++visited > maximumEntries) {
-        truncated = true
-        break
+    for (let offset = 0; offset < entries.length && visited < maximumEntries; offset += 48) {
+      const remaining = maximumEntries - visited
+      const chunk = entries.slice(offset, offset + Math.min(48, remaining))
+      visited += chunk.length
+      const regularFiles = []
+      for (const entry of chunk) {
+        const target = path.join(current, entry.name)
+        if (entry.isSymbolicLink()) continue
+        if (entry.isDirectory()) queue.push(target)
+        else if (entry.isFile()) regularFiles.push(target)
       }
-      const target = path.join(current, entry.name)
-      if (entry.isSymbolicLink()) continue
-      if (entry.isDirectory()) {
-        queue.push(target)
-        continue
-      }
-      if (!entry.isFile()) continue
-      files++
-      try {
-        bytes += Number((await fs.promises.stat(target)).size || 0)
-      } catch {
-        inaccessible++
-      }
+      files += regularFiles.length
+      const sizes = await Promise.all(regularFiles.map(async target => {
+        try {
+          return Number((await fs.promises.stat(target)).size || 0)
+        } catch {
+          inaccessible++
+          return 0
+        }
+      }))
+      bytes += sizes.reduce((sum, size) => sum + size, 0)
+      await new Promise(resolve => setImmediate(resolve))
     }
+    if (visited >= maximumEntries && entries.length) truncated = true
   }
-  if (queue.length) truncated = true
+  if (queueIndex < queue.length) truncated = true
   return { bytes, files, directories, inaccessible, truncated }
 }
 

@@ -102,6 +102,7 @@ export interface DirectoryItem {
   size: number | null
   fileCount: number | null
   sizeEstimated: boolean
+  metadataPending?: boolean
   modifiedAt: number
   extension: string
   classification: string
@@ -115,7 +116,12 @@ export interface DirectoryListResult {
   path: string
   items: DirectoryItem[]
   truncated: boolean
-  context: { siblingCount: number; analyzed: string }
+  context: {
+    siblingCount: number
+    analyzed: string
+    metadataComplete?: number
+    metadataPending?: number
+  }
 }
 
 export type FileSearchScope = 'directory' | 'drive' | 'all'
@@ -264,6 +270,7 @@ export interface FileExplanation {
   aiDetails?: AiDetails
   aiReasons?: string[]
   aiAnalyzed?: boolean
+  aiPersisted?: boolean
   aiMode?: AnalysisMode
   aiAnalyzedAt?: number
   aiThinkingLevel?: string
@@ -303,6 +310,25 @@ export interface AiReviewResult {
   thinkingLevel?: string
   tokenBudget?: number
   usage?: Record<string, number> | null
+}
+
+export interface StoredAiAnalysis {
+  path: string
+  fingerprint: string
+  parsed?: Record<string, unknown> | null
+  raw: string
+  model?: string
+  analysisMode: AnalysisMode
+  thinkingLevel?: string
+  tokenBudget?: number
+  usage?: Record<string, number> | null
+  analyzedAt: number
+}
+
+export interface AiAnalysisLookup {
+  status: 'missing' | 'current' | 'stale'
+  record?: StoredAiAnalysis
+  analyzedAt?: number
 }
 
 export interface CleanerRule {

@@ -643,7 +643,59 @@
 .meaning-list { display: grid; margin-top: 7px; }
 .meaning-list section { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .meaning-list section > span { color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .03em; }
-.meaning-list p { margin: 7px 0 0; color: var(--text); font-size: 14px; line-height: 1.72; }
+.meaning-list p { margin: 7px 0 0; color: var(--text); font-size: 14px; font-weight: 500; line-height: 1.72; }
+
+.ai-result-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  margin: 2px 0 10px;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--blue) 42%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--blue) 10%, var(--surface));
+  animation: ai-result-arrive .24s ease-out;
+}
+
+.ai-result-banner b,
+.ai-result-banner small { display: block; }
+.ai-result-banner b { font-size: 13px; }
+.ai-result-banner small { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.ai-result-banner strong {
+  padding: 4px 7px;
+  color: var(--blue);
+  font-size: 10px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.ai-result-deep .ai-result-banner {
+  border-color: color-mix(in srgb, #8a64dd 44%, var(--line));
+  background: color-mix(in srgb, #8a64dd 9%, var(--surface));
+}
+
+.ai-result-deep .ai-result-banner strong { color: #9b74e8; }
+
+.ai-result .meaning-list {
+  padding: 0 13px;
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--blue) 4%, var(--surface));
+}
+
+.ai-result-deep .meaning-list {
+  border-color: color-mix(in srgb, #8a64dd 24%, var(--line));
+  background: color-mix(in srgb, #8a64dd 4%, var(--surface));
+}
+
+.ai-result .meaning-list section:last-child { border-bottom: 0; }
+
+@keyframes ai-result-arrive {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .ai-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 17px; }
 .ai-review {
@@ -666,6 +718,9 @@
   background: color-mix(in srgb, #8a64dd 14%, var(--surface));
 }
 .ai-review:disabled { cursor: wait; opacity: .52; }
+.ai-review.completed {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+}
 .ai-review .app-icon { color: #87a6ff; }
 .ai-review.deep .app-icon { color: #bd9dff; }
 .ai-review b,
@@ -873,7 +928,14 @@
 .volume-breakdown .unavailable { opacity: .58; }
 
 /* Cleanup history */
-.history-panel { display: grid; gap: 11px; }
+.history-panel {
+  display: grid;
+  width: 100%;
+  max-width: 1420px;
+  min-width: 0;
+  margin: 0 auto;
+  gap: 11px;
+}
 .history-intro {
   display: flex;
   gap: 18px;
@@ -1229,7 +1291,7 @@
   font-size: 12px;
 }
 #app .meaning-list p {
-  color: #e0e7f0;
+  color: var(--text);
   font-size: 14px;
 }
 #app .history-intro span,
@@ -3486,7 +3548,7 @@
   }
 }
 
-:root[data-theme="light"] .meaning-list p,
+:root[data-theme="light"] #app .meaning-list p,
 :root[data-theme="light"] .object-heading h2,
 :root[data-theme="light"] .cleanup-rule-title b,
 :root[data-theme="light"] .slimming-copy h3,
@@ -4109,6 +4171,26 @@
 
 /* Light theme guardrail.
    Component styles must not reintroduce dark surfaces after the shared theme layer. */
+:root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state {
+  color: #31445b;
+  border-color: #cad7e3;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state > span {
+  color: #16855c;
+  border-color: #b9dfce;
+  background: #eaf7f1;
+}
+
+:root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state b {
+  color: #17202c;
+}
+
+:root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state small {
+  color: #65768a;
+}
+
 :root[data-theme="light"] #app .model-picker .secondary-button,
 :root[data-theme="light"] #app .model-picker .quiet,
 :root[data-theme="light"] #app .modal-actions .quiet {

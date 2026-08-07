@@ -1,5 +1,5 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
-import { explain, listDirectory, pathSignals, inferFromName, summarizeDirectory, estimateDirectory, readDirectoryEntries, readHead, MAX_CONTENT_BYTES } from '../desktop/explainer.cjs'
+import { explain, explainPath, listDirectory, hydrateDirectoryItems, pathSignals, inferFromName, summarizeDirectory, estimateDirectory, readDirectoryEntries, readHeadAsync, MAX_CONTENT_BYTES, INITIAL_LIST_METADATA } from '../desktop/explainer.cjs'
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -75,7 +75,28 @@ describe('explainer engine', () => {
     }
   })
 
-  it('reads only a bounded file prefix for content evidence', () => {
+  it('returns a large directory in stages and hydrates only requested rows', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-staged-list-'))
+    try {
+      for (let index = 0; index < INITIAL_LIST_METADATA + 20; index++) {
+        fs.writeFileSync(path.join(temporary, `file-${String(index).padStart(3, '0')}.txt`), 'fixture')
+      }
+      const result = await listDirectory(temporary)
+      const pending = result.items.filter((item: any) => item.metadataPending)
+      expect(result.items).toHaveLength(INITIAL_LIST_METADATA + 20)
+      expect(pending).toHaveLength(20)
+      expect(result.context.metadataComplete).toBe(INITIAL_LIST_METADATA)
+
+      const hydrated = await hydrateDirectoryItems(pending.slice(0, 5).map((item: any) => item.path))
+      expect(hydrated).toHaveLength(5)
+      expect(hydrated.every((item: any) => item.metadataPending === false)).toBe(true)
+      expect(hydrated.every((item: any) => item.size === 7)).toBe(true)
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true })
+    }
+  })
+
+  it('reads only a bounded file prefix for content evidence', async () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-explainer-'))
     const target = path.join(temporary, 'large.bin')
     try {
@@ -83,9 +104,25 @@ describe('explainer engine', () => {
       fs.writeSync(descriptor, Buffer.from('HEADER'))
       fs.ftruncateSync(descriptor, 32 * 1024 * 1024)
       fs.closeSync(descriptor)
-      const prefix = readHead(target, MAX_CONTENT_BYTES)
+      const prefix = await readHeadAsync(target, MAX_CONTENT_BYTES)
       expect(prefix.byteLength).toBe(MAX_CONTENT_BYTES)
       expect(prefix.subarray(0, 6).toString()).toBe('HEADER')
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true })
+    }
+  })
+
+  it('loads selected-file content asynchronously and keeps the evidence bounded', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-async-evidence-'))
+    const target = path.join(temporary, 'package.json')
+    try {
+      fs.writeFileSync(target, `${JSON.stringify({ name: 'disk-sense-fixture' })}\n${'x'.repeat(MAX_CONTENT_BYTES * 2)}`)
+      const prefix = await readHeadAsync(target, MAX_CONTENT_BYTES)
+      const result = await explainPath(target)
+
+      expect(prefix.byteLength).toBe(MAX_CONTENT_BYTES)
+      expect(result.evidence.content.bytes).toBe(MAX_CONTENT_BYTES)
+      expect(result.contentPreview).toContain('disk-sense-fixture')
     } finally {
       fs.rmSync(temporary, { recursive: true, force: true })
     }

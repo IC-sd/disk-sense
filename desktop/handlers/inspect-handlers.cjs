@@ -1,6 +1,7 @@
 const fs = require('node:fs')
+const fsp = fs.promises
 const path = require('node:path')
-const { storageRelationship, findRelatedLocations } = require('../app-attribution.cjs')
+const { storageRelationship, findRelatedLocationsAsync } = require('../app-attribution.cjs')
 const {
   status,
   review,
@@ -27,13 +28,24 @@ const OFFICE_BRAND_ICON_NAMES = new Map([
 
 const officeBrandIconCache = new Map()
 
+async function mapConcurrent(values, concurrency, mapper) {
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++
+      await mapper(values[index], index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker))
+}
+
 function fileStem(filePath) {
   const name = path.basename(String(filePath || ''))
   const extension = path.extname(name)
   return extension ? name.slice(0, -extension.length) : name
 }
 
-function findOfficeBrandIcon(applicationPath) {
+async function findOfficeBrandIconAsync(applicationPath) {
   const resolvedApplication = path.resolve(String(applicationPath || ''))
   const executableName = path.basename(resolvedApplication).toLowerCase()
   const iconNames = OFFICE_BRAND_ICON_NAMES.get(executableName)
@@ -45,19 +57,25 @@ function findOfficeBrandIcon(applicationPath) {
   const packagesDirectory = path.join(officeDirectory, 'sdxs')
   let result = ''
   try {
-    const packageDirectories = fs.readdirSync(packagesDirectory, { withFileTypes: true })
+    const packageDirectories = (await fsp.readdir(packagesDirectory, { withFileTypes: true }))
       .filter(entry => entry.isDirectory())
       .slice(0, 256)
     for (const packageDirectory of packageDirectories) {
       const packagePath = path.join(packagesDirectory, packageDirectory.name)
       const fixedAsset = path.join(packagePath, 'assets', 'src', 'assets', 'images', iconNames[0])
-      if (fs.existsSync(fixedAsset)) {
+      try {
+        await fsp.access(fixedAsset, fs.constants.R_OK)
         result = fixedAsset
         break
-      }
+      } catch { /* optional package layout */ }
       const offlineDirectory = path.join(packagePath, 'OfflineFiles')
-      if (!fs.existsSync(offlineDirectory)) continue
-      const matchingIcon = fs.readdirSync(offlineDirectory, { withFileTypes: true })
+      let offlineEntries
+      try {
+        offlineEntries = await fsp.readdir(offlineDirectory, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      const matchingIcon = offlineEntries
         .filter(entry => entry.isFile())
         .slice(0, 128)
         .find(entry => entry.name.toLowerCase().startsWith(iconNames[1]) && entry.name.toLowerCase().endsWith('.png'))
@@ -73,12 +91,12 @@ function findOfficeBrandIcon(applicationPath) {
   return result
 }
 
-function imageFileToDataUrl(filePath) {
+async function imageFileToDataUrlAsync(filePath) {
   if (!filePath || path.extname(filePath).toLowerCase() !== '.png') return ''
   try {
-    const stat = fs.statSync(filePath)
+    const stat = await fsp.stat(filePath)
     if (!stat.isFile() || stat.size <= 0 || stat.size > 1024 * 1024) return ''
-    return `data:image/png;base64,${fs.readFileSync(filePath).toString('base64')}`
+    return `data:image/png;base64,${(await fsp.readFile(filePath)).toString('base64')}`
   } catch {
     return ''
   }
@@ -101,13 +119,22 @@ function resolveFilePresentation(filePath, shell) {
     const applicationName = KNOWN_APPLICATION_NAMES.get(path.basename(target).toLowerCase()) || ''
     return {
       iconTarget: shortcutIcon || target || resolvedPath,
-      brandIconPath: applicationName ? findOfficeBrandIcon(target) : '',
+      brandIconPath: '',
       displayName: applicationName || shortcutFallback.displayName,
       target,
       description: String(shortcut?.description || '')
     }
   } catch {
     return shortcutFallback
+  }
+}
+
+async function resolveFilePresentationAsync(filePath, shell) {
+  const presentation = resolveFilePresentation(filePath, shell)
+  if (!presentation.displayName || !presentation.target) return presentation
+  return {
+    ...presentation,
+    brandIconPath: await findOfficeBrandIconAsync(presentation.target)
   }
 }
 
@@ -191,20 +218,13 @@ function createAiConfigService({ getDb, safeStorage, environment = process.env }
 
 function createExplainerLoader() {
   let loadedModule = null
-  let loadedModifiedAt = 0
   return () => {
-    const modulePath = require.resolve('../explainer.cjs')
-    const modifiedAt = fs.statSync(modulePath).mtimeMs
-    if (!loadedModule || modifiedAt !== loadedModifiedAt) {
-      delete require.cache[modulePath]
-      loadedModule = require(modulePath)
-      loadedModifiedAt = modifiedAt
-    }
+    if (!loadedModule) loadedModule = require('../explainer.cjs')
     return loadedModule
   }
 }
 
-function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell }) {
+function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell }) {
   const loadExplainer = createExplainerLoader()
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
@@ -216,6 +236,9 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
   ipcMain.handle('inspect:list', async (_event, directory) => (
     loadExplainer().listDirectory(directory || 'C:\\')
   ))
+  ipcMain.handle('inspect:hydrate', async (_event, paths) => (
+    loadExplainer().hydrateDirectoryItems(paths)
+  ))
   ipcMain.handle('inspect:estimate', async (_event, directory) => ({
     path: path.resolve(directory),
     ...await loadExplainer().estimateDirectory(directory)
@@ -223,11 +246,15 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
   ipcMain.handle('inspect:explain', async (_event, filePath) => {
     const result = await loadExplainer().explainPath(filePath)
     const relationship = storageRelationship(result.path)
+    const relatedLocations = await findRelatedLocationsAsync(
+      result.path,
+      searchService?.cachedStatus?.().roots || []
+    )
     return {
       ...result,
       belongsTo: relationship.owner?.name || result.source,
       relationship,
-      relatedLocations: findRelatedLocations(result.path)
+      relatedLocations
     }
   })
 
@@ -247,7 +274,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
         .filter(filePath => path.isAbsolute(filePath)))]
         .slice(0, 48)
       const presentations = {}
-      await Promise.all(requested.map(async filePath => {
+      await mapConcurrent(requested, 8, async filePath => {
         const cacheKey = path.resolve(filePath).toLowerCase()
         const cached = nativePresentationCache.get(cacheKey)
         if (cached) {
@@ -255,8 +282,8 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
           return
         }
         try {
-          const resolved = resolveFilePresentation(filePath, shell)
-          const brandIcon = imageFileToDataUrl(resolved.brandIconPath)
+          const resolved = await resolveFilePresentationAsync(filePath, shell)
+          const brandIcon = await imageFileToDataUrlAsync(resolved.brandIconPath)
           const icon = brandIcon ? null : await app.getFileIcon(resolved.iconTarget, { size: 'normal' })
           const presentation = {
             dataUrl: brandIcon || (icon?.isEmpty() ? '' : icon.toDataURL()),
@@ -269,7 +296,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
         } catch {
           // Shell icon lookup is optional; the renderer keeps its local fallback.
         }
-      }))
+      })
       return presentations
     })
   }
@@ -280,6 +307,8 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
   ipcMain.handle('analysis:ai-config:clear', () => aiConfig.clear())
   ipcMain.handle('analysis:ai-models', async (_event, input) => listModels(aiConfig.draft(input)))
   ipcMain.handle('analysis:ai-test', async (_event, input) => testConnection(aiConfig.draft(input)))
+  ipcMain.handle('analysis:ai-record:get', (_event, input) => aiAnalysisStore.get(input))
+  ipcMain.handle('analysis:ai-record:save', (_event, input) => aiAnalysisStore.save(input))
   ipcMain.handle('analysis:ai-review', async (_event, payload) => {
     const request = payload?.evidence ? payload : { evidence: payload, mode: 'normal' }
     return review(request.evidence, {
@@ -291,7 +320,8 @@ function registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell 
 
 module.exports = {
   createAiConfigService,
-  findOfficeBrandIcon,
+  findOfficeBrandIconAsync,
   resolveFilePresentation,
+  resolveFilePresentationAsync,
   registerInspectHandlers
 }

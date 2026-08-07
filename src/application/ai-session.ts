@@ -69,6 +69,18 @@ export class AiAnalysisSession {
     return record
   }
 
+  remember(path: string, record: AiSessionRecord) {
+    const recordKey = key(path)
+    this.records.delete(recordKey)
+    this.records.set(recordKey, record)
+    while (this.records.size > MAX_AI_SESSION_RECORDS) {
+      const oldest = this.records.keys().next().value
+      if (typeof oldest !== 'string') break
+      this.records.delete(oldest)
+    }
+    return record
+  }
+
   clear() {
     this.records.clear()
   }

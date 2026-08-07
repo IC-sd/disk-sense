@@ -230,6 +230,16 @@ function wildcardToLike(value) {
   return pattern
 }
 
+function wildcardSearchesPath(value) {
+  return /[\\/]/u.test(String(value || '')) || /^[a-z]:/iu.test(String(value || ''))
+}
+
+function wildcardKind(value) {
+  const matched = /^\*\.([a-z0-9][a-z0-9+_-]{0,15})$/iu.exec(String(value || '').trim())
+  if (!matched) return null
+  return fileKind(`file.${matched[1]}`, false)
+}
+
 function rankAndOrganizeRows(rows, rankingTerm, { sortByRelevance = true } = {}) {
   const rankingCache = new Map()
   const rankingFor = row => {
@@ -965,10 +975,15 @@ function createFileSearchService({
       parameters = [`"${query.replaceAll('"', '""')}"`]
     } else if (wildcard) {
       const pattern = wildcardToLike(query)
-      where = ['(file.name LIKE ? ESCAPE \'\\\' OR file.path LIKE ? ESCAPE \'\\\')']
-      parameters = [pattern, `%${pattern}%`]
+      if (wildcardSearchesPath(query)) {
+        where = ['file.path LIKE ? ESCAPE \'\\\'']
+        parameters = [pattern]
+      } else {
+        where = ['file.name LIKE ? ESCAPE \'\\\'']
+        parameters = [pattern]
+      }
     } else {
-      const pattern = [...query].length === 1
+      const pattern = [...query].length <= 2
         ? `${escapeLike(query)}%`
         : `%${escapeLike(query)}%`
       where = ['file.name LIKE ? ESCAPE \'\\\'']
@@ -984,10 +999,12 @@ function createFileSearchService({
       parameters.push(target, `${escapeLike(prefix)}%`)
     }
 
-    if (kind === 'file') where.push('file.is_directory = 0')
-    else if (kind !== 'all') {
+    const inferredWildcardKind = wildcard && kind === 'all' ? wildcardKind(query) : null
+    const effectiveKind = inferredWildcardKind || kind
+    if (effectiveKind === 'file') where.push('file.is_directory = 0')
+    else if (effectiveKind !== 'all') {
       where.push('file.kind = ?')
-      parameters.push(kind)
+      parameters.push(effectiveKind)
     }
 
     const age = { day: 1, week: 7, month: 30, year: 365 }[modified]
@@ -1114,5 +1131,7 @@ module.exports = {
   searchRelevanceScore,
   rankAndOrganizeRows,
   hasWildcard,
-  wildcardToLike
+  wildcardToLike,
+  wildcardSearchesPath,
+  wildcardKind
 }

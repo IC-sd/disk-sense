@@ -13,8 +13,9 @@ const { collectDeviceInfo } = require('./device-info.cjs')
 const { registerChangeHandlers } = require('./handlers/change-handlers.cjs')
 const { registerCleanerHandlers } = require('./handlers/cleaner-handlers.cjs')
 const { createAiConfigService, registerInspectHandlers } = require('./handlers/inspect-handlers.cjs')
+const { createAiAnalysisStore } = require('./ai-analysis-store.cjs')
 const { overview, diskVolumes } = require('./system-info.cjs')
-const { createFileSearchService } = require('./file-search.cjs')
+const { createFileSearchWorkerService } = require('./file-search-client.cjs')
 const { createDiagnostics } = require('./diagnostics.cjs')
 
 app.setName('Disk Sense')
@@ -28,6 +29,14 @@ let win
 let db
 let searchService
 let automaticSearchTimer
+let dataUsagePromise = null
+let dataUsageCache = {
+  bytes: 0,
+  files: 0,
+  directories: 0,
+  inaccessible: 0,
+  truncated: false
+}
 const smokeTest = process.argv.includes('--smoke-test')
 const developmentMode = process.argv.includes('--dev')
 const smokeSearchRoot = smokeTest && process.env.DISK_SENSE_SMOKE_SEARCH_ROOT
@@ -37,11 +46,23 @@ if (smokeTest) app.disableHardwareAcceleration()
 const applicationVersion = () => app.isPackaged ? app.getVersion() : packageMetadata.version
 const installDirectory = () => app.isPackaged ? path.dirname(process.execPath) : path.resolve(__dirname, '..')
 const aiConfig = createAiConfigService({ getDb: () => db, safeStorage })
+const aiAnalysisStore = createAiAnalysisStore({ getDb: () => db })
 const diagnostics = createDiagnostics(path.join(app.getPath('userData'), 'disk-sense.log'))
 diagnostics.installProcessMonitors()
 function sendToRenderer(channel, payload) {
   if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
   win.webContents.send(channel, payload)
+}
+
+function appDataUsage() {
+  if (dataUsagePromise) return dataUsagePromise
+  dataUsagePromise = directoryUsage(app.getPath('userData'))
+    .then(usage => {
+      dataUsageCache = usage
+      return usage
+    })
+    .finally(() => { dataUsagePromise = null })
+  return dataUsagePromise
 }
 
 function unavailableSearchService(error) {
@@ -155,9 +176,8 @@ function createWindow() {
 
 function addOverviewHandlers() {
   ipcMain.handle('overview:get', () => overview(db.read()))
-  ipcMain.handle('app:info', async () => {
+  ipcMain.handle('app:info', () => {
     const userDataPath = app.getPath('userData')
-    const usage = await directoryUsage(userDataPath)
     return {
       name: app.getName(),
       version: applicationVersion(),
@@ -168,7 +188,7 @@ function addOverviewHandlers() {
       userDataPath,
       defaultUserDataPath: dataLocation.defaultUserDataPath,
       dataExternallyManaged: dataLocation.externallyManaged,
-      dataUsage: usage,
+      dataUsage: dataUsageCache,
       appearance: {
         theme: normalizeTheme(db.read().appearance?.theme)
       },
@@ -184,6 +204,7 @@ function addOverviewHandlers() {
       }
     }
   })
+  ipcMain.handle('app:data-usage', () => appDataUsage())
   ipcMain.handle('app:appearance:get', () => ({
     theme: normalizeTheme(db.read().appearance?.theme)
   }))
@@ -281,12 +302,15 @@ if (!singleInstance) {
     })
     addOverviewHandlers()
     try {
-      searchService = createFileSearchService({
+      searchService = createFileSearchWorkerService({
         databasePath: path.join(app.getPath('userData'), 'disk-sense-search.sqlite'),
         getVolumeRoots: smokeSearchRoot
           ? async () => [smokeSearchRoot]
           : async () => (await diskVolumes()).map(volume => volume.root),
-        onProgress: payload => sendToRenderer('inspect:index-progress', payload)
+        onProgress: payload => sendToRenderer('inspect:index-progress', payload),
+        onError: error => diagnostics.log('error', 'search-index-worker-failed', {
+          message: error instanceof Error ? error.message : String(error)
+        })
       })
     } catch (error) {
       diagnostics.log('error', 'search-index-unavailable', {
@@ -294,7 +318,7 @@ if (!singleInstance) {
       })
       searchService = unavailableSearchService(error)
     }
-    registerInspectHandlers({ ipcMain, aiConfig, searchService, app, shell })
+    registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell })
     registerChangeHandlers({ ipcMain, db, sendToRenderer })
     registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer })
     createWindow()
@@ -318,7 +342,10 @@ if (!singleInstance) {
 app.on('before-quit', () => {
   if (automaticSearchTimer) clearTimeout(automaticSearchTimer)
   automaticSearchTimer = null
-  searchService?.stopAutomatic?.()
-  searchService?.cancel()
+  void searchService?.close?.().catch(error => {
+    diagnostics.log('error', 'search-index-close-failed', {
+      message: error instanceof Error ? error.message : String(error)
+    })
+  })
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

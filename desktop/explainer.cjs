@@ -1,10 +1,17 @@
-const fs = require('node:fs')
-const fsp = fs.promises
+const fsp = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
 const { normalizeRisk } = require('./risk.cjs')
 
 const TEXT_EXTENSIONS = new Set(['.txt', '.log', '.md', '.json', '.jsonc', '.xml', '.ini', '.cfg', '.conf', '.yml', '.yaml', '.toml', '.csv', '.env', '.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.java', '.cs', '.cpp', '.h', '.bat', '.cmd', '.ps1', '.sql', '.html', '.css'])
+const BINARY_SIGNATURES = [
+  { starts: '4D5A', type: 'Windows PE 可执行文件' },
+  { starts: '25504446', type: 'PDF 文档' },
+  { starts: '504B0304', type: 'ZIP/Office/归档容器' },
+  { starts: '53514C69746520666F726D6174203300', type: 'SQLite 数据库' },
+  { starts: '89504E470D0A1A0A', type: 'PNG 图片' },
+  { starts: 'FFD8FF', type: 'JPEG 图片' }
+]
 const MAX_CONTENT_BYTES = 32768
 const MAX_ITEMS = 5000
 const MAX_CONTEXT_SIBLINGS = 80
@@ -12,6 +19,9 @@ const DIRECTORY_SAMPLE_NODES = 180
 const DIRECTORY_SAMPLE_MS = 60
 const MAX_CACHE_ENTRIES = 400
 const LIST_STAT_CONCURRENCY = 32
+const INITIAL_LIST_METADATA = 24
+const MAX_METADATA_BATCH = 128
+const ESTIMATE_STAT_CONCURRENCY = 16
 const ESTIMATE_CACHE_TTL_MS = 30_000
 const explanationCache = new Map()
 const estimateCache = new Map()
@@ -40,16 +50,16 @@ function absoluteTarget(value, fallback = '') {
 }
 function humanBytes(bytes) { if (bytes < 1024) return `${bytes} B`; const units = ['KB', 'MB', 'GB', 'TB']; let i = -1; let value = bytes; do { value /= 1024; i++ } while (value >= 1024 && i < units.length - 1); return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[i]}` }
 
-function readHead(filePath, maxBytes) {
+async function readHeadAsync(filePath, maxBytes) {
   const requestedBytes = Math.max(0, Math.floor(Number(maxBytes) || 0))
   if (!requestedBytes) return Buffer.alloc(0)
-  const descriptor = fs.openSync(filePath, 'r')
+  const handle = await fsp.open(filePath, 'r')
   try {
     const buffer = Buffer.allocUnsafe(requestedBytes)
-    const bytesRead = fs.readSync(descriptor, buffer, 0, requestedBytes, 0)
+    const { bytesRead } = await handle.read(buffer, 0, requestedBytes, 0)
     return buffer.subarray(0, bytesRead)
   } finally {
-    fs.closeSync(descriptor)
+    await handle.close()
   }
 }
 
@@ -91,20 +101,19 @@ function pathSignals(filePath) {
   return signals[0] || add('unclassified', '暂未确定', 'unknown', .25, '仅凭当前路径还不足以判断用途，需要结合名称、内容和上下文进一步分析。')
 }
 
-function readContent(filePath, stat) {
+async function readContentAsync(filePath, stat) {
   const ext = path.extname(filePath).toLowerCase()
   if (stat.isDirectory() || stat.isSymbolicLink?.()) return null
   if (!TEXT_EXTENSIONS.has(ext)) {
     try {
-      const header = readHead(filePath, 16).toString('hex').toUpperCase()
-      const signatures = [{ starts: '4D5A', type: 'Windows PE 可执行文件' }, { starts: '25504446', type: 'PDF 文档' }, { starts: '504B0304', type: 'ZIP/Office/归档容器' }, { starts: '53514C69746520666F726D6174203300', type: 'SQLite 数据库' }, { starts: '89504E470D0A1A0A', type: 'PNG 图片' }, { starts: 'FFD8FF', type: 'JPEG 图片' }]
-      const match = signatures.find(item => header.startsWith(item.starts))
+      const header = (await readHeadAsync(filePath, 16)).toString('hex').toUpperCase()
+      const match = BINARY_SIGNATURES.find(item => header.startsWith(item.starts))
       return match ? { kind: 'binary-signature', signature: match.type, preview: null } : null
     } catch { return null }
   }
   if (stat.size > 10 * 1024 * 1024) return null
   try {
-    const buffer = readHead(filePath, MAX_CONTENT_BYTES).toString('utf8')
+    const buffer = (await readHeadAsync(filePath, MAX_CONTENT_BYTES)).toString('utf8')
     const printable = buffer.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim()
     if (!printable) return null
     return { kind: 'text-preview', bytes: Math.min(stat.size, MAX_CONTENT_BYTES), preview: printable.slice(0, 1200) }
@@ -241,27 +250,39 @@ async function estimateDirectory(dir) {
   let nodes = 0
   let files = 0
   let bytes = 0
+  let boundaryReached = false
   while (queue.length && nodes < DIRECTORY_SAMPLE_NODES && Date.now() - started < DIRECTORY_SAMPLE_MS) {
     const current = queue.pop()
     let entries
     try { entries = await fsp.readdir(current, { withFileTypes: true }) } catch { continue }
+    const fileTargets = []
     for (const entry of entries) {
-      if (nodes >= DIRECTORY_SAMPLE_NODES || Date.now() - started >= DIRECTORY_SAMPLE_MS) break
+      if (nodes >= DIRECTORY_SAMPLE_NODES || Date.now() - started >= DIRECTORY_SAMPLE_MS) {
+        boundaryReached = true
+        break
+      }
       nodes++
       const child = path.join(current, entry.name)
-      try {
-        if (entry.isSymbolicLink()) continue
-        if (entry.isDirectory()) queue.push(child)
-        else { const stat = await fsp.stat(child); files++; bytes += stat.size }
-      } catch { /* inaccessible items are part of the estimate uncertainty */ }
+      if (entry.isSymbolicLink()) continue
+      if (entry.isDirectory()) queue.push(child)
+      else fileTargets.push(child)
+    }
+    const fileStats = await mapConcurrent(fileTargets, ESTIMATE_STAT_CONCURRENCY, async child => {
+      try { return await fsp.stat(child) } catch { return null }
+    })
+    for (const stat of fileStats) {
+      if (!stat) continue
+      files++
+      bytes += stat.size
     }
   }
-  const value = { bytes, fileCount: files, sampledNodes: nodes, complete: queue.length === 0 }
+  if (queue.length || nodes >= DIRECTORY_SAMPLE_NODES || Date.now() - started >= DIRECTORY_SAMPLE_MS) boundaryReached = true
+  const value = { bytes, fileCount: files, sampledNodes: nodes, complete: !boundaryReached }
   cacheWrite(estimateCache, cacheKey, { cachedAt: Date.now(), value })
   return value
 }
 
-function explain(filePath, stat, siblings = [], directoryContext = null, directoryChildren = []) {
+function explain(filePath, stat, siblings = [], directoryContext = null, directoryChildren = [], content = null) {
   const isLink = Boolean(stat.isSymbolicLink?.())
   const recognizedPath = pathSignals(filePath)
   const pathInfo = isLink && recognizedPath.classification === 'unclassified' ? {
@@ -271,7 +292,6 @@ function explain(filePath, stat, siblings = [], directoryContext = null, directo
     confidence: .98,
     reason: '这是一个符号链接或目录联接，当前路径可能指向其他位置的数据。'
   } : recognizedPath
-  const content = readContent(filePath, stat)
   const nameInfo = inferFromName(filePath, siblings)
   const contentInfo = inferFromContent(filePath, content)
   const name = path.basename(filePath)
@@ -302,29 +322,106 @@ async function readDirectoryEntries(directory, limit = MAX_ITEMS) {
   }
 }
 
+function itemFromDirectoryEntry(root, entry) {
+  const filePath = path.join(root, entry.name)
+  const isLink = entry.isSymbolicLink()
+  const isDirectory = !isLink && entry.isDirectory()
+  const recognizedPath = pathSignals(filePath)
+  const info = isLink && recognizedPath.classification === 'unclassified' ? {
+    classification: 'filesystem-link',
+    source: 'Windows 文件系统链接',
+    risk: 'attention',
+    confidence: .98,
+    reason: '当前路径会重定向到另一个文件或目录。'
+  } : recognizedPath
+  return {
+    name: entry.name,
+    path: filePath,
+    isDirectory,
+    isLink,
+    size: null,
+    fileCount: null,
+    sizeEstimated: isDirectory,
+    modifiedAt: 0,
+    extension: isDirectory || isLink ? '' : path.extname(entry.name).toLowerCase(),
+    metadataPending: true,
+    ...info,
+    risk: normalizeRisk(info.risk)
+  }
+}
+
+async function inspectDirectoryItem(filePath) {
+  try {
+    const stat = await fsp.lstat(filePath)
+    const isLink = stat.isSymbolicLink()
+    const recognizedPath = pathSignals(filePath)
+    const info = isLink && recognizedPath.classification === 'unclassified' ? {
+      classification: 'filesystem-link',
+      source: 'Windows 文件系统链接',
+      risk: 'attention',
+      confidence: .98,
+      reason: '当前路径会重定向到另一个文件或目录。'
+    } : recognizedPath
+    const isDirectory = stat.isDirectory()
+    return {
+      name: path.basename(filePath),
+      path: filePath,
+      isDirectory,
+      isLink,
+      size: isDirectory ? null : stat.size,
+      fileCount: isDirectory || isLink ? null : 1,
+      sizeEstimated: isDirectory,
+      modifiedAt: stat.mtimeMs,
+      extension: isDirectory || isLink ? '' : path.extname(filePath).toLowerCase(),
+      metadataPending: false,
+      ...info,
+      risk: normalizeRisk(info.risk)
+    }
+  } catch {
+    return null
+  }
+}
+
+async function hydrateDirectoryItems(values, limit = MAX_METADATA_BATCH) {
+  const maximum = Math.max(1, Math.min(MAX_METADATA_BATCH, Math.floor(Number(limit) || MAX_METADATA_BATCH)))
+  const seen = new Set()
+  const targets = []
+  for (const value of Array.isArray(values) ? values : []) {
+    let target
+    try { target = absoluteTarget(value) } catch { continue }
+    const key = target.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    targets.push(target)
+    if (targets.length >= maximum) break
+  }
+  const inspected = await mapConcurrent(targets, LIST_STAT_CONCURRENCY, inspectDirectoryItem)
+  return inspected.filter(Boolean)
+}
+
 async function listDirectory(dir) {
   const root = absoluteTarget(dir, 'C:\\')
   const listing = await readDirectoryEntries(root, MAX_ITEMS)
-  const inspected = await mapConcurrent(listing.entries, LIST_STAT_CONCURRENCY, async entry => {
-    const filePath = path.join(root, entry.name)
-    try {
-      const stat = await fsp.lstat(filePath)
-      const isLink = stat.isSymbolicLink()
-      const recognizedPath = pathSignals(filePath)
-      const info = isLink && recognizedPath.classification === 'unclassified' ? {
-        classification: 'filesystem-link',
-        source: 'Windows 文件系统链接',
-        risk: 'attention',
-        confidence: .98,
-        reason: '当前路径会重定向到另一个文件或目录。'
-      } : recognizedPath
-      const isDirectory = stat.isDirectory()
-      return { name: entry.name, path: filePath, isDirectory, isLink, size: isDirectory ? null : stat.size, fileCount: isDirectory || isLink ? null : 1, sizeEstimated: isDirectory, modifiedAt: stat.mtimeMs, extension: isDirectory || isLink ? '' : path.extname(entry.name).toLowerCase(), ...info, risk: normalizeRisk(info.risk) }
-    } catch { return null }
-  })
-  const items = inspected.filter(Boolean)
-  const siblings = items.map(item => ({ name: item.name }))
-  return { path: root, items: items.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name)), truncated: listing.truncated, context: { siblingCount: siblings.length, analyzed: 'path-name-parent-lazy-size' } }
+  const items = listing.entries
+    .map(entry => itemFromDirectoryEntry(root, entry))
+    .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name))
+  const initialMetadata = await hydrateDirectoryItems(
+    items.slice(0, INITIAL_LIST_METADATA).map(item => item.path),
+    INITIAL_LIST_METADATA
+  )
+  const metadataByPath = new Map(initialMetadata.map(item => [item.path.toLowerCase(), item]))
+  const stagedItems = items.map(item => metadataByPath.get(item.path.toLowerCase()) || item)
+  return {
+    path: root,
+    items: stagedItems,
+    truncated: listing.truncated,
+    context: {
+      siblingCount: stagedItems.length,
+      analyzed: 'path-name-parent-lazy-size',
+      metadataComplete: initialMetadata.length,
+      metadataPending: stagedItems.length - initialMetadata.length
+    }
+  }
 }
 
 async function explainPath(filePath) {
@@ -333,12 +430,13 @@ async function explainPath(filePath) {
   const cacheKey = `${target.toLowerCase()}|${stat.size}|${stat.mtimeMs}`
   const cached = cacheRead(explanationCache, cacheKey)
   if (cached) return cached
-  let siblings = []
-  try { siblings = (await readDirectoryEntries(path.dirname(target), MAX_CONTEXT_SIBLINGS)).entries } catch { /* parent may be protected */ }
-  let directoryChildren = []
-  if (stat.isDirectory()) try { directoryChildren = (await readDirectoryEntries(target, MAX_CONTEXT_SIBLINGS)).entries } catch { /* protected directory */ }
+  const [siblings, directoryChildren, content] = await Promise.all([
+    readDirectoryEntries(path.dirname(target), MAX_CONTEXT_SIBLINGS).then(value => value.entries).catch(() => []),
+    stat.isDirectory() ? readDirectoryEntries(target, MAX_CONTEXT_SIBLINGS).then(value => value.entries).catch(() => []) : [],
+    readContentAsync(target, stat)
+  ])
   const directoryContext = stat.isDirectory() ? summarizeDirectory(directoryChildren) : null
-  return cacheWrite(explanationCache, cacheKey, explain(target, stat, siblings, directoryContext, directoryChildren))
+  return cacheWrite(explanationCache, cacheKey, explain(target, stat, siblings, directoryContext, directoryChildren, content))
 }
 
-module.exports = { listDirectory, explainPath, explain, pathSignals, readHead, readContent, readDirectoryEntries, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, ESTIMATE_CACHE_TTL_MS }
+module.exports = { listDirectory, hydrateDirectoryItems, inspectDirectoryItem, explainPath, explain, pathSignals, readHeadAsync, readContentAsync, readDirectoryEntries, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, INITIAL_LIST_METADATA, MAX_METADATA_BATCH, ESTIMATE_CACHE_TTL_MS }

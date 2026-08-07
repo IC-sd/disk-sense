@@ -125,13 +125,15 @@ function promptFor(evidence, mode = 'normal') {
   const lines = [
     '你是 Disk Sense 的 Windows 文件与目录分析器。',
     '请综合目标类型、路径层级、名称、父目录同级对象、目录内部子项、内容摘要、本地规则结论和跨盘关联，解释目标对象。',
-    '回答面向普通电脑用户，重点是明确说明“它具体是什么”和“它实际有什么用”。',
+    '回答面向普通电脑用户，最终应形成可以帮助用户做决定的连贯结论，不要机械地复述问题或文件名。',
     'what 必须具体到所属产品、组件或数据类型，例如“Microsoft Edge 的 Chromium 用户数据目录”，不能只说“一个目录”“某个文件”或重复文件名。',
-    'purpose 必须说明它保存或支持哪些实际功能；belongsTo 尽量给出具体应用或 Windows 组件；whyHere 说明它为什么出现在当前路径。',
+    'purpose 说明它保存什么、支持什么功能，以及内容是否可重建；belongsTo 在证据充分时指出具体应用、系统组件或安装包。',
+    'whyHere 要解释当前路径与安装、运行、用户配置或跨盘数据之间的关系；handling 给出有条件、可执行的建议，并明确哪些情况不能删除。',
+    'reasons 只保留 2 至 4 条真正影响结论的证据，不要罗列所有输入信息。',
     '当本地规则置信度较高且目录内部标记相互印证时，应以本地结论为基础，不要退化成模糊猜测。',
     '不要把未知内容称为垃圾，不要仅凭缓存字样建议删除，不要给出无证据的肯定结论。',
     '请只返回 JSON，不要使用 Markdown。结构如下：',
-    '{"what":"它是什么","purpose":"有什么用","belongsTo":"属于哪个系统或应用","whyHere":"为什么出现在这个位置","risk":"danger|elevated|attention|low|safe","confidence":0.0,"handling":"保留或处理建议","reasons":["关键依据"]}',
+    '{"what":"对象的具体身份","purpose":"实际功能与数据作用","belongsTo":"关联的系统、应用或安装包","whyHere":"路径与来源关系","risk":"danger|elevated|attention|low|safe","confidence":0.0,"handling":"带条件的处理建议","reasons":["决定结论的证据"]}',
     `本地证据：${JSON.stringify(safeEvidence(evidence))}`
   ]
   if (mode === 'deep') lines.splice(2, 0, '这是深入分析：请交叉检查路径、目录结构、文件类型、同级与跨盘关联，识别可能的应用来源冲突，并明确指出仍不确定的部分。')

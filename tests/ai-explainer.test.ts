@@ -99,11 +99,13 @@ describe('optional AI explainer', () => {
     expect(result.belongsTo).toBe('Microsoft Edge')
   })
 
-  it('asks the model for concrete identity and purpose', () => {
+  it('asks the model for a decision-oriented conclusion instead of a question template', () => {
     const prompt = promptFor({ name: 'data' })
-    expect(prompt).toContain('它具体是什么')
-    expect(prompt).toContain('它实际有什么用')
+    expect(prompt).toContain('可以帮助用户做决定的连贯结论')
     expect(prompt).toContain('不能只说“一个目录”')
+    expect(prompt).toContain('有条件、可执行的建议')
+    expect(prompt).toContain('真正影响结论的证据')
+    expect(prompt).not.toContain('"what":"它是什么"')
   })
 
   it('retries without response_format when a provider does not support JSON mode', async () => {

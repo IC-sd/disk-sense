@@ -44,6 +44,9 @@ the SHA-256 manifest exactly.
 
 ### Changed
 
+- Moved the persistent file index and SQLite search/ranking workload into a dedicated worker thread, coalesced stale keystroke searches, and added a reproducible benchmark for indexing throughput, query latency, and renderer-loop responsiveness.
+- Changed directory browsing to staged metadata hydration: names and types render first, while only visible rows receive bounded metadata and directory-size estimates.
+- Removed selected-file content reads, Office brand-icon discovery, and cross-volume application-location probing from the Electron main thread; these bounded evidence tasks are now asynchronous and concurrency-limited.
 - Reduced the shipped UI stylesheet by removing obsolete component rules from replaced explorer, cleanup, and settings views; added a regression check so deleted templates cannot leave dead CSS behind.
 - Reused the shared desktop risk normalizer, cached per-result search rankings, bounded renderer-side native file presentation caching, and narrowed CommonJS exports to the APIs actually consumed outside each module.
 - Removed tracked development logs and the obsolete credential-reading release helper; releases continue through the validated package and GitHub workflow paths.

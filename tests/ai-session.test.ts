@@ -28,4 +28,18 @@ describe('in-window AI analysis session', () => {
     expect(session.get('C:\\item-0', '0')).toBeNull()
     expect(session.get(`C:\\item-${MAX_AI_SESSION_RECORDS}`, String(MAX_AI_SESSION_RECORDS))).toBeTruthy()
   })
+
+  it('remembers a record restored from persistent storage', () => {
+    const session = new AiAnalysisSession()
+    const record = {
+      parsed: { what: 'Microsoft Word 文档' },
+      raw: '{"what":"Microsoft Word 文档"}',
+      analysisMode: 'deep' as const,
+      analyzedAt: 123,
+      fingerprint: '10:20'
+    }
+    session.remember('D:\\work\\report.docx', record)
+
+    expect(session.get('d:/work/report.docx', '10:20')).toBe(record)
+  })
 })

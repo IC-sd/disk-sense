@@ -73,6 +73,14 @@ describe('light and dark theme surfaces', () => {
     )
   })
 
+  it('keeps all cleanup tabs aligned and the safety card theme-aware', () => {
+    expect(extraCss).toMatch(/\.history-panel\s*\{[^}]*max-width:\s*1420px[^}]*margin:\s*0 auto/s)
+    expect(extraCss).toMatch(/\.cleaner-workspace\s*\{[^}]*max-width:\s*1420px[^}]*margin:\s*0 auto/s)
+    expect(extraCss).toMatch(/\.slimming-workspace\s*\{[^}]*max-width:\s*1420px[^}]*margin:\s*0 auto/s)
+    expect(extraCss).toContain(':root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state')
+    expect(extraCss).toContain(':root[data-theme="light"] #app .cleaner-page-header .cleaner-safety-state > span')
+  })
+
   it('separates file search controls from optional AI result analysis', () => {
     const searchControls = explorerSource.slice(
       explorerSource.indexOf('<div class="search-commandbar">'),
@@ -103,6 +111,33 @@ describe('light and dark theme surfaces', () => {
     expect(explorerSource).toContain('class="native-result-icon"')
     expect(extraCss).toMatch(/\.explorer-layout\.search-awaiting-selection \.explain-panel\s*\{[^}]*display:\s*none/s)
     expect(extraCss).toMatch(/\.native-result-icon\s*\{[^}]*object-fit:\s*contain/s)
+  })
+
+  it('makes AI completion and its refreshed explanation visually explicit', () => {
+    const banner = explorerSource.slice(
+      explorerSource.indexOf('<div v-if="explanation.aiAnalyzed" class="ai-result-banner"'),
+      explorerSource.indexOf('<div class="meaning-list">')
+    )
+    const details = explorerSource.slice(
+      explorerSource.indexOf('const objectDetails'),
+      explorerSource.indexOf('const emptyTitle')
+    )
+    expect(explorerSource).toContain("'ai-result': explanation.aiAnalyzed")
+    expect(explorerSource).toContain('class="ai-result-banner"')
+    expect(explorerSource).toContain('分析完成')
+    expect(explorerSource).toContain("explanation.aiPersisted ? '已本地保存' : '已更新'")
+    expect(banner).not.toContain('<AppIcon')
+    expect(details).toContain("label: '识别结论'")
+    expect(details).toContain("label: '与系统的关系'")
+    expect(details).toContain("label: '处理建议'")
+    expect(details).not.toContain("label: '它是什么'")
+    expect(details).not.toContain("label: '有什么用'")
+    expect(explorerSource).toContain("explainPanel.value?.scrollTo({ top: 0, behavior: 'smooth' })")
+    expect(explorerSource).toContain('api.aiAnalysisGet({ path: item.path, fingerprint: currentFingerprint })')
+    expect(explorerSource).toContain('api.aiAnalysisSave({ ...result, path: targetPath, fingerprint: currentFingerprint })')
+    expect(extraCss).toMatch(/\.ai-result-banner\s*\{[^}]*border:[^}]*background:/s)
+    expect(extraCss).toMatch(/\.ai-result \.meaning-list\s*\{[^}]*border:[^}]*background:/s)
+    expect(extraCss).toMatch(/:root\[data-theme="light"\] #app \.meaning-list p[^}]*color:\s*var\(--text\)/s)
   })
 
   it('does not keep component classes after their templates are removed', () => {

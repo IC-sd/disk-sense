@@ -1,8 +1,10 @@
 import type {
   AiConfigDraft,
   AiConfigStatus,
+  AiAnalysisLookup,
   AiModelOption,
   AiReviewResult,
+  StoredAiAnalysis,
   AnalysisMode,
   AppearanceSettings,
   AppInfo,
@@ -18,9 +20,11 @@ import type {
   CleanupJob,
   CleanupJobSummary,
   DirectoryEstimate,
+  DirectoryItem,
   DirectoryListResult,
   DataMigrationResult,
   DeviceInfo,
+  DirectoryUsage,
   FileExplanation,
   FileSearchIndexStartResult,
   FileSearchIndexStatus,
@@ -39,6 +43,7 @@ type Unsubscribe = () => void
 export interface DesktopApi {
   overviewGet: () => Promise<OverviewSummary>
   appInfo: () => Promise<AppInfo>
+  appDataUsage: () => Promise<DirectoryUsage>
   appAppearanceGet: () => Promise<AppearanceSettings>
   appAppearanceSet: (input: AppearanceSettings) => Promise<AppearanceSettings>
   appDeviceInfo: () => Promise<DeviceInfo>
@@ -47,6 +52,7 @@ export interface DesktopApi {
   appMoveDataDirectory: () => Promise<DataMigrationResult>
   appRestart: () => Promise<{ restarted: boolean }>
   inspectList: (dir?: string) => Promise<DirectoryListResult>
+  inspectHydrate: (paths: string[]) => Promise<DirectoryItem[]>
   inspectEstimate: (dir: string) => Promise<DirectoryEstimate>
   inspectExplain: (filePath: string) => Promise<FileExplanation>
   inspectIndexStatus: () => Promise<FileSearchIndexStatus>
@@ -62,6 +68,8 @@ export interface DesktopApi {
   aiModels: (draft: Partial<AiConfigDraft>) => Promise<{ ok: boolean; reason?: string; models: AiModelOption[] }>
   aiTest: (draft: AiConfigDraft) => Promise<{ ok: boolean; reason?: string; model?: string }>
   aiReview: (request: { evidence: unknown; mode: AnalysisMode }) => Promise<AiReviewResult>
+  aiAnalysisGet: (request: { path: string; fingerprint: string }) => Promise<AiAnalysisLookup>
+  aiAnalysisSave: (request: { path: string; fingerprint: string } & Partial<AiReviewResult>) => Promise<StoredAiAnalysis>
   changesState: () => Promise<ChangeState>
   changesBaseline: () => Promise<{ snapshot?: { cancelled?: boolean } }>
   changesScan: () => Promise<({ ok: false; reason: string } | ({ ok: true } & ChangeResult))>

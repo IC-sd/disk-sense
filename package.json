@@ -24,6 +24,7 @@
     "validate": "pnpm typecheck && pnpm test && pnpm check:desktop && pnpm build",
     "pack": "pnpm validate && electron-builder --dir",
     "smoke:desktop": "node scripts/smoke-desktop.mjs",
+    "benchmark:search": "node scripts/benchmark-search.mjs",
     "release:win": "pnpm validate && electron-builder --win nsis portable --publish never && node scripts/checksums.cjs"
   },
   "devDependencies": {

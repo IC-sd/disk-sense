@@ -7,7 +7,7 @@ import { validateExclusion, historySummary } from '../desktop/handlers/cleaner-h
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
 import { publicSnapshot, historyRecord } from '../desktop/handlers/change-handlers.cjs'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
-import { createAiConfigService, findOfficeBrandIcon, resolveFilePresentation } from '../desktop/handlers/inspect-handlers.cjs'
+import { createAiConfigService, findOfficeBrandIconAsync, resolveFilePresentation } from '../desktop/handlers/inspect-handlers.cjs'
 
 describe('desktop handler boundaries', () => {
   it('validates exclusions before they enter persisted state', () => {
@@ -103,7 +103,7 @@ describe('desktop handler boundaries', () => {
     })
   })
 
-  it('finds a bounded Office brand icon beside the installed application tree', () => {
+  it('finds a bounded Office brand icon beside the installed application tree without blocking the handler', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-office-'))
     try {
       const officeDirectory = path.join(root, 'Office16')
@@ -111,7 +111,7 @@ describe('desktop handler boundaries', () => {
       fs.mkdirSync(iconDirectory, { recursive: true })
       const iconPath = path.join(iconDirectory, 'word-icon_fixture.png')
       fs.writeFileSync(iconPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-      expect(findOfficeBrandIcon(path.join(officeDirectory, 'WINWORD.EXE'))).toBe(iconPath)
+      expect(await findOfficeBrandIconAsync(path.join(officeDirectory, 'WINWORD.EXE'))).toBe(iconPath)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
