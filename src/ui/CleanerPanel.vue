@@ -63,7 +63,7 @@
         <div class="cleaner-stats">
           <article><span>发现项目</span><b>{{ foundItems.toLocaleString() }}</b><small>文件与只读统计</small></article>
           <article><span>发现占用</span><b>{{ formatBytes(foundBytes) }}</b><small>包含回收站容量</small></article>
-          <article><span>当前可处理</span><b>{{ formatBytes(actionableBytes) }}</b><small>符合安全条件</small></article>
+          <article><span>当前可处理</span><b>{{ formatBytes(actionableBytes) }}</b><small>{{ actionableItems.toLocaleString() }} 个文件通过安全条件</small></article>
           <article class="selected-metric"><span>已选择</span><b>{{ formatBytes(selectedBytes) }}</b><small>{{ selected.length.toLocaleString() }} 个文件</small></article>
           <article class="scan-time-stat">
             <span>扫描状态</span>
@@ -130,7 +130,10 @@
               </div>
               <div class="category-selection">
                 <span v-if="group.selectedFiles">{{ group.selectedFiles.toLocaleString() }} 个已选</span>
-                <small>{{ group.scanned }} / {{ group.rules.length }} 条规则已扫描</small>
+                <small>
+                  {{ group.scanned }} / {{ group.rules.length }} 条规则已扫描
+                  <template v-if="group.retainedItems"> · 保留 {{ group.retainedItems.toLocaleString() }} 个近期文件</template>
+                </small>
               </div>
               <div class="category-amount">
                 <b>{{ group.scanned ? formatBytes(group.bytes) : '尚未扫描' }}</b>
@@ -167,6 +170,10 @@
                     </div>
                     <p v-if="results[rule.id]?.blockedReason" class="rule-blocked">{{ results[rule.id].blockedReason }}</p>
                     <p v-if="results[rule.id]?.truncated" class="rule-blocked">{{ scanLimitMessage(results[rule.id]) }}</p>
+                    <p v-if="results[rule.id]?.retained.recentItems" class="rule-retained">
+                      已发现但保留最近 {{ rule.minimumAgeDays }} 天内的
+                      {{ results[rule.id].retained.recentItems.toLocaleString() }} 个文件（{{ formatBytes(results[rule.id].retained.recentBytes) }}），不会进入清理计划。
+                    </p>
                     <div v-if="results[rule.id]?.volumeBreakdown?.length" class="volume-breakdown">
                       <span v-for="volume in results[rule.id].volumeBreakdown" :key="volume.root" :class="{ unavailable: volume.code !== 0 }">
                         <b>{{ volume.root }}</b>
@@ -185,11 +192,15 @@
 
                 <div class="compact-rule-result">
                   <b>{{ results[rule.id] ? formatBytes(results[rule.id].total) : '—' }}</b>
-                  <small>
-                    {{ results[rule.id]
-                      ? `${results[rule.id].itemCount.toLocaleString()} 个${results[rule.id].summaryOnly ? '项目' : '文件'}`
-                      : '等待扫描' }}
+                  <small v-if="results[rule.id]">
+                    <span>{{ results[rule.id].itemCount.toLocaleString() }} 个{{ results[rule.id].summaryOnly ? '项目' : '发现' }}</span>
+                    <span v-if="!results[rule.id].summaryOnly && results[rule.id].selectable">
+                      {{ results[rule.id].candidateItemCount.toLocaleString() }} 个可处理
+                    </span>
+                    <span v-else-if="!results[rule.id].summaryOnly && results[rule.id].configuredSelectable">等待关闭相关应用</span>
+                    <span v-else-if="!results[rule.id].summaryOnly">仅检测</span>
                   </small>
+                  <small v-else>等待扫描</small>
                 </div>
 
                 <button class="text-button compact-scan-button" :disabled="busy" @click="scanRule(rule.id)">
@@ -411,7 +422,8 @@ const scannedCount = computed(() => Object.keys(results).length)
 const scanProgress = computed(() => rules.value.length ? Math.round(scannedCount.value / rules.value.length * 100) : 0)
 const foundItems = computed(() => Object.values(results).reduce((sum, result) => sum + (result.itemCount ?? result.files.length), 0))
 const foundBytes = computed(() => Object.values(results).reduce((sum, result) => sum + result.total, 0))
-const actionableBytes = computed(() => Object.values(results).reduce((sum, result) => sum + (result.selectable ? result.total : 0), 0))
+const actionableBytes = computed(() => Object.values(results).reduce((sum, result) => sum + (result.selectable ? result.candidateTotal : 0), 0))
+const actionableItems = computed(() => Object.values(results).reduce((sum, result) => sum + (result.selectable ? result.candidateItemCount : 0), 0))
 const selectedBytes = computed(() => selected.value.reduce((sum, item) => sum + item.size, 0))
 const scanningRuleTitle = computed(() => rules.value.find(rule => rule.id === scanStatus.ruleId)?.title || '清理规则')
 const categoryOrder = ['Windows', '浏览器', '应用缓存', '开发工具', '诊断', '图形', 'Windows 更新']
@@ -456,6 +468,7 @@ const categoryGroups = computed(() => {
         scanned: groupResults.length,
         items: groupResults.reduce((sum, result) => sum + (result.itemCount ?? result.files.length), 0),
         bytes: groupResults.reduce((sum, result) => sum + result.total, 0),
+        retainedItems: groupResults.reduce((sum, result) => sum + result.retained.recentItems + result.retained.olderItems, 0),
         selectableFiles,
         selectedFiles: selectableFiles.filter(file => selectedPaths.has(file.path.toLowerCase())).length
       }
@@ -557,7 +570,8 @@ async function scanAll() {
   const startedAt = performance.now()
   try {
     await runLimited(rules.value.map(rule => rule.id), 3)
-    message.value = `扫描完成：发现 ${foundItems.value.toLocaleString()} 个项目，占用 ${formatBytes(foundBytes.value)}；其中 ${formatBytes(actionableBytes.value)} 通过当前安全条件可供选择。`
+    const retainedItems = Object.values(results).reduce((sum, result) => sum + result.retained.recentItems + result.retained.olderItems, 0)
+    message.value = `扫描完成：发现 ${foundItems.value.toLocaleString()} 个项目，占用 ${formatBytes(foundBytes.value)}；其中 ${actionableItems.value.toLocaleString()} 个文件（${formatBytes(actionableBytes.value)}）通过当前安全条件，另有 ${retainedItems.toLocaleString()} 个近期文件已识别但保留。`
   } catch (error) {
     message.value = error instanceof Error && error.name === 'AbortError' ? '扫描已取消，已完成的规则结果仍可查看。' : error instanceof Error ? error.message : String(error)
   } finally {

@@ -3,7 +3,7 @@ import { inspectSlimming, parseRecycleBinOutput, rules, slimmingRules } from '..
 import { describe, expect, it } from 'vitest'
 
 describe('cleanup center design', () => {
-  it('uses the unified five-level risk model for every cleanup item', () => {
+  it('uses the unified five-level risk model for every cleanup item', async () => {
     const allowed = new Set(['danger', 'elevated', 'attention', 'low', 'safe'])
     expect(rules.length).toBeGreaterThanOrEqual(20)
     expect([...rules, ...slimmingRules].every((item: any) => allowed.has(item.risk))).toBe(true)
@@ -18,15 +18,12 @@ describe('cleanup center design', () => {
       selectable: false
     })
     expect(rules.find((item: any) => item.id === 'recycle-bin')?.probe).toBeTypeOf('function')
-    expect(rules.find((item: any) => item.id === 'recent-temp-activity')).toMatchObject({
-      risk: 'attention',
-      selectable: false,
-      minimumAgeDays: 0,
-      maximumAgeDays: 7
-    })
-    expect(rules.find((item: any) => item.id === 'teams-cache')?.roots().every((root: string) => /(?:Cache|Code Cache|GPUCache)$/i.test(root))).toBe(true)
-    expect(rules.find((item: any) => item.id === 'slack-cache')?.roots().every((root: string) => /(?:Cache|Code Cache|GPUCache)$/i.test(root))).toBe(true)
+    expect(rules.find((item: any) => item.id === 'recent-temp-activity')).toBeUndefined()
+    expect((await rules.find((item: any) => item.id === 'teams-cache')?.roots()).every((root: string) => /(?:Cache|Code Cache|GPUCache|DawnCache|GrShaderCache|ShaderCache|Media Cache)$/i.test(root))).toBe(true)
+    expect(rules.find((item: any) => item.id === 'slack-cache')?.roots().every((root: string) => /(?:Cache|Code Cache|GPUCache|DawnCache|GrShaderCache|ShaderCache|Media Cache)$/i.test(root))).toBe(true)
     expect(rules.find((item: any) => item.id === 'jetbrains-cache')?.roots().every((root: string) => /(?:caches|tmp)$/i.test(root))).toBe(true)
+    expect(rules.find((item: any) => item.id === 'chromium-family-cache')).toMatchObject({ category: '浏览器', selectable: true })
+    expect((await rules.find((item: any) => item.id === 'qq-renderer-cache')?.roots()).every((root: string) => !/[\\/]Cache$/i.test(root))).toBe(true)
   })
 
   it('normalizes recycle-bin capacity from one or many Windows volumes', () => {

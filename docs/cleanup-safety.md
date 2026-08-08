@@ -13,6 +13,8 @@
 9. Every attempted file receives a success or failure result.
 10. User exclusions are applied during scanning and checked again immediately before the Recycle Bin operation.
 11. Cleanup audit summaries are complete; stored per-file detail is bounded to 1,000 entries per task with failures retained first.
+12. Recognized occupancy and executable cleanup candidates are separate values; recent or process-blocked files may be reported but cannot be selected.
+13. Application cache discovery accepts exact allowlisted rebuildable directory names, never a fuzzy substring match for `cache`.
 
 ## Retention windows
 
@@ -24,8 +26,9 @@
 | Windows Error Reporting | 14 days | preserves recent diagnostics |
 | Thumbnail cache | 1 day | exact filename pattern only |
 | DirectX shader cache | 3 days | rebuildable data only |
-| Chrome/Edge cache | 3 days | browser must be closed |
+| Chromium-family browser cache | 3 days | browser must be closed; login and site databases excluded |
 | Firefox cache | 3 days | browser must be closed |
+| Desktop application renderer cache | 7 days | exact cache roots only; application must be closed |
 | VS Code/Discord cache | 7 days | application must be closed |
 | npm cache | 14 days | never scans project dependencies |
 | pip cache | 14 days | never scans virtual environments |

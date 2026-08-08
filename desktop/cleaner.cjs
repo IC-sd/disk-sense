@@ -20,8 +20,28 @@ const MAX_VISITED_PER_RULE = 100000
 const MAX_SCAN_MS = 20000
 const DAY_MS = 24 * 60 * 60 * 1000
 const PROCESS_CHECK_FAILED = '__disk_sense_process_check_failed__'
+const REBUILDABLE_CACHE_DIRECTORIES = [
+  'Cache',
+  'Code Cache',
+  'GPUCache',
+  'DawnCache',
+  'GrShaderCache',
+  'ShaderCache',
+  'Media Cache'
+]
+const REBUILDABLE_CACHE_NAMES = new Set(REBUILDABLE_CACHE_DIRECTORIES.map(name => name.toLowerCase()))
 
-function browserCacheRoots(productRoot) {
+function uniqueRoots(values) {
+  const seen = new Set()
+  return values.filter(value => {
+    const key = path.resolve(value).toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function browserCacheRoots(productRoot, includeProductRoot = false) {
   if (!fs.existsSync(productRoot)) return []
   const roots = []
   let profiles = []
@@ -30,14 +50,15 @@ function browserCacheRoots(productRoot) {
   } catch {
     return roots
   }
-  for (const profile of profiles) {
-    const profileRoot = path.join(productRoot, profile.name)
-    for (const cache of ['Cache', 'Code Cache', 'GPUCache']) {
+  const profileRoots = profiles.map(profile => path.join(productRoot, profile.name))
+  if (includeProductRoot) profileRoots.unshift(productRoot)
+  for (const profileRoot of profileRoots) {
+    for (const cache of REBUILDABLE_CACHE_DIRECTORIES) {
       const candidate = path.join(profileRoot, cache)
       if (fs.existsSync(candidate)) roots.push(candidate)
     }
   }
-  return roots
+  return uniqueRoots(roots)
 }
 
 function existingRoots(values) {
@@ -47,11 +68,48 @@ function existingRoots(values) {
 }
 
 function electronCacheRoots(productRoots) {
-  return existingRoots(productRoots.flatMap(productRoot => [
-    path.join(productRoot, 'Cache'),
-    path.join(productRoot, 'Code Cache'),
-    path.join(productRoot, 'GPUCache')
-  ]))
+  return uniqueRoots(existingRoots(productRoots.flatMap(productRoot => (
+    REBUILDABLE_CACHE_DIRECTORIES.map(cache => path.join(productRoot, cache))
+  ))))
+}
+
+async function findNamedCacheRoots(productRoots, options = {}) {
+  const maxDepth = Math.max(0, Math.min(5, Number(options.maxDepth ?? 3)))
+  const maxDirectories = Math.max(1, Math.min(10000, Number(options.maxDirectories ?? 2000)))
+  const names = new Set((options.names || REBUILDABLE_CACHE_DIRECTORIES).map(name => String(name).toLowerCase()))
+  const roots = []
+  const productRootsToScan = existingRoots(productRoots)
+  const maximumPerRoot = Math.max(1, Math.floor(maxDirectories / Math.max(1, productRootsToScan.length)))
+  let visited = 0
+
+  for (const productRoot of productRootsToScan) {
+    const queue = [{ dir: productRoot, depth: 0 }]
+    let cursor = 0
+    let rootVisited = 0
+    while (cursor < queue.length && rootVisited < maximumPerRoot && visited < maxDirectories) {
+      const current = queue[cursor++]
+      let entries
+      try {
+        entries = await fsp.readdir(current.dir, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const entry of entries) {
+        if (rootVisited >= maximumPerRoot || visited >= maxDirectories) break
+        if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+        rootVisited++
+        visited++
+        const candidate = path.join(current.dir, entry.name)
+        if (names.has(entry.name.toLowerCase())) {
+          roots.push(candidate)
+          continue
+        }
+        if (current.depth < maxDepth) queue.push({ dir: candidate, depth: current.depth + 1 })
+      }
+      if (visited % 100 === 0) await new Promise(resolve => setImmediate(resolve))
+    }
+  }
+  return uniqueRoots(roots)
 }
 
 function jetbrainsCacheRoots() {
@@ -186,7 +244,7 @@ const rules = [
     roots: [path.join(local, 'Temp')],
     pattern: /.*/,
     risk: 'low',
-    reason: '只列出至少 7 天未修改的用户临时文件；近期文件会保留，避免影响正在安装或运行的应用。',
+    reason: '识别用户临时目录的完整占用；只有至少 7 天未修改的文件才进入清理候选。',
     safetyNote: '不会跟随符号链接或目录联接，执行前会再次校验文件身份。',
     minimumAgeDays: 7,
     selectable: true
@@ -198,24 +256,10 @@ const rules = [
     roots: [path.join(windows, 'Temp')],
     pattern: /.*/,
     risk: 'low',
-    reason: '只列出至少 7 天未修改的系统临时文件；无权限或仍被占用的内容会跳过。',
+    reason: '识别 Windows 临时目录的完整占用；只有至少 7 天未修改且可访问的文件才进入清理候选。',
     safetyNote: '部分文件需要管理员权限，本版本不会自动提权或强制删除。',
     minimumAgeDays: 7,
     selectable: true,
-    requiresAdmin: true
-  },
-  {
-    id: 'recent-temp-activity',
-    title: '近期临时活动（仅观察）',
-    category: 'Windows',
-    roots: [path.join(local, 'Temp'), path.join(windows, 'Temp')],
-    pattern: /.*/,
-    risk: 'attention',
-    reason: '统计最近 7 天新增或修改的临时文件，用于解释磁盘空间为什么会在安装、更新或运行应用后快速回涨。',
-    safetyNote: '其中可能包含正在使用的安装包、诊断追踪和程序工作文件；当前只显示占用，不允许直接清理。',
-    minimumAgeDays: 0,
-    maximumAgeDays: 7,
-    selectable: false,
     requiresAdmin: true
   },
   {
@@ -225,7 +269,7 @@ const rules = [
     roots: [path.join(local, 'CrashDumps')],
     pattern: /\.dmp$/i,
     risk: 'low',
-    reason: '至少 7 天前的崩溃诊断文件；近期转储会保留，便于排查刚发生的问题。',
+    reason: '识别程序崩溃诊断文件；最近 7 天的转储只统计并保留，便于排查刚发生的问题。',
     safetyNote: '删除后不影响程序运行，但会失去对应崩溃的调试信息。',
     minimumAgeDays: 7,
     selectable: true
@@ -237,7 +281,7 @@ const rules = [
     roots: [path.join(local, 'Microsoft', 'Windows', 'WER')],
     pattern: /.*/,
     risk: 'low',
-    reason: '至少 14 天前的 Windows 错误报告和诊断队列。',
+    reason: '识别 Windows 错误报告和诊断队列；最近 14 天的内容只统计并保留。',
     safetyNote: '如果正在排查系统或应用故障，应先取消选择。',
     minimumAgeDays: 14,
     selectable: true
@@ -273,7 +317,7 @@ const rules = [
     roots: [path.join(local, 'D3DSCache')],
     pattern: /.*/,
     risk: 'safe',
-    reason: '至少 3 天前的显卡着色器缓存；游戏和应用后续可重新生成。',
+    reason: '识别显卡着色器缓存；最近 3 天的内容保留，其余可由游戏和应用重新生成。',
     safetyNote: '首次重新运行相关游戏或应用时可能出现短暂编译等待。',
     minimumAgeDays: 3,
     selectable: true
@@ -282,7 +326,10 @@ const rules = [
     id: 'chrome-cache',
     title: 'Chrome 浏览器缓存',
     category: '浏览器',
-    roots: () => browserCacheRoots(path.join(local, 'Google', 'Chrome', 'User Data')),
+    roots: () => uniqueRoots([
+      ...browserCacheRoots(path.join(local, 'Google', 'Chrome', 'User Data')),
+      ...browserCacheRoots(path.join(local, 'Google', 'Chrome SxS', 'User Data'))
+    ]),
     pattern: /.*/,
     risk: 'low',
     reason: '只扫描各 Profile 的 Cache、Code Cache 和 GPUCache，不触碰 Cookie、密码、历史记录和书签。',
@@ -303,6 +350,25 @@ const rules = [
     minimumAgeDays: 3,
     selectable: true,
     processNames: ['msedge.exe']
+  },
+  {
+    id: 'chromium-family-cache',
+    title: '其他 Chromium 浏览器缓存',
+    category: '浏览器',
+    roots: () => uniqueRoots([
+      ...browserCacheRoots(path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data')),
+      ...browserCacheRoots(path.join(local, 'Vivaldi', 'User Data')),
+      ...browserCacheRoots(path.join(local, 'Chromium', 'User Data')),
+      ...browserCacheRoots(path.join(roaming, 'Opera Software', 'Opera Stable'), true),
+      ...browserCacheRoots(path.join(roaming, 'Opera Software', 'Opera GX Stable'), true)
+    ]),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '识别 Brave、Vivaldi、Chromium 与 Opera 各用户配置中的可重建页面、代码、媒体和图形缓存。',
+    safetyNote: '不扫描 Cookie、登录数据、历史记录、书签、扩展、下载或站点数据库；相关浏览器运行时禁止执行。',
+    minimumAgeDays: 3,
+    selectable: true,
+    processNames: ['brave.exe', 'vivaldi.exe', 'chromium.exe', 'opera.exe']
   },
   {
     id: 'firefox-cache',
@@ -352,14 +418,71 @@ const rules = [
     processNames: ['Discord.exe']
   },
   {
-    id: 'teams-cache',
-    title: 'Microsoft Teams 传统客户端缓存',
+    id: 'dingtalk-cache',
+    title: '钉钉界面缓存',
     category: '应用缓存',
-    roots: () => electronCacheRoots([path.join(roaming, 'Microsoft', 'Teams')]),
+    roots: () => findNamedCacheRoots([
+      path.join(roaming, 'DingTalk'),
+      path.join(local, 'DingTalk_108')
+    ], { maxDepth: 4 }),
     pattern: /.*/,
     risk: 'low',
-    reason: '只扫描传统 Teams 客户端的界面缓存、代码缓存和 GPU 缓存。',
-    safetyNote: '不处理登录状态、聊天数据库、下载文件或新 Teams 应用数据；Teams 运行时禁止执行。',
+    reason: '只识别钉钉程序目录中名称明确的页面、代码和图形缓存目录。',
+    safetyNote: '不处理聊天数据库、接收文件、下载、账号配置或用户文档；钉钉运行时禁止执行。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['DingTalk.exe']
+  },
+  {
+    id: 'qq-renderer-cache',
+    title: 'QQ 界面渲染缓存',
+    category: '应用缓存',
+    roots: () => findNamedCacheRoots([
+      path.join(roaming, 'QQ'),
+      path.join(roaming, 'Tencent', 'QQ'),
+      path.join(local, 'Tencent', 'QQ')
+    ], {
+      maxDepth: 4,
+      names: ['Code Cache', 'GPUCache', 'DawnCache', 'GrShaderCache', 'ShaderCache']
+    }),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '只识别 QQ 的代码与图形渲染缓存，不把名称含糊的 Cache 目录当作垃圾。',
+    safetyNote: '不处理聊天记录、图片、视频、文件、账号数据或数据库；QQ 运行时禁止执行。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['QQ.exe']
+  },
+  {
+    id: 'wemeet-cache',
+    title: '腾讯会议界面缓存',
+    category: '应用缓存',
+    roots: () => findNamedCacheRoots([
+      path.join(roaming, 'WeMeetApp'),
+      path.join(local, 'Tencent', 'WeMeet')
+    ], { maxDepth: 4 }),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '识别腾讯会议客户端中可重新生成的页面、代码与图形缓存。',
+    safetyNote: '不处理会议录制、下载、账号数据、配置或日志；腾讯会议运行时禁止执行。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['wemeetapp.exe', 'wemeet.exe']
+  },
+  {
+    id: 'teams-cache',
+    title: 'Microsoft Teams 客户端缓存',
+    category: '应用缓存',
+    roots: async () => uniqueRoots([
+      ...electronCacheRoots([path.join(roaming, 'Microsoft', 'Teams')]),
+      ...await findNamedCacheRoots([
+        path.join(local, 'Packages', 'MSTeams_8wekyb3d8bbwe', 'LocalCache', 'Microsoft', 'MSTeams')
+      ], { maxDepth: 4 })
+    ]),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '识别传统与新版 Teams 客户端中名称明确的可重建界面、代码和图形缓存。',
+    safetyNote: '不处理登录状态、聊天数据库、下载文件、配置或其他应用数据；Teams 运行时禁止执行。',
     minimumAgeDays: 7,
     selectable: true,
     processNames: ['Teams.exe', 'ms-teams.exe']
@@ -376,6 +499,29 @@ const rules = [
     minimumAgeDays: 7,
     selectable: true,
     processNames: ['slack.exe']
+  },
+  {
+    id: 'desktop-utility-cache',
+    title: '常见桌面工具界面缓存',
+    category: '应用缓存',
+    roots: () => uniqueRoots([
+      ...electronCacheRoots([
+        path.join(roaming, 'Notion'),
+        path.join(roaming, 'Postman'),
+        path.join(roaming, 'Figma'),
+        path.join(roaming, 'Obsidian'),
+        path.join(roaming, 'Spotify'),
+        path.join(roaming, 'io.github.clash-verge-rev.clash-verge-rev'),
+        path.join(local, 'io.github.clash-verge-rev.clash-verge-rev')
+      ])
+    ]),
+    pattern: /.*/,
+    risk: 'low',
+    reason: '识别 Notion、Postman、Figma、Obsidian、Spotify 与 Clash Verge 等桌面工具的标准可重建界面缓存。',
+    safetyNote: '只接受明确的 Cache、Code Cache、GPUCache 等子目录；任何一个相关应用运行时都不会执行清理。',
+    minimumAgeDays: 7,
+    selectable: true,
+    processNames: ['Notion.exe', 'Postman.exe', 'Figma.exe', 'Obsidian.exe', 'Spotify.exe', 'clash-verge.exe']
   },
   {
     id: 'jetbrains-cache',
@@ -397,7 +543,7 @@ const rules = [
     roots: [path.join(windows, 'Minidump')],
     pattern: /\.dmp$/i,
     risk: 'low',
-    reason: '至少 14 天前的系统蓝屏小型转储，仅用于故障诊断。',
+    reason: '识别系统蓝屏小型转储；最近 14 天的内容保留用于故障诊断。',
     safetyNote: '如果仍在排查蓝屏问题应保留；无权限文件会跳过，不会自动提权。',
     minimumAgeDays: 14,
     selectable: true,
@@ -410,7 +556,7 @@ const rules = [
     roots: [path.join(local, 'npm-cache')],
     pattern: /.*/,
     risk: 'low',
-    reason: '至少 14 天前的 npm 下载缓存，后续需要时可重新下载。',
+    reason: '识别 npm 下载缓存；最近 14 天的内容保留，其余可在需要时重新下载。',
     safetyNote: '不处理项目中的 node_modules、配置文件或全局安装包。',
     minimumAgeDays: 14,
     selectable: true
@@ -422,7 +568,7 @@ const rules = [
     roots: [path.join(local, 'pip', 'Cache')],
     pattern: /.*/,
     risk: 'low',
-    reason: '至少 14 天前的 Python pip 下载与 wheel 缓存，后续需要时可重新下载。',
+    reason: '识别 Python pip 下载与 wheel 缓存；最近 14 天的内容保留，其余可重新下载。',
     safetyNote: '不处理虚拟环境、Python 包安装目录或项目文件。',
     minimumAgeDays: 14,
     selectable: true
@@ -437,7 +583,7 @@ const rules = [
     ]),
     pattern: /.*/,
     risk: 'low',
-    reason: '至少 14 天前的 NuGet HTTP 与插件下载缓存，可由 NuGet 重新获取。',
+    reason: '识别 NuGet HTTP 与插件下载缓存；最近 14 天的内容保留，其余可由 NuGet 重新获取。',
     safetyNote: '不处理全局包目录、项目依赖和离线包源。',
     minimumAgeDays: 14,
     selectable: true
@@ -487,8 +633,8 @@ function isPathExcluded(candidate, exclusions = []) {
   })
 }
 
-function resolvedRoots(rule) {
-  const values = typeof rule.roots === 'function' ? rule.roots() : rule.roots
+async function resolvedRoots(rule) {
+  const values = await (typeof rule.roots === 'function' ? rule.roots() : rule.roots)
   return [...new Set((values || []).map(value => path.resolve(String(value))))]
 }
 
@@ -554,11 +700,13 @@ async function collectRuleFiles(rule, options = {}) {
   const files = []
   const queue = []
   const skipped = { recent: 0, older: 0, links: 0, inaccessible: 0, outsideRoot: 0, unsupported: 0, excluded: 0 }
+  const observed = { items: 0, bytes: 0 }
+  const retained = { recentItems: 0, recentBytes: 0, olderItems: 0, olderBytes: 0 }
   let visited = 0
   let truncated = false
   let limitReason = null
 
-  for (const rootPath of resolvedRoots(rule)) {
+  for (const rootPath of await resolvedRoots(rule)) {
     if (signal?.aborted) throw abortError()
     if (isPathExcluded(rootPath, options.exclusions)) {
       skipped.excluded++
@@ -643,10 +791,22 @@ async function collectRuleFiles(rule, options = {}) {
           const minimumModifiedAt = now - rule.minimumAgeDays * DAY_MS
           if (rule.minimumAgeDays > 0 && stat.mtimeMs > minimumModifiedAt) {
             skipped.recent++
+            if (rule.selectable) {
+              observed.items++
+              observed.bytes += stat.size
+              retained.recentItems++
+              retained.recentBytes += stat.size
+            }
             continue
           }
           if (rule.maximumAgeDays != null && stat.mtimeMs <= now - rule.maximumAgeDays * DAY_MS) {
             skipped.older++
+            if (rule.selectable) {
+              observed.items++
+              observed.bytes += stat.size
+              retained.olderItems++
+              retained.olderBytes += stat.size
+            }
             continue
           }
           const canonicalPath = await fsp.realpath(filePath)
@@ -654,6 +814,8 @@ async function collectRuleFiles(rule, options = {}) {
             skipped.outsideRoot++
             continue
           }
+          observed.items++
+          observed.bytes += stat.size
           files.push({
             candidateId: randomUUID(),
             path: filePath,
@@ -676,7 +838,7 @@ async function collectRuleFiles(rule, options = {}) {
           skipped.inaccessible++
         }
         if (visited % 200 === 0) {
-          onProgress?.({ ruleId: rule.id, visited, found: files.length, current: current.dir })
+          onProgress?.({ ruleId: rule.id, visited, found: observed.items, candidates: files.length, current: current.dir })
           await new Promise(resolve => setImmediate(resolve))
         }
       }
@@ -688,11 +850,13 @@ async function collectRuleFiles(rule, options = {}) {
     }
   }
 
-  return { files, visited, skipped, truncated, limitReason, durationMs: Date.now() - startedAt }
+  return { files, observed, retained, visited, skipped, truncated, limitReason, durationMs: Date.now() - startedAt }
 }
 
 function resultFor(rule, scan, guard) {
   const selectable = Boolean(rule.selectable && guard.blocked.length === 0 && !guard.checkFailed)
+  const candidateItemCount = rule.selectable ? scan.files.length : 0
+  const candidateTotal = rule.selectable ? scan.files.reduce((sum, item) => sum + item.size, 0) : 0
   return {
     ...publicRule(rule),
     selectable,
@@ -705,8 +869,11 @@ function resultFor(rule, scan, guard) {
         ? `请先关闭 ${guard.blocked.join('、')}，然后重新扫描`
         : null,
     files: scan.files,
-    itemCount: scan.files.length,
-    total: scan.files.reduce((sum, item) => sum + item.size, 0),
+    itemCount: scan.observed.items,
+    total: scan.observed.bytes,
+    candidateItemCount,
+    candidateTotal,
+    retained: scan.retained,
     volumeBreakdown: [],
     summaryOnly: false,
     truncated: scan.truncated,
@@ -734,6 +901,9 @@ async function scanSummaryRule(rule, options = {}) {
       files: [],
       itemCount: Math.max(0, Number(result.items || 0)),
       total: Math.max(0, Number(result.bytes || 0)),
+      candidateItemCount: 0,
+      candidateTotal: 0,
+      retained: { recentItems: 0, recentBytes: 0, olderItems: 0, olderBytes: 0 },
       volumeBreakdown: Array.isArray(result.volumes) ? result.volumes : [],
       summaryOnly: true,
       truncated: false,
@@ -755,6 +925,9 @@ async function scanSummaryRule(rule, options = {}) {
       files: [],
       itemCount: 0,
       total: 0,
+      candidateItemCount: 0,
+      candidateTotal: 0,
+      retained: { recentItems: 0, recentBytes: 0, olderItems: 0, olderBytes: 0 },
       volumeBreakdown: [],
       summaryOnly: true,
       truncated: false,
@@ -825,6 +998,10 @@ module.exports = {
   validateCandidate,
   runningExecutableNames,
   processGuard,
+  resultFor,
+  browserCacheRoots,
+  electronCacheRoots,
+  findNamedCacheRoots,
   pathKey,
   isWithinRoot,
   isPathExcluded,

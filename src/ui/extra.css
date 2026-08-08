@@ -897,6 +897,16 @@
 }
 .rule-safety .app-icon { width: 13px; height: 13px; flex: none; color: var(--green); }
 .rule-safety small { padding: 3px 6px; margin-left: auto; color: #8eacd0; border-radius: 5px; background: rgba(42, 69, 103, .45); white-space: nowrap; }
+.rule-retained {
+  padding: 7px 9px;
+  margin: 8px 0 0;
+  color: #d4b56d;
+  font-size: 11px;
+  line-height: 1.55;
+  border: 1px solid rgba(177, 137, 48, .32);
+  border-radius: 7px;
+  background: rgba(96, 70, 18, .18);
+}
 .admin-chip { padding: 4px 7px; color: #eccd82; font-size: 10px; border: 1px solid rgba(164, 127, 44, .4); border-radius: 99px; background: rgba(99, 74, 22, .22); }
 .slimming-state { display: grid; gap: 5px; justify-items: end; text-align: right; }
 .slimming-state > b { font-size: 15px; }
@@ -1839,6 +1849,11 @@
 .compact-rule-result b,
 .compact-rule-result small {
   display: block;
+}
+
+.compact-rule-result small > span {
+  display: block;
+  white-space: nowrap;
 }
 
 .compact-rule-result b {
@@ -3949,6 +3964,12 @@
 
 :root[data-theme="light"] #app .rule-evidence > summary {
   color: #28765a;
+}
+
+:root[data-theme="light"] #app .rule-retained {
+  color: #735611;
+  border-color: #e1c77f;
+  background: #fff8e7;
 }
 
 :root[data-theme="light"] #app .rule-files {

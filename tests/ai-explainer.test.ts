@@ -47,7 +47,7 @@ describe('optional AI explainer', () => {
 
   it('redacts credentials before evidence can leave the computer', () => {
     const preview = [
-      'API_KEY=sk-1234567890abcdefghijklmnop',
+      'API_KEY=example-redaction-token-1234567890',
       'password: super-secret-value',
       'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
     ].join('\n')

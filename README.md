@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.9.0--beta.4-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.4">
+  <img src="https://img.shields.io/badge/版本-0.9.0--beta.5-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.5">
   <img src="https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows11" alt="Windows">
   <img src="https://img.shields.io/badge/Electron-43.x-47848F?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue.js">
@@ -43,7 +43,7 @@ Disk Sense 采用“空间解释 + 变化追踪 + 安全清理”的方式：
 | 目录与文件 | 从 `C:\` 浏览文件系统或跨磁盘即时搜索；支持连续输入、键盘上下选择和 Enter 分析，搜索数据库在后台自动建立并同步新增、改名和删除，找到对象后可继续解释用途、来源与风险 |
 | AI 深入分析 | 支持 OpenAI 兼容接口、自动发现模型、普通/深入两种分析强度；分析结论保存在本地，并在文件变化后自动判定为需要重新分析 |
 | 空间概览与变化记录 | 在首页查看多磁盘容量、建立变化基线，并对比两次扫描之间的新增、删除、大小变化和明确的文件移动 |
-| 垃圾清理 | 22 项低风险或仅检测规则，覆盖 Windows、浏览器、应用与开发工具缓存，支持预览、排除项、进程保护、失败明细和清理历史 |
+| 垃圾清理 | 26 项低风险或仅检测规则，分别展示“发现占用”和“当前可处理”，覆盖 Windows、浏览器、应用与开发工具缓存，并支持预览、排除项、进程保护、失败明细和清理历史 |
 | 系统瘦身 | 检测休眠文件、WinSxS、虚拟内存和 Windows.old；可在明确确认后调用 powercfg、DISM 或打开 Windows 官方设置 |
 | 应用归属 | 识别浏览器、通信工具、游戏平台和开发工具在 C/D 盘中的常见数据位置 |
 | 风险体系 | 高风险、较高、重点、低风险、安全五级风险，统一使用红、橙、黄、蓝、绿标识 |
@@ -150,13 +150,15 @@ pnpm release:win        # 构建 Windows 安装版和便携版
 desktop/                Electron 主进程、preload、安全清理与扫描核心
 src/                    Vue 3 + TypeScript 用户界面
 tests/                  单元、安全边界、状态恢复和性能约束测试
-docs/                   产品基础、运维和发布验收文档
+docs/                   产品、安全、架构和本地运维文档
 .github/workflows/      GitHub Actions 持续集成
 ```
 
 ## 版本状态
 
-当前版本为 **0.9.0-beta.4 公开测试版**。它首次把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+当前版本为 **0.9.0-beta.5 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新扩大了常见浏览器和桌面应用缓存识别，同时把“已发现内容”和“满足安全条件的清理候选”分开显示。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+
+当前公开测试构建尚未配置可信 Authenticode 证书，Windows SmartScreen 可能显示“未知发布者”；下载后请使用 Release 中的 SHA-256 文件核对完整性。
 
 仓库早期曾创建 `v1.0.0` 标签，但项目尚缺少足够的真实用户反馈和多设备长期验证。本次主动把成熟度重新校准到 0.9 测试阶段；历史标签保留用于追溯，不代表当前稳定性判断。
 
@@ -167,7 +169,7 @@ docs/                   产品基础、运维和发布验收文档
 - 收集公开测试用户在真实文件、搜索和清理场景中的反馈。
 - 在不同 Windows 版本、硬件和长期使用环境中验证安全性与稳定性。
 
-详细记录见 [发布检查清单](docs/release-checklist.md) 和 [更新日志](CHANGELOG.md)。
+版本变化和安全边界见 [更新日志](CHANGELOG.md) 与 [清理安全模型](docs/cleanup-safety.md)。
 
 ## 许可证
 

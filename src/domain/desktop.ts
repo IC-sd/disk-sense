@@ -371,8 +371,18 @@ export interface CleanerScanResult {
   processCheckFailed: boolean
   blockedReason: string | null
   files: CleanerFile[]
+  /** All known files observed in the rule roots, including retained recent files. */
   itemCount: number
   total: number
+  /** Files that passed the age and safety gates and may enter a cleanup plan. */
+  candidateItemCount: number
+  candidateTotal: number
+  retained: {
+    recentItems: number
+    recentBytes: number
+    olderItems: number
+    olderBytes: number
+  }
   summaryOnly: boolean
   volumeBreakdown: Array<{
     root: string

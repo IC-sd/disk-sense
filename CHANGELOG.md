@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.0-beta.5 - 2026-08-09
+
+This beta broadens conventional cleanup coverage without broadening the deletion boundary. Scanning now distinguishes all recognized files from the smaller set that currently satisfies retention, process and rule safety conditions.
+
+### Added
+
+- Expanded conventional cleanup from 22 to 26 rules with Chrome Canary, Brave, Vivaldi, Chromium, Opera, DingTalk, QQ renderer cache, Tencent Meeting, new Teams cache locations, and standard rebuildable caches for several desktop utilities.
+- Added explicit observed, retained and actionable counters so recent files can explain occupied space without silently becoming cleanup candidates.
+- Added focused safety tests for exact cache-directory discovery and observed-versus-actionable accounting.
+
+### Changed
+
+- Replaced unbounded-style sequential cache-root discovery with bounded per-root cursor queues and periodic event-loop yielding, preventing one application tree from consuming every discovery slot.
+- Updated cleanup rows and completion summaries to make the difference between discovered files and safely actionable files visible.
+- Removed the duplicate recent-temporary-files observation rule; recent files are now retained and reported by their owning cleanup rule, avoiding double counting.
+- Expanded repository ignore rules for local databases, credentials, logs, screenshots, editor state and build artifacts.
+- Pinned vulnerable transitive build and download dependencies to patched releases reported by the current package audit.
+
+### Safety
+
+- Generic names containing `cache` are not accepted. Only explicitly allowlisted rebuildable directory names are discovered.
+- Chat history, user databases, downloads, login state, configuration and personal files remain outside the new application-cache rules.
+- Existing candidate-vault, process, age, exclusion, canonical-path and file-identity checks remain mandatory before a file can be moved to the Recycle Bin.
+
 ## 0.9.0-beta.4 - 2026-08-01
 
 Public beta of the expanded Disk Sense desktop experience. The project maturity

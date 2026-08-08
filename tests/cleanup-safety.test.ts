@@ -1,5 +1,5 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
-import { collectRuleFiles, isPathExcluded, isWithinRoot, PROCESS_CHECK_FAILED, validateCandidate } from '../desktop/cleaner.cjs'
+import { collectRuleFiles, findNamedCacheRoots, isPathExcluded, isWithinRoot, PROCESS_CHECK_FAILED, resultFor, validateCandidate } from '../desktop/cleaner.cjs'
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
 import { CandidateVault, MAX_EXECUTE_FILES, compactCleanupJob, executeCleanup, executeCleanupPlan } from '../desktop/cleanup-executor.cjs'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -54,6 +54,53 @@ describe('cleanup safety boundary', () => {
 
     expect(result.files.map((item: { path: string }) => item.path)).toEqual([oldFile])
     expect(result.skipped.recent).toBe(1)
+    expect(result.observed).toEqual({
+      items: 2,
+      bytes: Buffer.byteLength('old') + Buffer.byteLength('recent')
+    })
+    expect(result.retained).toMatchObject({ recentItems: 1, recentBytes: Buffer.byteLength('recent') })
+  })
+
+  it('discovers only explicitly named rebuildable cache directories inside an application root', async () => {
+    const root = createRoot()
+    const cache = path.join(root, 'renderer', 'Code Cache')
+    const userData = path.join(root, 'renderer', 'IndexedDB')
+    const misleading = path.join(root, 'downloads', 'cached-files')
+    fs.mkdirSync(cache, { recursive: true })
+    fs.mkdirSync(userData, { recursive: true })
+    fs.mkdirSync(misleading, { recursive: true })
+
+    expect(await findNamedCacheRoots([root], { maxDepth: 3 })).toEqual([cache])
+  })
+
+  it('reserves a bounded discovery budget for every configured application root', async () => {
+    const firstRoot = createRoot()
+    const secondRoot = createRoot()
+    fs.mkdirSync(path.join(firstRoot, 'ordinary-data'), { recursive: true })
+    const secondCache = path.join(secondRoot, 'Code Cache')
+    fs.mkdirSync(secondCache, { recursive: true })
+
+    expect(await findNamedCacheRoots([firstRoot, secondRoot], { maxDirectories: 2 })).toEqual([secondCache])
+  })
+
+  it('reports broad observations separately from cleanup candidates', async () => {
+    const root = createRoot()
+    const oldFile = path.join(root, 'old.tmp')
+    const recentFile = path.join(root, 'recent.tmp')
+    fs.writeFileSync(oldFile, 'old file')
+    fs.writeFileSync(recentFile, 'recent file')
+    makeOld(oldFile)
+    const rule = ruleFor(root)
+    const scan = await collectRuleFiles(rule)
+    const result = resultFor(rule, scan, { blocked: [], checkFailed: false })
+
+    expect(result).toMatchObject({
+      itemCount: 2,
+      candidateItemCount: 1,
+      total: Buffer.byteLength('old file') + Buffer.byteLength('recent file'),
+      candidateTotal: Buffer.byteLength('old file')
+    })
+    expect(result.files).toHaveLength(1)
   })
 
   it('can observe a recent age window without mixing in older safe candidates', async () => {

@@ -145,7 +145,7 @@ describe('explainer engine', () => {
 
   it('does not classify C:\\Users as a cache because another root folder is named tmp', () => {
     const stat = { size: 0, mtimeMs: Date.now(), isDirectory: () => true }
-    const result = explain('C:\\Users', stat, [{ name: '12285' }, { name: 'tmp' }, { name: 'Windows' }])
+    const result = explain('C:\\Users', stat, [{ name: 'ExampleUser' }, { name: 'tmp' }, { name: 'Windows' }])
     expect(result.classification).toBe('user-profile-root')
     expect(result.what).toBe('Windows 用户配置根目录')
   })
