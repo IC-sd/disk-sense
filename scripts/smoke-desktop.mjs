@@ -20,6 +20,7 @@ async function reservePort() {
 
 const port = await reservePort()
 const executable = path.resolve(process.argv[2] || 'release/win-unpacked/Disk Sense.exe')
+const developmentServerUrl = new URL(process.env.DISK_SENSE_DEV_SERVER_URL || 'http://127.0.0.1:5173/')
 const captureView = ['overview', 'inspect', 'cleaner', 'changes', 'settings'].includes(process.env.DISK_SENSE_SMOKE_VIEW)
   ? process.env.DISK_SENSE_SMOKE_VIEW
   : 'overview'
@@ -58,6 +59,7 @@ fs.writeFileSync(path.join(smokeSearchRoot, 'Users', 'Test', 'Documents', 'word-
 fs.writeFileSync(path.join(smokeSearchRoot, 'node_modules', 'word', 'lib', 'word.tcl'), 'dependency fixture')
 const smokeSearchQuery = process.env.DISK_SENSE_SMOKE_SEARCH_QUERY || '*$Recycle*'
 const smokeSearchExpected = process.env.DISK_SENSE_SMOKE_SEARCH_EXPECTED || '$Recycle.Bin'
+const smokeRequiresOfficeShortcut = realWordShortcutAvailable && smokeSearchQuery.toLocaleLowerCase().includes('word')
 const smokeArguments = process.env.DISK_SENSE_SMOKE_DEV === '1'
   ? ['--disable-gpu', `--remote-debugging-port=${port}`, path.resolve('desktop/main.cjs'), '--dev', '--smoke-test']
   : [`--remote-debugging-port=${port}`, '--smoke-test']
@@ -87,7 +89,7 @@ async function target() {
           item.url.startsWith('file:') ||
           (
             process.env.DISK_SENSE_SMOKE_DEV === '1' &&
-            item.url.startsWith('http://127.0.0.1:5173')
+            item.url.startsWith(developmentServerUrl.origin)
           )
         ) &&
         item.title === 'Disk Sense'
@@ -155,7 +157,9 @@ async function evaluate(webSocketUrl) {
           const settingsButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('设置与关于'))
           settingsButton?.click()
           await new Promise(resolve => setTimeout(resolve, 80))
-          document.querySelector('.settings-tabs button:last-child')?.click()
+          const generalSettingsButton = [...document.querySelectorAll('.settings-tabs button')]
+            .find(button => button.textContent.includes('通用'))
+          generalSettingsButton?.click()
           await new Promise(resolve => setTimeout(resolve, 80))
           const settingsRendered = document.body.innerText.includes('清理安全边界') && document.body.innerText.includes(appInfo.version)
           const searchMaintenanceRendered = (
@@ -247,7 +251,7 @@ async function evaluate(webSocketUrl) {
               await new Promise(resolve => setTimeout(resolve, 50))
             }
             inspectNativeIconRendered = Boolean(document.querySelector('.native-result-icon'))
-            inspectOfficeShortcutResolved = !${JSON.stringify(realWordShortcutAvailable)} ||
+            inspectOfficeShortcutResolved = !${JSON.stringify(smokeRequiresOfficeShortcut)} ||
               [...document.querySelectorAll('.file-row')].some(row => row.textContent.includes('Microsoft Word'))
             const awaitingLayout = document.querySelector('.explorer-layout.search-awaiting-selection')
             const awaitingPanel = awaitingLayout?.querySelector('.explain-panel')

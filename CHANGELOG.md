@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0-beta.6 - 2026-08-10
+
+This beta focuses on desktop responsiveness and development reliability without changing the cleanup boundary.
+
+### Changed
+
+- Paused directory metadata hydration, icon loading, search refreshes and index subscriptions while the cached Directory & Files page is inactive, reducing background work during page switches.
+- Made storage usage and device inspection lazy in Settings so opening the page no longer starts both expensive reads immediately.
+- Reordered Settings around the common appearance and privacy entry while keeping storage and device details available on demand.
+- Made Electron development mode follow the actual loopback URL selected by Vite instead of assuming port 5173.
+
+### Validation
+
+- Added lifecycle regression coverage for cached workspaces and strict tests for the dynamic development-server boundary.
+- Extended real Electron smoke coverage for dynamic development ports, global Word search ranking, settings navigation and existing renderer security assertions.
+
 ## 0.9.0-beta.5 - 2026-08-09
 
 This beta broadens conventional cleanup coverage without broadening the deletion boundary. Scanning now distinguishes all recognized files from the smaller set that currently satisfies retention, process and rule safety conditions.

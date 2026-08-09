@@ -340,7 +340,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import { desktopApi } from '../platform/api'
 import { createAiEvidence } from '../application/ai-evidence'
 import { appAiAnalysisSession, applyAiRecord } from '../application/ai-session'
@@ -412,6 +412,8 @@ let nativeIconTimer: ReturnType<typeof setTimeout> | null = null
 let visibleMetadataTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 let unsubscribeIndex: (() => void) | null = null
+let workspaceActive = false
+let initialized = false
 const pendingNativeIcons = new Set<string>()
 const hydratingPaths = new Set<string>()
 const maximumNativePresentations = 600
@@ -632,11 +634,13 @@ async function hydrateVisibleItems(currentRequest: number) {
 }
 
 async function refreshVisibleBrowseRows(currentRequest: number) {
+  if (!workspaceActive) return
   await hydrateVisibleItems(currentRequest)
-  if (currentRequest === navigationRequestId) await estimateVisibleDirectories(currentRequest)
+  if (workspaceActive && currentRequest === navigationRequestId) await estimateVisibleDirectories(currentRequest)
 }
 
 function scheduleVisibleBrowseRefresh() {
+  if (!workspaceActive) return
   if (visibleMetadataTimer) clearTimeout(visibleMetadataTimer)
   visibleMetadataTimer = setTimeout(() => {
     visibleMetadataTimer = null
@@ -789,10 +793,11 @@ function handleSearchEnter() {
 }
 
 function scheduleBackgroundSearchRefresh() {
+  if (!workspaceActive) return
   if (backgroundRefreshTimer) clearTimeout(backgroundRefreshTimer)
   backgroundRefreshTimer = setTimeout(() => {
     backgroundRefreshTimer = null
-    if (mode.value === 'search' && searchQuery.value.trim()) {
+    if (workspaceActive && mode.value === 'search' && searchQuery.value.trim()) {
       void performSearch({ background: true })
     }
   }, 220)
@@ -1013,6 +1018,7 @@ function nativeIcon(filePath: string) {
 }
 
 function scheduleNativeIconLoad() {
+  if (!workspaceActive) return
   if (nativeIconTimer) clearTimeout(nativeIconTimer)
   nativeIconTimer = setTimeout(() => {
     nativeIconTimer = null
@@ -1021,7 +1027,7 @@ function scheduleNativeIconLoad() {
 }
 
 async function loadVisibleNativeIcons() {
-  if (mode.value !== 'search') return
+  if (!workspaceActive || mode.value !== 'search') return
   const api = desktopApi()
   if (!api?.inspectFilePresentations) return
   const paths = visibleRows.value
@@ -1129,36 +1135,72 @@ function fileTypeLabel(extension: string) {
 }
 
 onMounted(() => {
-  const api = desktopApi()
+  initialized = true
   void loadAiStatus()
   void loadIndexStatus()
   void loadDirectory('C:\\')
-  if (api) {
-    unsubscribeIndex = api.onInspectIndexProgress(status => {
-      const wasBuilding = searchIndex.value?.building
-      const previousChangedAt = lastObservedChangedAt || searchIndex.value?.lastChangedAt || ''
-      searchIndex.value = status
-      lastObservedChangedAt = status.lastChangedAt || ''
-      const rebuildCompleted = Boolean(wasBuilding && !status.building)
-      const filesChanged = Boolean(
-        status.lastChangedAt
-        && status.lastChangedAt !== previousChangedAt
-      )
-      if (rebuildCompleted || filesChanged) {
-        scheduleBackgroundSearchRefresh()
-      }
-    })
-  }
   nextTick(attachScrollerObserver)
 })
 
-onBeforeUnmount(() => {
+function subscribeIndexProgress() {
+  if (unsubscribeIndex) return
+  const api = desktopApi()
+  if (!api) return
+  unsubscribeIndex = api.onInspectIndexProgress(status => {
+    const wasBuilding = searchIndex.value?.building
+    const previousChangedAt = lastObservedChangedAt || searchIndex.value?.lastChangedAt || ''
+    searchIndex.value = status
+    lastObservedChangedAt = status.lastChangedAt || ''
+    const rebuildCompleted = Boolean(wasBuilding && !status.building)
+    const filesChanged = Boolean(status.lastChangedAt && status.lastChangedAt !== previousChangedAt)
+    if (rebuildCompleted || filesChanged) scheduleBackgroundSearchRefresh()
+  })
+}
+
+function stopActiveWork() {
+  workspaceActive = false
+  navigationRequestId += 1
+  selectionRequestId += 1
+  searchRequestId += 1
+  loading.value = false
+  searching.value = false
   if (rowClickTimer) clearTimeout(rowClickTimer)
   if (searchTimer) clearTimeout(searchTimer)
   if (backgroundRefreshTimer) clearTimeout(backgroundRefreshTimer)
   if (nativeIconTimer) clearTimeout(nativeIconTimer)
   if (visibleMetadataTimer) clearTimeout(visibleMetadataTimer)
+  rowClickTimer = null
+  searchTimer = null
+  backgroundRefreshTimer = null
+  nativeIconTimer = null
+  visibleMetadataTimer = null
   unsubscribeIndex?.()
+  unsubscribeIndex = null
   resizeObserver?.disconnect()
+  resizeObserver = null
+  pendingNativeIcons.clear()
+  hydratingPaths.clear()
+  estimatingPaths.value = new Set()
+  estimatingCount.value = 0
+}
+
+onActivated(() => {
+  workspaceActive = true
+  subscribeIndexProgress()
+  if (!initialized) return
+  void loadAiStatus()
+  void loadIndexStatus()
+  nextTick(() => {
+    attachScrollerObserver()
+    if (!browsePath.value && !loading.value) void loadDirectory('C:\\')
+    else if (mode.value === 'browse') scheduleVisibleBrowseRefresh()
+    else {
+      scheduleNativeIconLoad()
+      if (searchQuery.value.trim()) scheduleBackgroundSearchRefresh()
+    }
+  })
 })
+
+onDeactivated(stopActiveWork)
+onBeforeUnmount(stopActiveWork)
 </script>

@@ -18,17 +18,17 @@
 
     <template v-if="info">
       <nav class="settings-tabs" aria-label="设置分类">
-        <button :class="{ active: tab === 'about' }" @click="openAbout">
-          <AppIcon name="overview" />
-          <span><b>关于</b><small>版本与设备信息</small></span>
-        </button>
-        <button :class="{ active: tab === 'storage' }" @click="tab = 'storage'">
-          <AppIcon name="database" />
-          <span><b>存储位置</b><small>程序与本地数据</small></span>
-        </button>
         <button :class="{ active: tab === 'general' }" @click="tab = 'general'">
           <AppIcon name="settings" />
           <span><b>通用</b><small>外观、隐私与安全</small></span>
+        </button>
+        <button :class="{ active: tab === 'storage' }" @click="openStorage">
+          <AppIcon name="database" />
+          <span><b>存储位置</b><small>程序与本地数据</small></span>
+        </button>
+        <button :class="{ active: tab === 'about' }" @click="openAbout">
+          <AppIcon name="overview" />
+          <span><b>关于</b><small>版本与设备信息</small></span>
         </button>
       </nav>
 
@@ -244,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import { applyTheme } from '../application/appearance'
 import { desktopApi } from '../platform/api'
 import { formatBytes } from '../shared/format'
@@ -260,7 +260,7 @@ import AppIcon from './AppIcon.vue'
 
 type SettingsTab = 'general' | 'storage' | 'about'
 
-const tab = ref<SettingsTab>('about')
+const tab = ref<SettingsTab>('general')
 const info = ref<AppInfo | null>(null)
 const device = ref<DeviceInfo | null>(null)
 const theme = ref<AppTheme>('dark')
@@ -273,6 +273,7 @@ const searchIndex = ref<FileSearchIndexStatus | null>(null)
 const rebuildingSearch = ref(false)
 const dataUsageLoading = ref(false)
 let stopIndexProgress: (() => void) | null = null
+let initialized = false
 
 const dataDrive = computed(() => driveOf(info.value?.userDataPath))
 const installDrive = computed(() => driveOf(info.value?.installPath))
@@ -366,6 +367,11 @@ async function loadDataUsage() {
   } finally {
     dataUsageLoading.value = false
   }
+}
+
+async function openStorage() {
+  tab.value = 'storage'
+  await loadDataUsage()
 }
 
 async function rebuildSearchIndex() {
@@ -463,21 +469,29 @@ async function openAbout() {
 }
 
 onMounted(() => {
-  stopIndexProgress = desktopApi()?.onInspectIndexProgress((status) => {
-    searchIndex.value = status
-  }) || null
+  initialized = true
   void (async () => {
     await load()
-    await Promise.allSettled([
-      loadDataUsage(),
-      loadSearchIndexStatus(),
-      openAbout()
-    ])
+    await loadSearchIndexStatus()
   })()
 })
 
-onBeforeUnmount(() => {
+function subscribeIndexProgress() {
+  if (stopIndexProgress) return
+  stopIndexProgress = desktopApi()?.onInspectIndexProgress((status) => {
+    searchIndex.value = status
+  }) || null
+}
+
+function stopActiveWork() {
   stopIndexProgress?.()
   stopIndexProgress = null
+}
+
+onActivated(() => {
+  subscribeIndexProgress()
+  if (initialized) void loadSearchIndexStatus()
 })
+onDeactivated(stopActiveWork)
+onBeforeUnmount(stopActiveWork)
 </script>

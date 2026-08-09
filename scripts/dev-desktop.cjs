@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
+const { normalizeDevelopmentServerUrl } = require('../desktop/development.cjs')
 
 const projectRoot = path.resolve(__dirname, '..')
 const desktopRoot = path.join(projectRoot, 'desktop')
@@ -66,6 +67,9 @@ async function main() {
   const server = await createServer()
   await server.listen()
   server.printUrls()
+  const developmentServerUrl = normalizeDevelopmentServerUrl(
+    server.resolvedUrls?.local?.[0] || server.resolvedUrls?.network?.[0]
+  )
 
   const electronExecutable = require('electron')
   let electron = null
@@ -83,6 +87,10 @@ async function main() {
     ], {
       cwd: projectRoot,
       stdio: 'inherit',
+      env: {
+        ...process.env,
+        DISK_SENSE_DEV_SERVER_URL: developmentServerUrl
+      },
       // Electron is a GUI executable. Hiding the child process can also hide
       // BrowserWindow after a main-process hot restart on Windows.
       windowsHide: false

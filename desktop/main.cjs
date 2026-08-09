@@ -17,6 +17,7 @@ const { createAiAnalysisStore } = require('./ai-analysis-store.cjs')
 const { overview, diskVolumes } = require('./system-info.cjs')
 const { createFileSearchWorkerService } = require('./file-search-client.cjs')
 const { createDiagnostics } = require('./diagnostics.cjs')
+const { normalizeDevelopmentServerUrl } = require('./development.cjs')
 
 app.setName('Disk Sense')
 const dataLocation = resolveDataLocation({
@@ -167,7 +168,7 @@ function createWindow() {
   }
   win.on('closed', () => { win = null })
   const rendererLoad = developmentMode
-    ? win.loadURL('http://127.0.0.1:5173')
+    ? win.loadURL(normalizeDevelopmentServerUrl(process.env.DISK_SENSE_DEV_SERVER_URL))
     : win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   rendererLoad
     .then(() => { if (!smokeTest) revealWindow() })

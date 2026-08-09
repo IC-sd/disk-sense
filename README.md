@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.9.0--beta.5-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.5">
+  <img src="https://img.shields.io/badge/版本-0.9.0--beta.6-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.6">
   <img src="https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows11" alt="Windows">
   <img src="https://img.shields.io/badge/Electron-43.x-47848F?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue.js">
@@ -156,7 +156,7 @@ docs/                   产品、安全、架构和本地运维文档
 
 ## 版本状态
 
-当前版本为 **0.9.0-beta.5 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新扩大了常见浏览器和桌面应用缓存识别，同时把“已发现内容”和“满足安全条件的清理候选”分开显示。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+当前版本为 **0.9.0-beta.6 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新重点降低页面切换和设置页首次进入时的后台负担，并修复开发热启动端口变化时可能出现的白屏或错误页面。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
 
 当前公开测试构建尚未配置可信 Authenticode 证书，Windows SmartScreen 可能显示“未知发布者”；下载后请使用 Release 中的 SHA-256 文件核对完整性。
 
