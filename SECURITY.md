@@ -12,7 +12,7 @@ Please do not publish a destructive-cleanup or path-validation vulnerability bef
 
 ## Supported versions
 
-Security fixes are provided for the latest 1.x release. Older pre-release builds are not supported.
+Disk Sense has not reached a stable 1.x release. Security fixes are provided for the latest published GitHub Release; a pre-release stops receiving fixes when a newer pre-release supersedes it.
 
 ## Cleanup guarantees
 

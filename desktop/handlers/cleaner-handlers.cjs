@@ -62,7 +62,7 @@ function failedMaintenanceJob(task, error) {
   }
 }
 
-function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
+function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer, operationCoordinator }) {
   const candidateVault = new CandidateVault()
   const activeScans = new Map()
   let activeCleanup = null
@@ -104,6 +104,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     if (activeMaintenance) throw new Error('系统维护正在执行，完成后才能扫描垃圾文件')
     if (activeCleanup) throw new Error('垃圾清理正在执行，完成后才能重新扫描')
     if (activeScans.has(ruleId)) throw new Error('该规则正在扫描')
+    const releaseOperation = operationCoordinator?.acquire('cleanup-scan', `rule-${ruleId}`) || (() => {})
     const controller = new AbortController()
     activeScans.set(ruleId, controller)
     try {
@@ -116,6 +117,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
       return result
     } finally {
       activeScans.delete(ruleId)
+      releaseOperation()
     }
   })
 
@@ -143,6 +145,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
       actionId: String(input?.actionId || ''),
       startedAt: new Date().toISOString()
     }
+    const releaseOperation = operationCoordinator?.acquire('maintenance', task.id) || (() => {})
     activeMaintenance = task
     try {
       const status = await baseMaintenanceStatus()
@@ -171,6 +174,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
       throw error
     } finally {
       activeMaintenance = null
+      releaseOperation()
     }
   })
   ipcMain.handle('cleaner:history', () => (db.read().cleanupJobs || []).map(historySummary))
@@ -218,6 +222,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
     if (activeMaintenance) throw new Error('系统维护正在执行，完成后才能清理垃圾文件')
     if (activeScans.size) throw new Error('请等待垃圾扫描完成后再执行清理')
     const id = `cleanup-${Date.now()}`
+    const releaseOperation = operationCoordinator?.acquire('cleanup-execute', id) || (() => {})
     const controller = new AbortController()
     activeCleanup = { id, controller }
     try {
@@ -243,6 +248,7 @@ function registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer }) {
       return job
     } finally {
       activeCleanup = null
+      releaseOperation()
     }
   })
   ipcMain.handle('cleaner:cancel', () => {

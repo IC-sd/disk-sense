@@ -332,6 +332,8 @@ async function evaluate(webSocketUrl) {
           let cleanerCategoryCount = 0
           let cleanerRuleDetailCount = 0
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_SCAN_CLEANER === '1')} && ${JSON.stringify(captureView)} === 'cleaner') {
+            document.querySelector('.cleanup-tabs button')?.click()
+            await new Promise(resolve => setTimeout(resolve, 120))
             const scanButtons = [...document.querySelectorAll('.cleaner-command-actions .secondary-button')]
             const scanButton = scanButtons.at(-1)
             scanButton?.click()
@@ -351,6 +353,13 @@ async function evaluate(webSocketUrl) {
               cleanerCategoryCount > 0 &&
               cleanerRuleDetailCount > 0
             )
+            if (cleanerDetailTab) {
+              const cleanerDetailLabel = cleanerDetailTab === 'history' ? '操作记录' : '系统瘦身'
+              const cleanerDetailButton = [...document.querySelectorAll('.cleanup-tabs button')]
+                .find(button => button.textContent.includes(cleanerDetailLabel))
+              cleanerDetailButton?.click()
+              await new Promise(resolve => setTimeout(resolve, 120))
+            }
           }
           let lightThemeSurfaces = null
           if (
@@ -437,10 +446,35 @@ async function evaluate(webSocketUrl) {
           )
             ? await api.smokeCapture()
             : null
+          const hmrWebSocketConnected = ${JSON.stringify(process.env.DISK_SENSE_SMOKE_DEV === '1')}
+            ? await new Promise(async resolve => {
+                const clientSource = await fetch('/@vite/client').then(response => response.text()).catch(() => '')
+                const token = clientSource.match(/const wsToken = "([^"]+)"/u)?.[1] || ''
+                if (!token) return resolve(false)
+                const socket = new WebSocket(
+                  location.origin.replace(/^http/u, 'ws') + '?token=' + encodeURIComponent(token),
+                  'vite-hmr'
+                )
+                const timeout = setTimeout(() => {
+                  socket.close()
+                  resolve(false)
+                }, 3000)
+                socket.addEventListener('open', () => {
+                  clearTimeout(timeout)
+                  socket.close()
+                  resolve(true)
+                }, { once: true })
+                socket.addEventListener('error', () => {
+                  clearTimeout(timeout)
+                  resolve(false)
+                }, { once: true })
+              })
+            : null
           return {
             title: document.title,
             rendered: Boolean(document.querySelector('#app .page')),
             bridge: Boolean(api),
+            hmrWebSocketConnected,
             ruleCount: rules.length,
             rootItems: root.items.length,
             rootPath: root.path,
@@ -597,6 +631,7 @@ try {
     result?.title !== 'Disk Sense' ||
     !result?.rendered ||
     !result?.bridge ||
+    (process.env.DISK_SENSE_SMOKE_DEV === '1' && !result?.hmrWebSocketConnected) ||
     result?.ruleCount < 8 ||
     result?.rootPath !== 'C:\\' ||
     result?.slimmingCount < 4 ||
@@ -632,6 +667,7 @@ try {
     (process.env.DISK_SENSE_SMOKE_DEV !== '1' && !result?.packaged) ||
     !result?.security?.rendererSandbox ||
     !result?.security?.contextIsolation ||
+    !result?.security?.rendererPermissionsDenied ||
     result?.security?.permanentDelete ||
     !result?.security?.systemMaintenanceAllowlist ||
     !result?.invalidPathRejected ||

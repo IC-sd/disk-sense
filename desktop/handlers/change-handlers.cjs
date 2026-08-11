@@ -34,7 +34,7 @@ function historyRecord(id, baseline, snapshot, result, createdAt) {
   }
 }
 
-function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
+function registerChangeHandlers({ ipcMain, db, sendToRenderer, operationCoordinator }) {
   let activeScan = null
   const progress = (id, value) => sendToRenderer('changes:progress', { id, ...value })
 
@@ -47,6 +47,7 @@ function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
   ipcMain.handle('changes:baseline', async () => {
     if (activeScan) return { running: true, id: activeScan.id }
     const id = `baseline-${Date.now()}`
+    const releaseOperation = operationCoordinator?.acquire('change-scan', id) || (() => {})
     const controller = new AbortController()
     activeScan = { id, controller }
     try {
@@ -66,6 +67,7 @@ function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
       }
     } finally {
       activeScan = null
+      releaseOperation()
     }
   })
 
@@ -78,6 +80,7 @@ function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
     if (activeScan) return { ok: false, reason: '变化扫描正在进行' }
 
     const id = `changes-${Date.now()}`
+    const releaseOperation = operationCoordinator?.acquire('change-scan', id) || (() => {})
     const controller = new AbortController()
     activeScan = { id, controller }
     try {
@@ -108,6 +111,7 @@ function registerChangeHandlers({ ipcMain, db, sendToRenderer }) {
       }
     } finally {
       activeScan = null
+      releaseOperation()
     }
   })
 

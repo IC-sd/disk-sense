@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, session } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const packageMetadata = require('../package.json')
@@ -7,7 +7,8 @@ const {
   normalizeTheme,
   resolveDataLocation,
   directoryUsage,
-  migrateDataDirectory
+  migrateDataDirectory,
+  coordinateDataMigration
 } = require('./app-settings.cjs')
 const { collectDeviceInfo } = require('./device-info.cjs')
 const { registerChangeHandlers } = require('./handlers/change-handlers.cjs')
@@ -18,6 +19,8 @@ const { overview, diskVolumes } = require('./system-info.cjs')
 const { createFileSearchWorkerService } = require('./file-search-client.cjs')
 const { createDiagnostics } = require('./diagnostics.cjs')
 const { normalizeDevelopmentServerUrl } = require('./development.cjs')
+const { createOperationCoordinator } = require('./operation-coordinator.cjs')
+const { lockDownSession } = require('./security.cjs')
 
 app.setName('Disk Sense')
 const dataLocation = resolveDataLocation({
@@ -49,6 +52,7 @@ const installDirectory = () => app.isPackaged ? path.dirname(process.execPath) :
 const aiConfig = createAiConfigService({ getDb: () => db, safeStorage })
 const aiAnalysisStore = createAiAnalysisStore({ getDb: () => db })
 const diagnostics = createDiagnostics(path.join(app.getPath('userData'), 'disk-sense.log'))
+const operationCoordinator = createOperationCoordinator()
 diagnostics.installProcessMonitors()
 function sendToRenderer(channel, payload) {
   if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
@@ -198,6 +202,7 @@ function addOverviewHandlers() {
       security: {
         rendererSandbox: true,
         contextIsolation: true,
+        rendererPermissionsDenied: true,
         permanentDelete: false,
         remoteAiRequiresHttps: true,
         // Maintenance commands are resolved from main-process allowlists only.
@@ -243,26 +248,27 @@ function addOverviewHandlers() {
       properties: ['openDirectory', 'createDirectory']
     })
     if (result.canceled || !result.filePaths[0]) return { cancelled: true }
-    await searchService?.checkpoint()
-    db.save()
+    const releaseOperation = operationCoordinator.acquire('data-migration', `migration-${Date.now()}`)
     try {
-      const migration = await migrateDataDirectory({
-        source: app.getPath('userData'),
-        selectedDirectory: result.filePaths[0],
-        pointerFile: dataLocation.pointerFile,
-        forbiddenPaths: [installDirectory()]
+      const migration = await coordinateDataMigration({
+        checkpoint: () => searchService?.checkpoint(),
+        saveState: () => db.save(),
+        migrate: () => migrateDataDirectory({
+          source: app.getPath('userData'),
+          selectedDirectory: result.filePaths[0],
+          pointerFile: dataLocation.pointerFile,
+          forbiddenPaths: [installDirectory()]
+        }),
+        resume: () => searchService?.startAutomatic?.(),
+        onResumeError: resumeError => {
+          diagnostics.log('error', 'search-index-resume-failed', {
+            message: resumeError instanceof Error ? resumeError.message : String(resumeError)
+          })
+        }
       })
-      if (!migration.changed) await searchService?.startAutomatic?.()
       return { cancelled: false, ...migration }
-    } catch (error) {
-      try {
-        await searchService?.startAutomatic?.()
-      } catch (resumeError) {
-        diagnostics.log('error', 'search-index-resume-failed', {
-          message: resumeError instanceof Error ? resumeError.message : String(resumeError)
-        })
-      }
-      throw error
+    } finally {
+      releaseOperation()
     }
   })
   ipcMain.handle('app:restart', () => {
@@ -294,6 +300,7 @@ if (!singleInstance) {
     }
   })
   app.whenReady().then(() => {
+    lockDownSession(session.defaultSession)
     db = store(path.join(app.getPath('userData'), 'disk-sense-state.json'))
     diagnostics.log('info', 'application-ready', {
       version: applicationVersion(),
@@ -320,8 +327,8 @@ if (!singleInstance) {
       searchService = unavailableSearchService(error)
     }
     registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell })
-    registerChangeHandlers({ ipcMain, db, sendToRenderer })
-    registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer })
+    registerChangeHandlers({ ipcMain, db, sendToRenderer, operationCoordinator })
+    registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer, operationCoordinator })
     createWindow()
     if (!smokeTest) {
       automaticSearchTimer = setTimeout(() => {

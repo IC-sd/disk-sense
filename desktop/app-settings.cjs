@@ -273,11 +273,38 @@ async function migrateDataDirectory({ source, selectedDirectory, pointerFile, fo
   }
 }
 
+async function coordinateDataMigration({ checkpoint, saveState, migrate, resume, onResumeError }) {
+  let checkpointStarted = false
+  let resumeAttempted = false
+  try {
+    checkpointStarted = true
+    await checkpoint?.()
+    await saveState?.()
+    const result = await migrate()
+    if (!result?.changed) {
+      resumeAttempted = true
+      await resume?.()
+    }
+    return result
+  } catch (error) {
+    if (checkpointStarted && !resumeAttempted) {
+      resumeAttempted = true
+      try {
+        await resume?.()
+      } catch (resumeError) {
+        onResumeError?.(resumeError)
+      }
+    }
+    throw error
+  }
+}
+
 module.exports = {
   normalizeTheme,
   resolveDataLocation,
   directoryUsage,
   migrationTarget,
   migrateDataDirectory,
+  coordinateDataMigration,
   finalizePendingMigration
 }

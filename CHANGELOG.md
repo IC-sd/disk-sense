@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0-beta.7 - 2026-08-11
+
+This beta closes several cross-module reliability and desktop-security gaps found during a full release audit.
+
+### Changed
+
+- Added one foreground disk-operation coordinator shared by change scans, cleanup rule scans, cleanup execution, Windows maintenance and data-directory migration. Compatible cleanup rules can still scan together, while conflicting operations now fail early instead of competing for disk I/O or producing misleading snapshots.
+- Denied all unneeded Electron renderer permission checks and requests by default, in addition to the existing sandbox, isolated preload and navigation boundaries.
+- Made data-directory migration resume automatic file indexing when checkpointed migration preparation fails, while keeping indexing paused after a successful move that requires restart.
+- Corrected the published security support statement and release artifact names.
+
+### Development and validation
+
+- Vite can select a free loopback port when 5173 is occupied. Development-only HTML receives an exact CSP WebSocket origin for that selected port; packaged HTML remains network-restricted.
+- Added a repeatable real-Electron development smoke test covering the actual Vite HMR WebSocket, light theme, global search, Office shortcut ranking, keyboard selection, explanation rendering and existing desktop security assertions.
+- Added coordinator, session-permission, migration-recovery and development-CSP regression tests.
+
 ## 0.9.0-beta.6 - 2026-08-10
 
 This beta focuses on desktop responsiveness and development reliability without changing the cleanup boundary.

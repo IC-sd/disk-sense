@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
-import { directoryUsage, finalizePendingMigration, migrateDataDirectory, migrationTarget, normalizeTheme, resolveDataLocation } from '../desktop/app-settings.cjs'
+import { coordinateDataMigration, directoryUsage, finalizePendingMigration, migrateDataDirectory, migrationTarget, normalizeTheme, resolveDataLocation } from '../desktop/app-settings.cjs'
 
 const temporaryRoots: string[] = []
 
@@ -18,6 +18,40 @@ function temporaryRoot() {
 }
 
 describe('application settings and data placement', () => {
+  it('attempts to resume search when checkpoint preparation itself fails', async () => {
+    const resume = vi.fn()
+    await expect(coordinateDataMigration({
+      checkpoint: async () => { throw new Error('checkpoint failed') },
+      saveState: vi.fn(),
+      migrate: vi.fn(),
+      resume
+    })).rejects.toThrow('checkpoint failed')
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('resumes automatic search when saving state fails after the index checkpoint', async () => {
+    const calls: string[] = []
+    await expect(coordinateDataMigration({
+      checkpoint: async () => { calls.push('checkpoint') },
+      saveState: () => { calls.push('save'); throw new Error('save failed') },
+      migrate: async () => { calls.push('migrate'); return { changed: true } },
+      resume: async () => { calls.push('resume') }
+    })).rejects.toThrow('save failed')
+    expect(calls).toEqual(['checkpoint', 'save', 'resume'])
+  })
+
+  it('keeps search paused after a successful migration that requires restart', async () => {
+    const resume = vi.fn()
+    const result = await coordinateDataMigration({
+      checkpoint: vi.fn(),
+      saveState: vi.fn(),
+      migrate: async () => ({ changed: true, restartRequired: true }),
+      resume
+    })
+    expect(result.changed).toBe(true)
+    expect(resume).not.toHaveBeenCalled()
+  })
+
   it('accepts only supported themes', () => {
     expect(normalizeTheme('light')).toBe('light')
     expect(normalizeTheme('system')).toBe('dark')

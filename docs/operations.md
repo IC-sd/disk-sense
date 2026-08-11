@@ -13,7 +13,8 @@ The UI uses Vite HMR. The desktop process uses `desktop/preload.cjs` and the iso
 Vue and CSS changes update in the existing window. Changes to any `.cjs` file under
 `desktop/` automatically restart the single Electron window while keeping the Vite
 server running. The launcher owns `.dev-desktop.pid.json`, refuses duplicate launchers,
-binds Vite to `127.0.0.1:5173`, and cleans up the desktop process when it exits.
+binds Vite to loopback only, selects another free port when 5173 is occupied, and cleans
+up the desktop process when it exits.
 
 ## Safety
 
@@ -41,7 +42,7 @@ pnpm release:win
 
 The release command builds:
 
-- `Disk Sense-Setup-<version>-x64.exe`
-- `Disk Sense-Portable-<version>-x64.exe`
+- `Disk-Sense-Setup-<version>-x64.exe`
+- `Disk-Sense-Portable-<version>-x64.exe`
 
 The installer is per-user and does not request administrator execution for the app itself. Public downloads should be Authenticode-signed; an unsigned local build is suitable for validation but will not have normal Windows publisher trust.
