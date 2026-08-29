@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0-beta.8 - 2026-08-16
+
+This beta is a final reliability and long-session responsiveness pass before broader user testing.
+
+### Changed
+
+- Split frequently updated settings, change snapshots, cleanup and maintenance audit history, and saved AI explanations into independent atomic state files with separate valid backups. AI analysis no longer rewrites cleanup history, and small preference changes no longer rewrite either heavy history.
+- Added automatic migration from the previous combined state format while removing unused legacy snapshot and event fields.
+- Included every new state sidecar in verified data-directory migration so moving local data to another drive keeps saved explanations and operation history intact.
+- Updated the pinned Nano ID dependency to the patched 3.3.18 release; the current dependency audit reports no known vulnerabilities.
+
+### Validation
+
+- Expanded persistence tests for split-state reload, legacy migration, malformed primary recovery and independent operation-history backup recovery.
+- Made the Electron cleanup smoke scenario safely compose exclusion-drawer, full-rule scan and system-slimming checks in one run.
+- Revalidated type safety, 136 automated tests, 25 desktop modules, production assets, real Electron/Vite HMR, dark and light surfaces, global search and AI entry points, all cleanup categories, operation history, About/device information, and the packaged `file://` application.
+
 ## 0.9.0-beta.7 - 2026-08-11
 
 This beta closes several cross-module reliability and desktop-security gaps found during a full release audit.

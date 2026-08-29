@@ -89,8 +89,10 @@ describe('application settings and data placement', () => {
     const pointerFile = path.join(defaultDirectory, 'data-location.json')
     fs.mkdirSync(source, { recursive: true })
     fs.mkdirSync(destinationParent, { recursive: true })
-    fs.writeFileSync(path.join(source, 'disk-sense-state.json'), JSON.stringify({ version: 6, cleanupJobs: [] }))
+    fs.writeFileSync(path.join(source, 'disk-sense-state.json'), JSON.stringify({ version: 7 }))
     fs.writeFileSync(path.join(source, 'disk-sense-state.json.changes.json'), JSON.stringify({ version: 1 }))
+    fs.writeFileSync(path.join(source, 'disk-sense-state.json.operations.json'), JSON.stringify({ version: 1, cleanupJobs: [], maintenanceJobs: [] }))
+    fs.writeFileSync(path.join(source, 'disk-sense-state.json.analyses.json'), JSON.stringify({ version: 1, aiAnalyses: [] }))
     fs.writeFileSync(path.join(source, 'disk-sense-search.sqlite'), 'sqlite-index-fixture')
 
     const result = await migrateDataDirectory({
@@ -107,7 +109,9 @@ describe('application settings and data placement', () => {
       sourceRetained: true
     })
     expect(fs.existsSync(path.join(source, 'disk-sense-state.json'))).toBe(true)
-    expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json'), 'utf8'))).toMatchObject({ version: 6 })
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json'), 'utf8'))).toMatchObject({ version: 7 })
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json.operations.json'), 'utf8'))).toMatchObject({ version: 1 })
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json.analyses.json'), 'utf8'))).toMatchObject({ version: 1 })
     expect(fs.readFileSync(path.join(target, 'disk-sense-search.sqlite'), 'utf8')).toBe('sqlite-index-fixture')
     expect(JSON.parse(fs.readFileSync(pointerFile, 'utf8')).path).toBe(target)
     expect(resolveDataLocation({ appDataPath: root, environment: {} }).userDataPath).toBe(target)

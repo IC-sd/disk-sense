@@ -1,11 +1,12 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
+const STATE_VERSION = 7
+const SIDECAR_VERSION = 1
+
 function defaults() {
   return {
-    version: 6,
-    snapshots: [],
-    events: [],
+    version: STATE_VERSION,
     cleanupJobs: [],
     maintenanceJobs: [],
     changeScans: [],
@@ -51,15 +52,26 @@ function store(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   const stored = readJsonWithBackup(file) || {}
   const changeFile = `${file}.changes.json`
+  const operationFile = `${file}.operations.json`
+  const analysisFile = `${file}.analyses.json`
   const storedChanges = readJsonWithBackup(changeFile) || {}
+  const storedOperationsSource = readJsonWithBackup(operationFile)
+  const storedOperations = storedOperationsSource || {}
+  const storedAnalysesSource = readJsonWithBackup(analysisFile)
+  const storedAnalyses = storedAnalysesSource || {}
   let data = {
     ...defaults(),
     ...stored,
+    cleanupJobs: storedOperations.cleanupJobs ?? stored.cleanupJobs ?? [],
+    maintenanceJobs: storedOperations.maintenanceJobs ?? stored.maintenanceJobs ?? [],
+    aiAnalyses: storedAnalyses.aiAnalyses ?? stored.aiAnalyses ?? [],
     changeBaseline: storedChanges.changeBaseline ?? stored.changeBaseline ?? null,
     lastChangeScan: storedChanges.lastChangeScan ?? stored.lastChangeScan ?? null,
-    version: 6
+    version: STATE_VERSION
   }
   delete data.memories
+  delete data.snapshots
+  delete data.events
   if (!Array.isArray(data.cleanupJobs)) data.cleanupJobs = []
   if (!Array.isArray(data.maintenanceJobs)) data.maintenanceJobs = []
   if (!Array.isArray(data.changeScans)) data.changeScans = []
@@ -74,6 +86,18 @@ function store(file) {
   )
   let savedBaseline = data.changeBaseline
   let savedLastChangeScan = data.lastChangeScan
+  let needsOperationMigration = Boolean(
+    !storedOperationsSource ||
+    !Array.isArray(storedOperations.cleanupJobs) ||
+    !Array.isArray(storedOperations.maintenanceJobs)
+  )
+  let needsAnalysisMigration = Boolean(
+    !storedAnalysesSource ||
+    !Array.isArray(storedAnalyses.aiAnalyses)
+  )
+  let savedCleanupJobs = data.cleanupJobs
+  let savedMaintenanceJobs = data.maintenanceJobs
+  let savedAiAnalyses = data.aiAnalyses
 
   return {
     read: () => data,
@@ -89,8 +113,37 @@ function store(file) {
         savedLastChangeScan = data.lastChangeScan
         needsHeavyMigration = false
       }
-      const { changeBaseline, lastChangeScan, ...lightState } = data
-      atomicWrite(file, { ...lightState, version: 6 }, true)
+      const operationsChanged = needsOperationMigration ||
+        data.cleanupJobs !== savedCleanupJobs ||
+        data.maintenanceJobs !== savedMaintenanceJobs
+      if (operationsChanged) {
+        atomicWrite(operationFile, {
+          version: SIDECAR_VERSION,
+          cleanupJobs: data.cleanupJobs,
+          maintenanceJobs: data.maintenanceJobs
+        })
+        savedCleanupJobs = data.cleanupJobs
+        savedMaintenanceJobs = data.maintenanceJobs
+        needsOperationMigration = false
+      }
+      const analysesChanged = needsAnalysisMigration || data.aiAnalyses !== savedAiAnalyses
+      if (analysesChanged) {
+        atomicWrite(analysisFile, {
+          version: SIDECAR_VERSION,
+          aiAnalyses: data.aiAnalyses
+        })
+        savedAiAnalyses = data.aiAnalyses
+        needsAnalysisMigration = false
+      }
+      const {
+        changeBaseline,
+        lastChangeScan,
+        cleanupJobs,
+        maintenanceJobs,
+        aiAnalyses,
+        ...lightState
+      } = data
+      atomicWrite(file, { ...lightState, version: STATE_VERSION }, true)
     }
   }
 }

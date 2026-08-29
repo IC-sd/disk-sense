@@ -24,10 +24,10 @@ describe('local state durability', () => {
     fs.writeFileSync(file, '{invalid json', 'utf8')
 
     const recovered = store(file)
-    expect(recovered.read().cleanupJobs).toEqual([{ id: 'first' }])
+    expect(recovered.read().cleanupJobs).toEqual([{ id: 'second' }])
   })
 
-  it('preserves a valid backup after recovering from malformed primary state', () => {
+  it('recovers operation history from its own valid backup', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-state-'))
     temporaryRoots.push(root)
     const file = path.join(root, 'state.json')
@@ -36,12 +36,13 @@ describe('local state durability', () => {
     initial.save()
     initial.read().cleanupJobs = [{ id: 'newer' }]
     initial.save()
-    fs.writeFileSync(file, '{broken', 'utf8')
+    const operationFile = `${file}.operations.json`
+    fs.writeFileSync(operationFile, '{broken', 'utf8')
 
     const recovered = store(file)
     expect(recovered.read().cleanupJobs).toEqual([{ id: 'safe' }])
     recovered.save()
-    fs.writeFileSync(file, '{broken-again', 'utf8')
+    fs.writeFileSync(operationFile, '{broken-again', 'utf8')
 
     expect(store(file).read().cleanupJobs).toEqual([{ id: 'safe' }])
   })
@@ -54,7 +55,7 @@ describe('local state durability', () => {
 
     const migrated = store(file).read()
 
-    expect(migrated.version).toBe(6)
+    expect(migrated.version).toBe(7)
     expect(migrated.cleanupJobs).toEqual([{ id: 'legacy' }])
     expect(migrated.maintenanceJobs).toEqual([])
     expect(migrated.aiAnalyses).toEqual([])
@@ -82,6 +83,35 @@ describe('local state durability', () => {
 
     const reloaded = store(file).read()
     expect(reloaded.changeBaseline.entries).toHaveLength(1000)
+    expect(reloaded.cleanupExclusions).toEqual([{ id: 'keep' }])
+  })
+
+  it('stores operation history and AI analyses separately from frequently updated settings', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-state-'))
+    temporaryRoots.push(root)
+    const file = path.join(root, 'state.json')
+    const database = store(file)
+    database.read().cleanupJobs = [{ id: 'cleanup', results: Array.from({ length: 500 }, (_, index) => ({ path: `C:\\temp-${index}` })) }]
+    database.read().maintenanceJobs = [{ id: 'maintenance' }]
+    database.read().aiAnalyses = [{ path: 'C:\\sample', raw: 'analysis'.repeat(1000) }]
+    database.read().cleanupExclusions = [{ id: 'keep' }]
+    database.save()
+
+    const light = JSON.parse(fs.readFileSync(file, 'utf8'))
+    const operationFile = `${file}.operations.json`
+    const analysisFile = `${file}.analyses.json`
+    expect(light.cleanupJobs).toBeUndefined()
+    expect(light.maintenanceJobs).toBeUndefined()
+    expect(light.aiAnalyses).toBeUndefined()
+    expect(fs.existsSync(operationFile)).toBe(true)
+    expect(fs.existsSync(analysisFile)).toBe(true)
+    expect(fs.statSync(file).size).toBeLessThan(fs.statSync(operationFile).size)
+    expect(fs.statSync(file).size).toBeLessThan(fs.statSync(analysisFile).size)
+
+    const reloaded = store(file).read()
+    expect(reloaded.cleanupJobs[0].results).toHaveLength(500)
+    expect(reloaded.maintenanceJobs).toEqual([{ id: 'maintenance' }])
+    expect(reloaded.aiAnalyses[0].path).toBe('C:\\sample')
     expect(reloaded.cleanupExclusions).toEqual([{ id: 'keep' }])
   })
 

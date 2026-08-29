@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.9.0--beta.7-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.7">
+  <img src="https://img.shields.io/badge/版本-0.9.0--beta.8-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.8">
   <img src="https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows11" alt="Windows">
   <img src="https://img.shields.io/badge/Electron-43.x-47848F?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue.js">
@@ -156,7 +156,7 @@ docs/                   产品、安全、架构和本地运维文档
 
 ## 版本状态
 
-当前版本为 **0.9.0-beta.7 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新重点收紧桌面权限和开发热更新边界，并统一协调变化扫描、垃圾扫描、实际清理、系统维护与数据迁移，避免多个重型磁盘任务相互争抢。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+当前版本为 **0.9.0-beta.8 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新把设置、变化快照、清理与维护审计、AI 识别结论拆分为独立的原子状态文件，避免长期使用后一次小设置或一次 AI 分析连带重写全部历史；旧版数据会自动迁移。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
 
 当前公开测试构建尚未配置可信 Authenticode 证书，Windows SmartScreen 可能显示“未知发布者”；下载后请使用 Release 中的 SHA-256 文件核对完整性。
 

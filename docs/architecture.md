@@ -24,7 +24,7 @@ Electron main
 - Renderer：`nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`。
 - Preload：只暴露明确列出的 `diskSense` 方法，不暴露任意 IPC。
 - Main：拒绝新窗口、页面导航和所有未使用的 renderer 权限；生产页面使用本地 `file://` 资源。
-- State：写入临时文件后原子替换，只用有效主文件更新备份；大型变化基线单独保存，普通设置变更不会重复序列化十几万条元数据。
+- State：写入临时文件后原子替换，只用有效主文件更新备份；大型变化基线和持续增长的清理、维护、AI 解释历史分别保存，普通设置变更不会重复写入这些重数据。
 
 ## 目录解释
 

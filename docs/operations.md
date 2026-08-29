@@ -26,9 +26,11 @@ up the desktop process when it exits.
 
 ## Local state
 
-Frequently updated settings and cleanup history live in `disk-sense-state.json`; large
-change baselines and the last detailed comparison live in
-`disk-sense-state.json.changes.json`. Both use atomic replacement and valid backups.
+Frequently updated settings live in `disk-sense-state.json`; cleanup and maintenance
+history lives in `disk-sense-state.json.operations.json`; saved AI explanations live in
+`disk-sense-state.json.analyses.json`; large change baselines and the last detailed
+comparison live in `disk-sense-state.json.changes.json`. All files use atomic replacement
+and valid backups.
 `disk-sense.log` is a bounded local diagnostic log. All files are local-only. The
 in-app “设置与关于” page shows the exact directory and can open it for inspection.
 

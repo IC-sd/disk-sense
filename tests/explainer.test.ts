@@ -14,6 +14,10 @@ describe('explainer engine', () => {
     expect(result.items.filter((item: any) => item.isDirectory).every((item: any) => item.size === null)).toBe(true)
   })
 
+  it('rejects a relative directory before any filesystem access', async () => {
+    await expect(listDirectory('relative-path')).rejects.toThrow('Windows 绝对路径')
+  })
+
   it('uses path context instead of treating all application data as junk', () => {
     const info = pathSignals('C:\\Users\\demo\\AppData\\Roaming\\Example\\Cache\\index.db')
     expect(info.classification).toBe('application-data')

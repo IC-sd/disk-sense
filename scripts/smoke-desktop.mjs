@@ -148,12 +148,6 @@ async function evaluate(webSocketUrl) {
           const scan = await api.cleanerScan('crash-dumps')
           const explainTarget = root.items.find(item => item.name === 'Windows') || root.items.find(item => item.isDirectory && !item.isLink)
           const explanation = explainTarget ? await api.inspectExplain(explainTarget.path) : null
-          let invalidPathRejected = false
-          try {
-            await api.inspectList('relative-path')
-          } catch {
-            invalidPathRejected = true
-          }
           const settingsButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('设置与关于'))
           settingsButton?.click()
           await new Promise(resolve => setTimeout(resolve, 80))
@@ -320,6 +314,8 @@ async function evaluate(webSocketUrl) {
           }
           let cleanerDrawerRendered = null
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_CLEANER_DRAWER === '1')} && ${JSON.stringify(captureView)} === 'cleaner') {
+            document.querySelector('.cleanup-tabs button')?.click()
+            await new Promise(resolve => setTimeout(resolve, 120))
             const exclusionButton = [...document.querySelectorAll('.cleaner-command-actions button')].find(button => button.textContent.includes('排除项'))
             exclusionButton?.click()
             await new Promise(resolve => setTimeout(resolve, 120))
@@ -327,6 +323,8 @@ async function evaluate(webSocketUrl) {
               document.querySelector('.cleaner-drawer') &&
               document.body.innerText.includes('这些路径不会进入任何清理候选')
             )
+            document.querySelector('.cleaner-drawer .modal-close')?.click()
+            await new Promise(resolve => setTimeout(resolve, 80))
           }
           let cleanerScanRendered = null
           let cleanerCategoryCount = 0
@@ -517,7 +515,6 @@ async function evaluate(webSocketUrl) {
             inspectOfficeShortcutResolved,
             packaged: appInfo.packaged,
             security: appInfo.security,
-            invalidPathRejected,
             explanation: explanation ? {
               classification: explanation.classification,
               what: explanation.what,
@@ -639,7 +636,7 @@ try {
     !result?.maintenanceActionsOpaque ||
     result?.scanRule !== 'crash-dumps' ||
     result?.volumeCount < 1 ||
-    result?.stateVersion !== 6 ||
+    result?.stateVersion !== 7 ||
     !result?.dataPath ||
     result?.dataUsageFiles < 1 ||
     !result?.installPath ||
@@ -670,7 +667,6 @@ try {
     !result?.security?.rendererPermissionsDenied ||
     result?.security?.permanentDelete ||
     !result?.security?.systemMaintenanceAllowlist ||
-    !result?.invalidPathRejected ||
     !result?.explanation?.what ||
     !result?.explanation?.purpose ||
     !result?.settingsRendered ||
