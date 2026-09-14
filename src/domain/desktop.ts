@@ -280,6 +280,8 @@ export interface FileExplanation {
 
 export interface AiConfigDraft {
   endpoint: string
+  provider?: 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'local-openai'
+  apiVersion?: string
   model?: string
   apiKey?: string
   clearApiKey?: boolean
@@ -288,6 +290,8 @@ export interface AiConfigDraft {
 export interface AiConfigStatus {
   configured: boolean
   endpoint?: string | null
+  provider?: 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'local-openai'
+  apiVersion?: string | null
   model?: string
   hasApiKey?: boolean
   keyStored?: boolean

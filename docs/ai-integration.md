@@ -7,9 +7,15 @@ Disk Sense 的 AI 能力是可选增强层，本地规则仍是基础。用户�
 
 ## 支持的接口
 
-支持 OpenAI 兼容的 Chat Completions 接口。用户填写 Base URL 和 API
-密钥后，配置页会自动请求 `GET /models`，把服务端实际返回的模型显示为
-可选列表并默认选中一个，不要求用户预先知道模型名称。
+支持四种接入类型：
+
+- OpenAI 兼容的 Chat Completions。
+- OpenAI Responses API。
+- Azure OpenAI 部署。
+- Ollama、vLLM 等提供 OpenAI 兼容接口的本地服务。
+
+配置页会尝试通过 `GET /models` 读取模型，但模型列表不是保存配置的前置条件；
+服务不提供该接口时可以直接填写模型名称，Azure 模式填写部署名称。
 
 Base URL 可以填写服务的基础地址，例如：
 
@@ -23,6 +29,13 @@ https://api.example.com/v1
 https://api.example.com/v1/chat/completions
 ```
 
+Responses 模式可以填写 `https://api.openai.com/v1` 或完整的
+`https://api.openai.com/v1/responses`。Azure 模式可以填写资源地址，由程序根据
+部署名称和 API 版本构造请求，也可以填写完整部署地址。
+
+远程服务必须使用 HTTPS。本地模型模式允许 `localhost`、回环地址和局域网私有
+地址使用 HTTP，例如 `http://127.0.0.1:11434/v1`。
+
 ## 环境变量
 
 也可以在启动软件前设置：
@@ -31,6 +44,8 @@ https://api.example.com/v1/chat/completions
 DISK_SENSE_AI_ENDPOINT
 DISK_SENSE_AI_KEY
 DISK_SENSE_AI_MODEL
+DISK_SENSE_AI_PROVIDER
+DISK_SENSE_AI_API_VERSION
 ```
 
 界面配置优先于环境变量。API 密钥通过 Electron `safeStorage` 使用 Windows 系统加密保存，并且不会回显到前端。

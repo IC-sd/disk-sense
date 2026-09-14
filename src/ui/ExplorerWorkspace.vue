@@ -306,6 +306,7 @@
               </span>
             </button>
           </div>
+          <button v-if="aiBusy" class="quiet ai-cancel" @click="cancelAi">取消本次分析</button>
 
           <p v-if="aiError" class="inline-message error-message">{{ aiError }}</p>
 
@@ -955,6 +956,12 @@ async function requestAi(mode: AnalysisMode) {
     aiBusy.value = false
     aiBusyMode.value = null
   }
+}
+
+async function cancelAi() {
+  const api = desktopApi()
+  if (!api || !aiBusy.value) return
+  await api.aiCancel()
 }
 
 function goBack() {

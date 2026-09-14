@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0-beta.9 - 2026-09-14
+
+### Changed
+
+- Split AI transport concerns from file-analysis prompting and added explicit adapters for OpenAI-compatible Chat Completions, OpenAI Responses, Azure OpenAI deployments, and local Ollama/vLLM-compatible endpoints.
+- Allowed HTTP only for loopback and private-network local-model endpoints while continuing to require HTTPS for remote providers.
+- Made model discovery optional: models returned by `/models` remain selectable, while providers without model listing can use a manually entered model or Azure deployment name.
+- Added provider-specific authentication, endpoint construction, request bodies and response parsing, with bounded capability fallbacks for partially compatible services.
+- Increased deep-analysis timeout independently from normal analysis and kept Responses requests stateless with `store: false`.
+- Added explicit cancellation for an in-flight analysis so a slow provider no longer locks the analysis controls until timeout.
+
+### Validation
+
+- Added coverage for local endpoint safety, Responses output parsing, Azure deployment URLs and headers, and providers without model-list endpoints.
+
 ## 0.9.0-beta.8 - 2026-08-16
 
 This beta is a final reliability and long-session responsiveness pass before broader user testing.

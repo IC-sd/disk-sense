@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.9.0--beta.8-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.8">
+  <img src="https://img.shields.io/badge/版本-0.9.0--beta.9-5B7CFA?style=flat-square" alt="版本 0.9.0-beta.9">
   <img src="https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows11" alt="Windows">
   <img src="https://img.shields.io/badge/Electron-43.x-47848F?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue.js">
@@ -41,7 +41,7 @@ Disk Sense 采用“空间解释 + 变化追踪 + 安全清理”的方式：
 | 模块 | 能力 |
 | --- | --- |
 | 目录与文件 | 从 `C:\` 浏览文件系统或跨磁盘即时搜索；支持连续输入、键盘上下选择和 Enter 分析，搜索数据库在后台自动建立并同步新增、改名和删除，找到对象后可继续解释用途、来源与风险 |
-| AI 深入分析 | 支持 OpenAI 兼容接口、自动发现模型、普通/深入两种分析强度；分析结论保存在本地，并在文件变化后自动判定为需要重新分析 |
+| AI 深入分析 | 支持 OpenAI Chat Completions、Responses、Azure OpenAI 以及 Ollama/vLLM 等本地兼容服务；模型既可自动发现也可手动填写，分析结论保存在本地并随文件变化自动失效 |
 | 空间概览与变化记录 | 在首页查看多磁盘容量、建立变化基线，并对比两次扫描之间的新增、删除、大小变化和明确的文件移动 |
 | 垃圾清理 | 26 项低风险或仅检测规则，分别展示“发现占用”和“当前可处理”，覆盖 Windows、浏览器、应用与开发工具缓存，并支持预览、排除项、进程保护、失败明细和清理历史 |
 | 系统瘦身 | 检测休眠文件、WinSxS、虚拟内存和 Windows.old；可在明确确认后调用 powercfg、DISM 或打开 Windows 官方设置 |
@@ -156,7 +156,7 @@ docs/                   产品、安全、架构和本地运维文档
 
 ## 版本状态
 
-当前版本为 **0.9.0-beta.8 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新把设置、变化快照、清理与维护审计、AI 识别结论拆分为独立的原子状态文件，避免长期使用后一次小设置或一次 AI 分析连带重写全部历史；旧版数据会自动迁移。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
+当前版本为 **0.9.0-beta.9 公开测试版**。它把全盘即时文件搜索、目录解释、AI 辅助识别、空间变化追踪、垃圾清理和 Windows 官方系统维护整合到同一套桌面体验中。本次更新重构了模型服务适配层，补齐 Responses、Azure 与本地模型服务，并允许在服务不提供模型列表时直接填写模型或部署名称。安装版、便携版和 SHA-256 校验文件会随 GitHub Release 一同提供。
 
 当前公开测试构建尚未配置可信 Authenticode 证书，Windows SmartScreen 可能显示“未知发布者”；下载后请使用 Release 中的 SHA-256 文件核对完整性。
 

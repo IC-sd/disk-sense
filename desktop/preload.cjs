@@ -42,6 +42,7 @@ const bridge = {
   aiModels: draft => ipcRenderer.invoke('analysis:ai-models', draft),
   aiTest: draft => ipcRenderer.invoke('analysis:ai-test', draft),
   aiReview: request => ipcRenderer.invoke('analysis:ai-review', request),
+  aiCancel: () => ipcRenderer.invoke('analysis:ai-cancel'),
   aiAnalysisGet: request => ipcRenderer.invoke('analysis:ai-record:get', request),
   aiAnalysisSave: request => ipcRenderer.invoke('analysis:ai-record:save', request),
 

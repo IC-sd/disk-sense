@@ -68,6 +68,7 @@ export interface DesktopApi {
   aiModels: (draft: Partial<AiConfigDraft>) => Promise<{ ok: boolean; reason?: string; models: AiModelOption[] }>
   aiTest: (draft: AiConfigDraft) => Promise<{ ok: boolean; reason?: string; model?: string }>
   aiReview: (request: { evidence: unknown; mode: AnalysisMode }) => Promise<AiReviewResult>
+  aiCancel: () => Promise<{ cancelled: boolean }>
   aiAnalysisGet: (request: { path: string; fingerprint: string }) => Promise<AiAnalysisLookup>
   aiAnalysisSave: (request: { path: string; fingerprint: string } & Partial<AiReviewResult>) => Promise<StoredAiAnalysis>
   changesState: () => Promise<ChangeState>

@@ -153,6 +153,8 @@ function createAiConfigService({ getDb, safeStorage, environment = process.env }
     return {
       endpoint: stored.endpoint || environment.DISK_SENSE_AI_ENDPOINT || '',
       model: stored.model || environment.DISK_SENSE_AI_MODEL || '',
+      provider: stored.provider || environment.DISK_SENSE_AI_PROVIDER || 'openai-compatible',
+      apiVersion: stored.apiVersion || environment.DISK_SENSE_AI_API_VERSION || '',
       apiKey
     }
   }
@@ -161,7 +163,7 @@ function createAiConfigService({ getDb, safeStorage, environment = process.env }
     const current = runtime()
     const endpoint = String(input.endpoint ?? current.endpoint).trim()
     const providedKey = String(input.apiKey || '').trim()
-    const canReuseKey = endpoint === current.endpoint
+    const canReuseKey = endpoint === current.endpoint && String(input.provider || current.provider) === current.provider
     return {
       ...current,
       ...input,
@@ -185,9 +187,13 @@ function createAiConfigService({ getDb, safeStorage, environment = process.env }
     const current = database.read().aiSettings || {}
     const endpoint = String(input.endpoint || '').trim()
     const model = String(input.model || '').trim()
-    const validation = validateConfig({ endpoint, model, apiKey: 'validation-only' })
+    const provider = String(input.provider || 'openai-compatible')
+    const apiVersion = String(input.apiVersion || '').trim()
+    const validation = validateConfig({ endpoint, model, provider, apiVersion, apiKey: 'validation-only' })
     if (!validation.ok) throw new Error(validation.reason)
-    let apiKeyEncrypted = endpoint === current.endpoint ? current.apiKeyEncrypted || '' : ''
+    let apiKeyEncrypted = endpoint === current.endpoint && provider === (current.provider || 'openai-compatible')
+      ? current.apiKeyEncrypted || ''
+      : ''
     if (input.clearApiKey) {
       apiKeyEncrypted = ''
     } else if (String(input.apiKey || '').trim()) {
@@ -199,6 +205,8 @@ function createAiConfigService({ getDb, safeStorage, environment = process.env }
     database.read().aiSettings = {
       endpoint,
       model,
+      provider,
+      apiVersion,
       apiKeyEncrypted,
       updatedAt: new Date().toISOString()
     }
@@ -226,6 +234,7 @@ function createExplainerLoader() {
 
 function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell }) {
   const loadExplainer = createExplainerLoader()
+  let activeAiRequest = null
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
     nativePresentationCache.delete(filePath)
@@ -307,14 +316,27 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
   ipcMain.handle('analysis:ai-config:clear', () => aiConfig.clear())
   ipcMain.handle('analysis:ai-models', async (_event, input) => listModels(aiConfig.draft(input)))
   ipcMain.handle('analysis:ai-test', async (_event, input) => testConnection(aiConfig.draft(input)))
+  ipcMain.handle('analysis:ai-cancel', () => {
+    const cancelled = Boolean(activeAiRequest)
+    activeAiRequest?.abort()
+    return { cancelled }
+  })
   ipcMain.handle('analysis:ai-record:get', (_event, input) => aiAnalysisStore.get(input))
   ipcMain.handle('analysis:ai-record:save', (_event, input) => aiAnalysisStore.save(input))
   ipcMain.handle('analysis:ai-review', async (_event, payload) => {
     const request = payload?.evidence ? payload : { evidence: payload, mode: 'normal' }
-    return review(request.evidence, {
-      ...aiConfig.runtime(),
-      analysisMode: request.mode === 'deep' ? 'deep' : 'normal'
-    })
+    activeAiRequest?.abort()
+    const controller = new AbortController()
+    activeAiRequest = controller
+    try {
+      return await review(request.evidence, {
+        ...aiConfig.runtime(),
+        analysisMode: request.mode === 'deep' ? 'deep' : 'normal',
+        signal: controller.signal
+      })
+    } finally {
+      if (activeAiRequest === controller) activeAiRequest = null
+    }
   })
 }
 

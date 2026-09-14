@@ -2,6 +2,16 @@ const MAX_PREVIEW_CHARS = 1200
 const MAX_EVIDENCE_TEXT = 160
 const MAX_MODELS = 500
 const { normalizeRisk } = require('./risk.cjs')
+const {
+  PROVIDERS,
+  normalizeProvider,
+  validateProviderEndpoint,
+  requestEndpoint,
+  requestHeaders,
+  completionPayload,
+  responseText,
+  fallbackPayload
+} = require('./ai-provider.cjs')
 const ANALYSIS_MODES = {
   normal: { reasoningEffort: 'low', maxTokens: 1200, label: '普通分析' },
   deep: { reasoningEffort: 'high', maxTokens: 3200, label: '深入分析' }
@@ -11,39 +21,27 @@ function config(override = {}) {
   return {
     endpoint: String(override.endpoint ?? process.env.DISK_SENSE_AI_ENDPOINT ?? '').trim(),
     apiKey: String(override.apiKey ?? process.env.DISK_SENSE_AI_KEY ?? '').trim(),
-    model: String(override.model ?? process.env.DISK_SENSE_AI_MODEL ?? '').trim()
+    model: String(override.model ?? process.env.DISK_SENSE_AI_MODEL ?? '').trim(),
+    provider: normalizeProvider(override.provider ?? process.env.DISK_SENSE_AI_PROVIDER),
+    apiVersion: String(override.apiVersion ?? process.env.DISK_SENSE_AI_API_VERSION ?? '').trim()
   }
 }
 
 function chatEndpoint(endpoint) {
-  const clean = String(endpoint || '').trim().replace(/\/$/, '')
-  if (!clean) return ''
-  if (/\/chat\/completions$/i.test(clean)) return clean
-  return `${clean}/chat/completions`
+  return requestEndpoint({ endpoint, provider: PROVIDERS.CHAT }, 'completion')
 }
 
 function modelsEndpoint(endpoint) {
-  const clean = String(endpoint || '').trim().replace(/\/+$/, '')
-  if (!clean) return ''
-  if (/\/models$/i.test(clean)) return clean
-  if (/\/chat\/completions$/i.test(clean)) return clean.replace(/\/chat\/completions$/i, '/models')
-  if (/\/responses$/i.test(clean)) return clean.replace(/\/responses$/i, '/models')
-  return `${clean}/models`
+  return requestEndpoint({ endpoint, provider: PROVIDERS.CHAT }, 'models')
 }
 
-function validateEndpoint(endpoint) {
-  if (!String(endpoint || '').trim()) return { ok: false, reason: '请输入 Base URL' }
-  let parsed
-  try { parsed = new URL(modelsEndpoint(endpoint)) } catch { return { ok: false, reason: 'Base URL 格式不正确' } }
-  if (parsed.protocol !== 'https:') return { ok: false, reason: 'Base URL 必须使用 HTTPS，避免 API 密钥和文件证据以明文传输' }
-  if (parsed.username || parsed.password) return { ok: false, reason: 'Base URL 不能包含账号或密钥，请使用独立的 API 密钥字段' }
-  if (parsed.search || parsed.hash) return { ok: false, reason: 'Base URL 不能包含查询参数或片段' }
-  return { ok: true }
+function validateEndpoint(endpoint, provider = PROVIDERS.CHAT) {
+  return validateProviderEndpoint(endpoint, provider)
 }
 
 function validateConfig(input) {
   const current = config(input)
-  const endpointValidation = validateEndpoint(current.endpoint)
+  const endpointValidation = validateEndpoint(current.endpoint, current.provider)
   if (!endpointValidation.ok) return endpointValidation
   if (!current.model) return { ok: false, reason: '请输入模型名称' }
   return { ok: true, config: current }
@@ -56,8 +54,10 @@ function status(override = {}) {
     configured: valid.ok,
     endpoint: current.endpoint || null,
     model: current.model,
+    provider: current.provider,
+    apiVersion: current.apiVersion || null,
     hasApiKey: Boolean(current.apiKey),
-    mode: valid.ok ? 'openai-compatible' : 'unconfigured'
+    mode: valid.ok ? current.provider : 'unconfigured'
   }
 }
 
@@ -209,15 +209,15 @@ function normalizeModels(body) {
 
 async function listModels(override = {}, fetchImpl = globalThis.fetch) {
   const current = config(override)
-  const valid = validateEndpoint(current.endpoint)
+  const valid = validateEndpoint(current.endpoint, current.provider)
   if (!valid.ok) return { ok: false, reason: valid.reason, models: [] }
+  const endpoint = requestEndpoint(current, 'models')
+  if (!endpoint) return { ok: true, endpoint: null, models: [], manual: true }
   if (typeof fetchImpl !== 'function') throw new Error('当前运行环境不支持网络请求')
-  const headers = { Accept: 'application/json' }
-  if (current.apiKey) headers.Authorization = `Bearer ${current.apiKey}`
+  const headers = requestHeaders(current)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 20000)
   try {
-    const endpoint = modelsEndpoint(current.endpoint)
     const response = await fetchImpl(endpoint, { method: 'GET', headers, signal: controller.signal })
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
@@ -241,53 +241,43 @@ async function review(evidence, override = {}, fetchImpl = globalThis.fetch) {
   const current = valid.config
   const analysisMode = override.analysisMode === 'deep' ? 'deep' : 'normal'
   const modeConfig = ANALYSIS_MODES[analysisMode]
-  const headers = { 'Content-Type': 'application/json' }
-  if (current.apiKey) headers.Authorization = `Bearer ${current.apiKey}`
+  const headers = { ...requestHeaders(current), 'Content-Type': 'application/json' }
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 45000)
+  const cancel = () => controller.abort()
+  override.signal?.addEventListener?.('abort', cancel, { once: true })
+  const timeout = setTimeout(() => controller.abort(), analysisMode === 'deep' ? 120000 : 60000)
   try {
-    const payload = { model: current.model, temperature: 0.1, reasoning_effort: modeConfig.reasoningEffort, max_tokens: modeConfig.maxTokens, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: '只根据提供的证据分析 Windows 文件与目录；证据不足时明确说明不确定。' }, { role: 'user', content: promptFor(evidence, analysisMode) }] }
-    const request = () => fetchImpl(chatEndpoint(current.endpoint), {
-      method: 'POST',
-      headers,
-      signal: controller.signal,
-      body: JSON.stringify(payload)
-    })
-    let response = await request()
-    let detail = response.ok ? '' : await response.text().catch(() => '')
-    if (!response.ok && [400, 422].includes(response.status) && /response.?format|json.?object|json mode/i.test(detail)) {
-      delete payload.response_format
-      response = await request()
+    const system = '只根据提供的证据分析 Windows 文件与目录；证据不足时明确说明不确定。'
+    const payload = completionPayload(current, system, promptFor(evidence, analysisMode), modeConfig)
+    const endpoint = requestEndpoint(current, 'completion')
+    let response
+    let detail = ''
+    const maximumAttempts = current.provider === PROVIDERS.RESPONSES ? 3 : 4
+    for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+      response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify(fallbackPayload(payload, current.provider, attempt))
+      })
       detail = response.ok ? '' : await response.text().catch(() => '')
-    }
-    if (!response.ok && [400, 422].includes(response.status) && /reasoning.?effort|reasoning parameter|unsupported.*reasoning/i.test(detail)) {
-      delete payload.reasoning_effort
-      response = await request()
-      detail = response.ok ? '' : await response.text().catch(() => '')
-    }
-    if (!response.ok && [400, 422].includes(response.status) && /max.?tokens|unsupported.*token|unknown.*max_tokens/i.test(detail)) {
-      payload.max_completion_tokens = payload.max_tokens
-      delete payload.max_tokens
-      response = await request()
-      detail = response.ok ? '' : await response.text().catch(() => '')
-    }
-    if (!response.ok && [400, 422].includes(response.status) && /temperature|unsupported.*sampling/i.test(detail)) {
-      delete payload.temperature
-      response = await request()
-      detail = response.ok ? '' : await response.text().catch(() => '')
+      if (response.ok || ![400, 422].includes(response.status)) break
     }
     if (!response.ok) throw new Error(`AI 服务请求失败：${response.status}${detail ? ` ${detail.slice(0, 200)}` : ''}`)
     const body = await response.json()
-    const text = completionText(body.choices?.[0]?.message?.content || body.message?.content)
+    const text = responseText(body)
     if (!text) throw new Error('AI 服务没有返回分析内容')
     const parsed = enrichResult(parseResult(text), evidence)
     const analysisValidation = validateAnalysis(parsed)
     if (!analysisValidation.ok) throw new Error(analysisValidation.reason)
-    return { ok: true, mode: 'openai-compatible', analysisMode, thinkingLevel: modeConfig.reasoningEffort, tokenBudget: modeConfig.maxTokens, model: current.model, usage: body.usage || null, result: text, parsed, evidence: safeEvidence(evidence) }
+    return { ok: true, mode: current.provider, analysisMode, thinkingLevel: modeConfig.reasoningEffort, tokenBudget: modeConfig.maxTokens, model: current.model, usage: body.usage || null, result: text, parsed, evidence: safeEvidence(evidence) }
   } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('AI 请求超时，请检查 API 地址或网络')
+    if (error?.name === 'AbortError') throw new Error(override.signal?.aborted ? 'AI 分析已取消' : 'AI 请求超时，请检查 API 地址或网络')
     throw error
-  } finally { clearTimeout(timeout) }
+  } finally {
+    clearTimeout(timeout)
+    override.signal?.removeEventListener?.('abort', cancel)
+  }
 }
 
 async function testConnection(override = {}, fetchImpl = globalThis.fetch) {

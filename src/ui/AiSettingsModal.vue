@@ -5,12 +5,27 @@
         <div><p class="kicker">AI API</p><h2>大模型分析设置</h2></div>
         <button class="modal-close" aria-label="关闭" @click="$emit('close')">×</button>
       </div>
-      <p class="settings-intro">填写服务商提供的 Base URL 和 API 密钥，Disk Sense 会自动读取这个地址可用的模型。</p>
+      <p class="settings-intro">选择服务类型并填写连接地址。模型可以自动读取，也可以直接填写；本地服务通常不需要密钥。</p>
+
+      <label>
+        接入类型
+        <select v-model="form.provider">
+          <option value="openai-compatible">OpenAI 兼容 · Chat Completions</option>
+          <option value="openai-responses">OpenAI · Responses API</option>
+          <option value="azure-openai">Azure OpenAI</option>
+          <option value="local-openai">本地模型 · Ollama / vLLM</option>
+        </select>
+      </label>
 
       <label>
         Base URL
-        <input v-model.trim="form.endpoint" placeholder="https://api.openai.com/v1" />
-        <small>填写到 API 版本层级即可，系统会自动访问 /models 和 /chat/completions。</small>
+        <input v-model.trim="form.endpoint" :placeholder="endpointPlaceholder" />
+        <small>{{ endpointHelp }}</small>
+      </label>
+
+      <label v-if="form.provider === 'azure-openai'">
+        Azure API 版本
+        <input v-model.trim="form.apiVersion" placeholder="2024-10-21" />
       </label>
 
       <label>
@@ -26,17 +41,15 @@
       <label>
         可用模型
         <div class="model-picker">
-          <select v-model="form.model" :disabled="modelsBusy || !models.length">
-            <option v-if="!models.length" value="">{{ modelPlaceholder }}</option>
-            <option v-for="model in models" :key="model.id" :value="model.id">
-              {{ model.name }}{{ model.ownedBy ? ` · ${model.ownedBy}` : '' }}
-            </option>
-          </select>
+          <input v-model.trim="form.model" list="ai-model-options" :placeholder="modelPlaceholder" />
+          <datalist id="ai-model-options">
+            <option v-for="model in models" :key="model.id" :value="model.id">{{ model.ownedBy || '' }}</option>
+          </datalist>
           <button class="quiet" :disabled="modelsBusy || !canLoadModels" @click="fetchModels(false)">
             {{ modelsBusy ? '获取中…' : '重新获取' }}
           </button>
         </div>
-        <small>模型来自当前 Base URL 返回的列表，不需要手动输入模型名称。</small>
+        <small>{{ form.provider === 'azure-openai' ? '填写 Azure 部署名称。' : '可以从服务返回的列表选择，也可以直接输入模型名称。' }}</small>
       </label>
 
       <div class="ai-privacy">
@@ -62,10 +75,12 @@ import { desktopApi } from '../platform/api'
 import type { AiConfigStatus, AiModelOption } from '../domain/desktop'
 
 const emit = defineEmits<{ close: []; saved: [status: AiConfigStatus] }>()
-const form = reactive({ endpoint: '', model: '', apiKey: '' })
+type Provider = NonNullable<AiConfigStatus['provider']>
+const form = reactive({ endpoint: '', provider: 'openai-compatible' as Provider, apiVersion: '', model: '', apiKey: '' })
 const status = reactive<AiConfigStatus>({ configured: false, keyStored: false })
 const models = ref<AiModelOption[]>([])
 const savedEndpoint = ref('')
+const savedProvider = ref<Provider>('openai-compatible')
 const preferredModel = ref('')
 const busy = ref(false)
 const modelsBusy = ref(false)
@@ -77,18 +92,30 @@ let modelRequestId = 0
 const endpointValid = computed(() => {
   try {
     const parsed = new URL(form.endpoint)
-    return parsed.protocol === 'https:'
+    return parsed.protocol === 'https:' || (form.provider === 'local-openai' && parsed.protocol === 'http:')
   } catch {
     return false
   }
 })
-const canReuseStoredKey = computed(() => status.keyStored && form.endpoint === savedEndpoint.value)
-const canLoadModels = computed(() => endpointValid.value && Boolean(form.apiKey.trim() || canReuseStoredKey.value))
+const canReuseStoredKey = computed(() => status.keyStored && form.endpoint === savedEndpoint.value && form.provider === savedProvider.value)
+const canLoadModels = computed(() => endpointValid.value && form.provider !== 'azure-openai')
+const canAutoLoadModels = computed(() => canLoadModels.value && Boolean(form.apiKey.trim() || canReuseStoredKey.value || form.provider === 'local-openai'))
+const endpointPlaceholder = computed(() => {
+  if (form.provider === 'local-openai') return 'http://127.0.0.1:11434/v1'
+  if (form.provider === 'azure-openai') return 'https://资源名.openai.azure.com'
+  return 'https://api.openai.com/v1'
+})
+const endpointHelp = computed(() => {
+  if (form.provider === 'openai-responses') return '系统会调用 /responses；也可以填写完整的 Responses 地址。'
+  if (form.provider === 'azure-openai') return '填写 Azure 资源地址，模型字段填写部署名称；也支持完整部署地址。'
+  if (form.provider === 'local-openai') return '仅本地或局域网私有地址允许 HTTP；支持 OpenAI 兼容的 /v1 接口。'
+  return '填写到 API 版本层级即可，系统会调用 /models 和 /chat/completions。'
+})
 const modelPlaceholder = computed(() => {
   if (modelsBusy.value) return '正在根据 Base URL 获取模型…'
   if (!endpointValid.value) return '请先填写正确的 Base URL'
-  if (!canLoadModels.value) return '填写 API 密钥后自动获取'
-  return '没有获取到可用模型'
+  if (form.provider === 'azure-openai') return '输入 Azure 部署名称'
+  return '选择或输入模型名称'
 })
 
 function setMessage(text: string, kind: 'success' | 'error' = 'success') {
@@ -100,8 +127,7 @@ function scheduleModelFetch() {
   if (modelTimer) clearTimeout(modelTimer)
   modelRequestId += 1
   models.value = []
-  form.model = ''
-  if (!canLoadModels.value) {
+  if (!canAutoLoadModels.value) {
     modelsBusy.value = false
     return
   }
@@ -116,8 +142,12 @@ async function load() {
   const result = await api.aiConfigGet()
   Object.assign(status, result)
   savedEndpoint.value = result.endpoint || ''
+  savedProvider.value = result.provider || 'openai-compatible'
   preferredModel.value = result.model || ''
+  form.provider = savedProvider.value
+  form.apiVersion = result.apiVersion || ''
   form.endpoint = savedEndpoint.value
+  form.model = preferredModel.value
 }
 
 async function fetchModels(automatic = false) {
@@ -128,17 +158,16 @@ async function fetchModels(automatic = false) {
   modelsBusy.value = true
   if (!automatic) setMessage('正在根据 Base URL 获取可用模型…')
   try {
-    const result = await api.aiModels({ endpoint: form.endpoint, apiKey: form.apiKey })
+    const result = await api.aiModels({ ...form })
     if (requestId !== modelRequestId) return
     const available = Array.isArray(result.models) ? result.models : []
     models.value = available
     const preferred = available.find(item => item.id === preferredModel.value)
-    form.model = preferred?.id || available[0]?.id || ''
-    setMessage(`已自动获取 ${available.length} 个可用模型`)
+    form.model = preferred?.id || form.model || available[0]?.id || ''
+    setMessage(available.length ? `已获取 ${available.length} 个可用模型` : '此接入类型不提供模型列表，请直接填写模型或部署名称')
   } catch (error) {
     if (requestId !== modelRequestId) return
     models.value = []
-    form.model = ''
     setMessage(`${error instanceof Error ? error.message : String(error)}。请检查 Base URL 和 API 密钥。`, 'error')
   } finally {
     if (requestId === modelRequestId) modelsBusy.value = false
@@ -151,7 +180,7 @@ async function test() {
   busy.value = true
   setMessage('')
   try {
-    const result = await api.aiTest({ endpoint: form.endpoint, model: form.model, apiKey: form.apiKey })
+    const result = await api.aiTest({ ...form })
     if (result.ok) setMessage(`连接成功，模型：${result.model}`)
     else setMessage(result.reason || '连接失败', 'error')
   } catch (error) {
@@ -167,9 +196,10 @@ async function save() {
   busy.value = true
   setMessage('')
   try {
-    const result = await api.aiConfigSave({ endpoint: form.endpoint, model: form.model, apiKey: form.apiKey })
+    const result = await api.aiConfigSave({ ...form })
     Object.assign(status, result)
     savedEndpoint.value = form.endpoint
+    savedProvider.value = form.provider
     preferredModel.value = form.model
     form.apiKey = ''
     setMessage('AI 配置已保存')
@@ -189,8 +219,11 @@ async function clear() {
     const result = await api.aiConfigClear()
     Object.assign(status, result)
     savedEndpoint.value = ''
+    savedProvider.value = 'openai-compatible'
     preferredModel.value = ''
     form.endpoint = ''
+    form.provider = 'openai-compatible'
+    form.apiVersion = ''
     form.model = ''
     form.apiKey = ''
     models.value = []
@@ -203,7 +236,7 @@ async function clear() {
   }
 }
 
-watch([() => form.endpoint, () => form.apiKey], scheduleModelFetch)
+watch([() => form.endpoint, () => form.apiKey, () => form.provider], scheduleModelFetch)
 onMounted(load)
 onBeforeUnmount(() => {
   if (modelTimer) clearTimeout(modelTimer)

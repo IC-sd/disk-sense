@@ -1,5 +1,7 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
 import { chatEndpoint, completionText, enrichResult, listModels, modelsEndpoint, parseResult, promptFor, redactSensitiveText, safeEvidence, status, review, validateAnalysis, validateEndpoint } from '../desktop/ai-explainer.cjs'
+// @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
+import { completionPayload, requestEndpoint, requestHeaders, responseText } from '../desktop/ai-provider.cjs'
 import { describe, expect, it, vi } from 'vitest'
 
 describe('optional AI explainer', () => {
@@ -17,6 +19,56 @@ describe('optional AI explainer', () => {
     expect(status({ endpoint: 'https://api.example.test/v1', model: 'cloud-model', apiKey: 'secret' }).configured).toBe(true)
     expect(validateEndpoint('http://127.0.0.1:11434/v1').ok).toBe(false)
     expect(validateEndpoint('https://secret@example.test/v1').ok).toBe(false)
+  })
+
+  it('allows HTTP only for local/private model services', () => {
+    expect(validateEndpoint('http://127.0.0.1:11434/v1', 'local-openai').ok).toBe(true)
+    expect(validateEndpoint('http://192.168.1.20:8000/v1', 'local-openai').ok).toBe(true)
+    expect(validateEndpoint('http://public.example.test/v1', 'local-openai').ok).toBe(false)
+    expect(validateEndpoint('http://127.0.0.1:11434/v1', 'openai-compatible').ok).toBe(false)
+  })
+
+  it('builds provider-specific Responses and Azure requests', () => {
+    expect(requestEndpoint({ endpoint: 'https://api.openai.com/v1', provider: 'openai-responses' })).toBe('https://api.openai.com/v1/responses')
+    expect(requestEndpoint({ endpoint: 'https://sample.openai.azure.com', provider: 'azure-openai', model: 'disk-sense', apiVersion: '2025-01-01' }))
+      .toBe('https://sample.openai.azure.com/openai/deployments/disk-sense/chat/completions?api-version=2025-01-01')
+    expect(requestHeaders({ provider: 'azure-openai', apiKey: 'secret' })).toMatchObject({ 'api-key': 'secret' })
+    expect(responseText({ output: [{ content: [{ type: 'output_text', text: '{"what":"响应","purpose":"测试"}' }] }] })).toContain('响应')
+    expect(completionPayload({ provider: 'openai-responses', model: 'gpt' }, 'system', 'prompt', { maxTokens: 100, reasoningEffort: 'low' }))
+      .toMatchObject({ input: 'prompt', instructions: 'system', max_output_tokens: 100, store: false })
+  })
+
+  it('supports manual Azure deployment names without requiring a model-list endpoint', async () => {
+    const fetchMock = vi.fn()
+    const result = await listModels({ endpoint: 'https://sample.openai.azure.com', provider: 'azure-openai', model: 'deployment' }, fetchMock as any)
+    expect(result).toMatchObject({ ok: true, models: [], manual: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('parses an OpenAI Responses result', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ output: [{ content: [{ type: 'output_text', text: '{"what":"系统组件","purpose":"支持 Windows 功能"}' }] }] })
+    }))
+    const result = await review({ name: 'x.dll' }, { endpoint: 'https://api.example.test/v1', provider: 'openai-responses', model: 'gpt', apiKey: 'secret' }, fetchMock as any)
+    expect(result.ok).toBe(true)
+    expect(result.mode).toBe('openai-responses')
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.test/v1/responses', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('allows an in-flight analysis to be cancelled', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string, options: any) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true })
+    }))
+    const pending = review({ name: 'x.txt' }, {
+      endpoint: 'https://api.example.test/v1',
+      model: 'test',
+      apiKey: 'secret',
+      signal: controller.signal
+    }, fetchMock as any)
+    controller.abort()
+    await expect(pending).rejects.toThrow('AI 分析已取消')
   })
 
   it('accepts array-form completion content but rejects vague pseudo-analysis', () => {

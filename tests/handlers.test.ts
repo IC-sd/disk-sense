@@ -65,11 +65,13 @@ describe('desktop handler boundaries', () => {
 
     service.save({
       endpoint: 'https://api.example.com/v1',
+      provider: 'openai-responses',
       model: 'model-one',
       apiKey: 'secret'
     })
     expect(state.aiSettings.apiKeyEncrypted).not.toContain('secret')
     expect(service.runtime().apiKey).toBe('secret')
+    expect(service.runtime().provider).toBe('openai-responses')
     expect(service.publicConfig().keyStored).toBe(true)
 
     service.save({

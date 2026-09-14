@@ -698,6 +698,7 @@
 }
 
 .ai-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 17px; }
+.ai-cancel { width: 100%; margin-top: 8px; }
 .ai-review {
   display: flex;
   gap: 10px;
