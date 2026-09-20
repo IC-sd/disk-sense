@@ -6,13 +6,17 @@ Users clean a disk, regain space, and lose it again within days. The missing cap
 
 ## Positioning
 
-Disk Sense is a personal storage observability and decision system with a reliable conventional cleaner inside it.
+Disk Sense is a local-first space explanation system with a reliable conventional cleaner downstream of it.
+
+Its primary object is not an isolated file or directory, but the relationship between disk content and the software, project, system component, workflow, and generated data that produced it. Cleanup is allowed only after that relationship and the object's role are sufficiently explained.
 
 It has two loops:
 
 ### Immediate loop
 
 Discover → explain → preview → act safely.
+
+The explanation stage is: detect anchors → locate the owning root → classify each member's role → connect related locations → show evidence and uncertainty.
 
 ### Long-term loop
 

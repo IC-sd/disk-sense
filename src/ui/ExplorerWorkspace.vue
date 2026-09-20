@@ -280,6 +280,14 @@
             </section>
           </div>
 
+          <details v-if="explanation.relationship?.evidence?.length" class="reason-details relationship-details" open>
+            <summary>空间关联依据 · {{ explanation.relationship.entityKind || '本地关系分析' }}</summary>
+            <p v-if="explanation.relationship.role">
+              当前对象在关联实体中属于：<b>{{ explanation.relationship.role.label }}</b>
+            </p>
+            <ul><li v-for="reason in explanation.relationship.evidence" :key="reason">{{ reason }}</li></ul>
+          </details>
+
           <div class="ai-actions">
             <button
               class="ai-review normal"

@@ -218,6 +218,22 @@ export interface RelatedLocation {
   volume?: string
 }
 
+export interface SpaceRelationship {
+  entityType?: 'project' | 'application' | 'system'
+  entityId?: string
+  entityName?: string
+  entityKind?: string
+  rootPath?: string | null
+  installLocation?: string | null
+  publisher?: string | null
+  shortcutTarget?: string | null
+  role?: { id: string; label: string; risk?: string; evidence?: string }
+  confidence?: number
+  evidence?: string[]
+  volume?: string
+  systemDisk?: boolean
+}
+
 export interface DirectoryShape {
   sampledChildren?: number
   directories?: number
@@ -230,6 +246,7 @@ export interface ExplanationEvidence {
   siblingNames?: string[]
   childNames?: string[]
   directoryShape?: DirectoryShape | null
+  relationship?: SpaceRelationship | null
 }
 
 export interface AiDetails {
@@ -266,6 +283,7 @@ export interface FileExplanation {
   action?: string
   contentPreview?: string | null
   relatedLocations?: RelatedLocation[]
+  relationship?: SpaceRelationship
   evidence?: ExplanationEvidence
   aiDetails?: AiDetails
   aiReasons?: string[]

@@ -2,6 +2,8 @@ const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
 const { storageRelationship, findRelatedLocationsAsync } = require('../app-attribution.cjs')
+const { explainRelationship, relationshipNarrative, findRelationshipLocations } = require('../relationship-engine.cjs')
+const { getInstalledApplications, peekInstalledApplications } = require('../windows-app-inventory.cjs')
 const {
   status,
   review,
@@ -234,6 +236,7 @@ function createExplainerLoader() {
 
 function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell }) {
   const loadExplainer = createExplainerLoader()
+  void getInstalledApplications().catch(() => {})
   let activeAiRequest = null
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
@@ -254,16 +257,37 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
   }))
   ipcMain.handle('inspect:explain', async (_event, filePath) => {
     const result = await loadExplainer().explainPath(filePath)
-    const relationship = storageRelationship(result.path)
-    const relatedLocations = await findRelatedLocationsAsync(
-      result.path,
-      searchService?.cachedStatus?.().roots || []
-    )
+    const installedApplications = peekInstalledApplications()
+    const volumeRelationship = storageRelationship(result.path)
+    const presentation = await resolveFilePresentationAsync(result.path, shell)
+    const relationshipPath = presentation.target || result.path
+    const semanticRelationship = await explainRelationship(relationshipPath, {
+      isDirectory: presentation.target ? false : result.isDirectory,
+      installedApplications
+    })
+    if (semanticRelationship && presentation.target) {
+      semanticRelationship.evidence.unshift(`快捷方式指向 ${presentation.target}`)
+      semanticRelationship.shortcutTarget = presentation.target
+    }
+    const knownVolumes = searchService?.cachedStatus?.().roots || []
+    const [knownRelatedLocations, inferredRelatedLocations] = await Promise.all([
+      findRelatedLocationsAsync(result.path, knownVolumes),
+      findRelationshipLocations(semanticRelationship, relationshipPath, knownVolumes)
+    ])
+    const shortcutLocations = presentation.target
+      ? [{ path: presentation.target, volume: path.parse(presentation.target).root, reason: '此快捷方式实际打开的目标' }]
+      : []
+    const relatedLocations = [...shortcutLocations, ...knownRelatedLocations, ...inferredRelatedLocations]
+    const uniqueLocations = relatedLocations.filter((item, index, values) => (
+      values.findIndex(candidate => path.resolve(candidate.path).toLowerCase() === path.resolve(item.path).toLowerCase()) === index
+    ))
+    const narrative = relationshipNarrative(semanticRelationship)
     return {
       ...result,
-      belongsTo: relationship.owner?.name || result.source,
-      relationship,
-      relatedLocations
+      belongsTo: semanticRelationship?.entityName || volumeRelationship.owner?.name || result.source,
+      whyHere: narrative || result.whyHere,
+      relationship: semanticRelationship ? { ...volumeRelationship, ...semanticRelationship } : volumeRelationship,
+      relatedLocations: uniqueLocations.slice(0, 16)
     }
   })
 

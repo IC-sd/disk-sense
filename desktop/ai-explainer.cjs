@@ -79,6 +79,7 @@ function safeEvidence(input) {
     ? values.map(value => clipped(String(value))).filter(Boolean)
     : []
   const directoryShape = evidence.evidence?.directoryShape
+  const relationship = evidence.evidence?.relationship
   return {
     name: clipped(evidence.name),
     parent: clipped(evidence.parent, 320),
@@ -106,6 +107,22 @@ function safeEvidence(input) {
             count: Number(item?.count || 0)
           }))
         : []
+    } : null,
+    relationship: relationship && typeof relationship === 'object' ? {
+      entityType: clipped(relationship.entityType, 32),
+      entityName: clipped(relationship.entityName, 160),
+      entityKind: clipped(relationship.entityKind, 160),
+      rootPath: clipped(relationship.rootPath, 320),
+      installLocation: clipped(relationship.installLocation, 320),
+      publisher: clipped(relationship.publisher, 160),
+      shortcutTarget: clipped(relationship.shortcutTarget, 320),
+      role: relationship.role && typeof relationship.role === 'object' ? {
+        id: clipped(relationship.role.id, 48),
+        label: clipped(relationship.role.label, 120),
+        evidence: clipped(relationship.role.evidence, 240)
+      } : null,
+      confidence: Number(relationship.confidence || 0),
+      evidence: names(relationship.evidence).slice(0, 8)
     } : null,
     contentPreview: typeof evidence.contentPreview === 'string'
       ? redactSensitiveText(evidence.contentPreview).slice(0, MAX_PREVIEW_CHARS)
