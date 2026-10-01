@@ -78,40 +78,52 @@ function pathContains(root, candidate) {
 }
 
 function isSpecificApplicationRoot(value, environment = process.env) {
+  if (!/^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+[\\/])/iu.test(String(value || ''))) return false
   const normalized = normalizeWindowsPath(value)
   if (!normalized || normalized === normalizeWindowsPath(path.win32.parse(normalized).root)) return false
+  // Registry data is not necessarily trustworthy: shared user/system roots are not owners.
+  const relative = normalized.slice(path.win32.parse(normalized).root.length)
+  if (/^(?:users(?:\\[^\\]+(?:\\appdata(?:\\(?:local|locallow|roaming))?)?)?|program files(?: \(x86\))?(?:\\common files)?|programdata|windows(?:\\(?:system32|syswow64))?)$/iu.test(relative)) return false
   const broadRoots = [
     environment.SystemRoot || environment.WINDIR || 'C:\\Windows',
     environment.ProgramFiles || 'C:\\Program Files',
     environment['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-    environment.ProgramData || 'C:\\ProgramData'
-  ].flatMap(root => [root, path.win32.join(root, 'System32'), path.win32.join(root, 'SysWOW64')])
+    environment.ProgramData || 'C:\\ProgramData',
+    environment.USERPROFILE, environment.LOCALAPPDATA, environment.APPDATA,
+    environment.CommonProgramFiles, environment['CommonProgramFiles(x86)']
+  ].filter(Boolean).flatMap(root => [root, path.win32.join(root, 'System32'), path.win32.join(root, 'SysWOW64')])
   return !broadRoots.some(root => normalizeWindowsPath(root) === normalized)
 }
 
 function applicationRoots(application) {
   return [
-    application.installLocation,
-    application.displayIcon && path.win32.dirname(application.displayIcon)
-  ].filter(root => isSpecificApplicationRoot(root))
+    { root: application.installLocation, matchType: 'install-path', confidence: .98 },
+    { root: application.displayIcon && path.win32.dirname(application.displayIcon), matchType: 'icon-path', confidence: .86 }
+  ].filter(candidate => isSpecificApplicationRoot(candidate.root))
 }
 
 function matchInstalledApplication(filePath, applications = [], inferredOwner = '') {
   const exact = applications
-    .flatMap(application => applicationRoots(application).map(root => ({ application, root })))
+    .flatMap(application => applicationRoots(application).map(candidate => ({ application, ...candidate })))
     .filter(candidate => pathContains(candidate.root, filePath))
-    .sort((left, right) => normalizeWindowsPath(right.root).length - normalizeWindowsPath(left.root).length)[0]
-  if (exact) return { ...exact, matchType: 'install-path', confidence: .98 }
+    .sort((left, right) => normalizeWindowsPath(right.root).length - normalizeWindowsPath(left.root).length || right.confidence - left.confidence)
+  if (exact.length) {
+    const best = exact[0]
+    const tied = exact.filter(candidate => normalizeWindowsPath(candidate.root) === normalizeWindowsPath(best.root))
+    // Several products can share one runtime directory. Do not choose whichever was enumerated first.
+    if (new Set(tied.map(candidate => candidate.application.registryKey)).size > 1) return null
+    return best
+  }
 
   const ownerIdentity = identity(inferredOwner)
   if (ownerIdentity.length < 3) return null
-  const named = applications.find(application => {
+  const named = applications.filter(application => {
     const name = identity(application.displayName)
     if (name === ownerIdentity) return true
     if (!name.startsWith(ownerIdentity)) return false
     return /^[v\d.]+$/u.test(name.slice(ownerIdentity.length))
   })
-  return named ? { application: named, root: named.installLocation || '', matchType: 'directory-name', confidence: .84 } : null
+  return named.length === 1 ? { application: named[0], root: '', matchType: 'directory-name', confidence: .84 } : null
 }
 
 function dedupeApplications(applications) {
@@ -159,6 +171,8 @@ async function getInstalledApplications({ force = false } = {}) {
 }
 
 function peekInstalledApplications() {
+  // Refresh expired evidence without blocking every file selection on a registry walk.
+  void getInstalledApplications().catch(() => {})
   return cachedInventory || []
 }
 
@@ -167,6 +181,7 @@ module.exports = {
   cleanRegistryPath,
   parseRegistryOutput,
   isSpecificApplicationRoot,
+  pathContains,
   matchInstalledApplication,
   getInstalledApplications,
   peekInstalledApplications

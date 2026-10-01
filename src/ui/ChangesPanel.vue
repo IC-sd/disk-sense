@@ -71,9 +71,10 @@
       <article class="summary-modified"><AppIcon name="spark" /><span>修改</span><b>{{ last.result.summary.modified }}</b></article>
       <article class="summary-removed"><AppIcon name="clean" /><span>删除</span><b>{{ last.result.summary.removed }}</b></article>
       <article class="summary-moved"><AppIcon name="arrow" /><span>移动</span><b>{{ last.result.summary.moved }}</b></article>
-      <article class="summary-space gained"><AppIcon name="database" /><span>新增空间</span><b>{{ formatBytes(last.result.summary.addedBytes) }}</b></article>
-      <article class="summary-space released"><AppIcon name="database" /><span>减少空间</span><b>{{ formatBytes(last.result.summary.removedBytes) }}</b></article>
+      <article class="summary-space gained"><AppIcon name="database" /><span>新增文件占用</span><b>{{ formatBytes(last.result.summary.addedBytes) }}</b></article>
+      <article class="summary-space released"><AppIcon name="database" /><span>移除文件占用</span><b>{{ formatBytes(last.result.summary.removedBytes) }}</b></article>
     </div>
+    <p v-if="last?.result" class="inline-message">已修改文件的大小净变化：{{ signedBytes((last.result.summary.modifiedBytes || 0) + (last.result.summary.movedBytesDelta || 0)) }}。均为比较范围内的逻辑大小，不等于实际释放的磁盘空间。</p>
 
     <div v-if="last?.result" class="change-groups">
       <section v-for="group in groups" :key="group.id" class="change-group">
@@ -116,6 +117,8 @@ import { desktopApi } from '../platform/api'
 import type { ChangeBaseline, ChangeHistoryRecord, ChangeProgress, ChangeResult } from '../domain/desktop'
 import { formatBytes, formatDateTime } from '../shared/format'
 import AppIcon from './AppIcon.vue'
+
+function signedBytes(value: number) { return `${value > 0 ? '+' : value < 0 ? '−' : ''}${formatBytes(Math.abs(value))}` }
 
 defineProps<{ embedded?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()

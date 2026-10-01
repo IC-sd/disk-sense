@@ -53,6 +53,7 @@ const smokeWordShortcut = path.join(smokeSearchRoot, 'ProgramData', 'Microsoft',
 const realWordShortcutAvailable = process.platform === 'win32' && fs.existsSync(systemWordShortcut)
 fs.writeFileSync(path.join(smokeSearchRoot, '$Recycle.Bin', 'discarded.tmp'), 'smoke fixture')
 fs.writeFileSync(path.join(smokeSearchRoot, 'Documents', 'search-smoke.txt'), 'smoke fixture')
+fs.writeFileSync(path.join(smokeSearchRoot, 'package.json'), JSON.stringify({ name: 'Space Demo' }))
 if (realWordShortcutAvailable) fs.copyFileSync(systemWordShortcut, smokeWordShortcut)
 else fs.writeFileSync(smokeWordShortcut, 'shortcut fixture')
 fs.writeFileSync(path.join(smokeSearchRoot, 'Users', 'Test', 'Documents', 'word-plan.docx'), 'document fixture')
@@ -148,6 +149,13 @@ async function evaluate(webSocketUrl) {
           const scan = await api.cleanerScan('crash-dumps')
           const explainTarget = root.items.find(item => item.name === 'Windows') || root.items.find(item => item.isDirectory && !item.isLink)
           const explanation = explainTarget ? await api.inspectExplain(explainTarget.path) : null
+          await api.inspectExplain(${JSON.stringify(smokeSearchRoot)})
+          await api.inspectIndexStart({ scope: 'all' })
+          for (let attempt = 0; attempt < 100 && (await api.inspectIndexStatus()).building; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 50))
+          }
+          const spaceLedger = await api.spaceSummary()
+          const ledgerPersisted = spaceLedger.entities.some(entity => entity.name === 'Space Demo' && entity.bytes > 0 && entity.locations.length > 0)
           const settingsButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('设置与关于'))
           settingsButton?.click()
           await new Promise(resolve => setTimeout(resolve, 80))
@@ -205,7 +213,15 @@ async function evaluate(webSocketUrl) {
           overviewButton?.click()
           await new Promise(resolve => setTimeout(resolve, 120))
           const overviewChangesRendered = Boolean(document.querySelector('.overview-changes'))
-          const overviewRendered = document.body.innerText.includes('看得懂的空间地图')
+          const overviewRendered = Boolean(document.querySelector('.space-sources') && document.body.innerText.includes('空间归属'))
+          for (let attempt = 0; attempt < 30 && !document.querySelector('.source-entry'); attempt++) await new Promise(resolve => setTimeout(resolve, 50))
+          const ledgerRendered = Boolean(document.querySelector('.source-entry'))
+          document.querySelector('.source-entry')?.setAttribute('open', '')
+          document.querySelector('.source-path')?.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+          const ledgerNavigation = document.querySelector('.main-nav button.active')?.textContent.includes('目录与文件')
+          overviewButton?.click()
+          await new Promise(resolve => setTimeout(resolve, 100))
           const captureButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes(${JSON.stringify(captureLabel)}))
           captureButton?.click()
           await new Promise(resolve => setTimeout(resolve, 180))
@@ -437,6 +453,32 @@ async function evaluate(webSocketUrl) {
             document.querySelector('.overview-changes-anchor')?.scrollIntoView({ block: 'start' })
             await new Promise(resolve => setTimeout(resolve, 100))
           }
+          // Public documentation uses fixture paths and synthetic capacity, never host data.
+          // This runs only after the real interaction assertions have been collected.
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_PUBLIC_PREVIEW === '1')} && ${JSON.stringify(captureView)} === 'overview') {
+            const panel = document.querySelector('.space-sources')
+            panel?.querySelector('details')?.setAttribute('open', '')
+            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT)
+            while (walker.nextNode()) {
+              walker.currentNode.textContent = walker.currentNode.textContent.split(${JSON.stringify(smokeSearchRoot)}).join('D:\\\\Projects\\\\SpaceDemo')
+            }
+            panel?.querySelectorAll('[title]').forEach(element => element.removeAttribute('title'))
+            panel?.querySelectorAll('.source-locations small:last-of-type').forEach(element => { element.textContent = '最近核实：示例' })
+            document.querySelectorAll('.volume-grid article').forEach((element, index) => {
+              if (index > 1) { element.remove(); return }
+              element.querySelector('.volume-title b').textContent = index ? 'D:\\\\' : 'C:\\\\'
+              element.querySelector('.volume-title strong').textContent = index ? '35%' : '70%'
+              element.querySelector('.volume-bar i').style.width = index ? '35%' : '70%'
+              element.querySelector('.volume-numbers').textContent = index ? '325 GB 可用 · 175 GB / 500 GB' : '150 GB 可用 · 350 GB / 500 GB'
+            })
+            const annotation = document.createElement('p')
+            annotation.className = 'source-note'
+            annotation.textContent = '界面示例：项目路径和磁盘容量为演示数据。'
+            panel?.append(annotation)
+            const sensitiveText = document.querySelector('.overview-page')?.innerText || ''
+            if (sensitiveText.includes(${JSON.stringify(isolatedUserData)}) || sensitiveText.includes(${JSON.stringify(os.homedir())})) throw new Error('public-preview-contains-host-path')
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
           const capturedPng = (
             ${JSON.stringify(process.env.DISK_SENSE_SMOKE_USE_BRIDGE_SCREENSHOT === '1')} &&
             ${JSON.stringify(process.env.DISK_SENSE_SMOKE_SKIP_SCREENSHOT !== '1')} &&
@@ -528,6 +570,9 @@ async function evaluate(webSocketUrl) {
             historyWidthAligned,
             cleanerSafetyBackground,
             overviewRendered,
+            ledgerPersisted,
+            ledgerRendered,
+            ledgerNavigation,
             overviewChangesRendered,
             cleanerScanRendered,
             cleanerCategoryCount,
@@ -628,6 +673,7 @@ try {
     result?.title !== 'Disk Sense' ||
     !result?.rendered ||
     !result?.bridge ||
+    !result?.ledgerPersisted || !result?.ledgerRendered || !result?.ledgerNavigation ||
     (process.env.DISK_SENSE_SMOKE_DEV === '1' && !result?.hmrWebSocketConnected) ||
     result?.ruleCount < 8 ||
     result?.rootPath !== 'C:\\' ||

@@ -1,14 +1,14 @@
 <template>
   <section class="page overview-page">
-    <header class="hero">
-      <div class="hero-copy">
+    <header class="overview-heading">
+      <div>
         <div class="eyebrow"><span></span> SPACE EXPLANATION</div>
-        <h1><span>把磁盘变成一张</span><em>看得懂的空间地图</em></h1>
-        <p>不只显示容量，还解释文件从哪里来、支持什么功能，以及为什么持续占用系统盘。</p>
+        <h1>空间概览</h1>
+        <p>先看空间属于谁、分布在哪里，再决定是否处理。</p>
         <div class="hero-actions">
           <button class="primary-button" @click="$emit('navigate', 'inspect')">
             <AppIcon name="scan" />
-            探查 C 盘
+            浏览目录与文件
           </button>
           <button class="secondary-button" @click="scrollToChanges">
             查看空间变化
@@ -21,20 +21,9 @@
         </div>
       </div>
 
-      <div class="space-map" aria-label="Disk Sense 空间理解流程图">
-        <div class="map-glow"></div>
-        <div class="orbit orbit-one"><i></i><i></i></div>
-        <div class="orbit orbit-two"><i></i></div>
-        <div class="map-core">
-          <AppIcon name="database" />
-          <strong>C:\</strong>
-          <small>空间入口</small>
-        </div>
-        <div class="map-node node-known"><span></span><b>已知系统内容</b><small>规则与签名识别</small></div>
-        <div class="map-node node-personal"><span></span><b>个人内容</b><small>由用户决定</small></div>
-        <div class="map-node node-unknown"><span></span><b>未知空间</b><small>继续收集证据</small></div>
-      </div>
     </header>
+
+    <SpaceSourcesPanel @inspect-path="$emit('inspect-path', $event)" @browse="$emit('navigate', 'inspect')" />
 
     <section class="live-overview">
       <header>
@@ -109,8 +98,9 @@ import type { OverviewSummary } from '../domain/desktop'
 import { formatBytes, formatDateTime } from '../shared/format'
 import AppIcon from './AppIcon.vue'
 import ChangesPanel from './ChangesPanel.vue'
+import SpaceSourcesPanel from './SpaceSourcesPanel.vue'
 
-defineEmits<{ navigate: [view: 'inspect'] }>()
+defineEmits<{ navigate: [view: 'inspect']; 'inspect-path': [path: string] }>()
 
 const summary = ref<OverviewSummary | null>(null)
 const changesSection = ref<HTMLElement | null>(null)
@@ -142,3 +132,12 @@ onActivated(() => {
   if (Date.now() - loadedAt > 30_000) void loadOverview()
 })
 </script>
+
+<style scoped>
+.overview-heading { padding: 0 0 20px; }
+.overview-heading h1 { margin: 12px 0 8px; font-size: clamp(26px, 3vw, 36px); }
+.overview-heading p { margin: 0; color: var(--muted); }
+.overview-heading .hero-actions { margin-top: 16px; }
+.overview-heading .trust-line { margin-top: 12px; }
+.space-sources { margin-bottom: 20px; }
+</style>

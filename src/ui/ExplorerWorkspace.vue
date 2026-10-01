@@ -261,9 +261,11 @@
 
           <div class="explanation-summary">
             <span class="risk-chip" :class="riskClass(explanation.risk)">{{ riskLabel(explanation.risk) }}</span>
-            <span>{{ percent(explanation.confidence) }} 置信度</span>
+            <span>{{ explanation.relationship?.basis === 'install-path' ? '安装登记证据' : explanation.relationship?.basis === 'project-markers' ? '项目结构证据' : explanation.relationship?.basis === 'known-signature' ? '已知路径特征' : explanation.relationship?.basis ? '归属仍需核实' : '本地特征判断' }}</span>
             <span>{{ explanation.aiAnalyzed ? (explanation.aiMode === 'deep' ? 'AI 深入分析' : 'AI 普通分析') : '本地证据分析' }}</span>
           </div>
+
+          <p v-if="refreshingExplanation" class="inline-message" role="status">正在核实最新证据…</p>
 
           <div v-if="explanation.aiAnalyzed" class="ai-result-banner" role="status">
             <div>
@@ -286,13 +288,16 @@
               当前对象在关联实体中属于：<b>{{ explanation.relationship.role.label }}</b>
             </p>
             <ul><li v-for="reason in explanation.relationship.evidence" :key="reason">{{ reason }}</li></ul>
+            <p v-if="explanation.relationship.components?.length">包含的组件：{{ explanation.relationship.components.map(component => component.entityName).join('、') }}。组件自身的清单不代表它是独立的空间归属。</p>
+            <p v-if="explanation.relationship.limited">目录标记采用有限采样，可能仍有未识别的其他内容。</p>
+            <p v-if="explanation.ledgerSaved">关联依据已保存，可在空间概览中查看跨位置占用。</p>
           </details>
 
           <div class="ai-actions">
             <button
               class="ai-review normal"
               :class="{ completed: explanation.aiAnalyzed && explanation.aiMode === 'normal' }"
-              :disabled="aiBusy"
+              :disabled="aiBusy || refreshingExplanation"
               @click="requestAi('normal')"
             >
               <AppIcon name="spark" />
@@ -304,7 +309,7 @@
             <button
               class="ai-review deep"
               :class="{ completed: explanation.aiAnalyzed && explanation.aiMode === 'deep' }"
-              :disabled="aiBusy"
+              :disabled="aiBusy || refreshingExplanation"
               @click="requestAi('deep')"
             >
               <AppIcon name="spark" />
@@ -349,7 +354,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { desktopApi } from '../platform/api'
 import { createAiEvidence } from '../application/ai-evidence'
 import { appAiAnalysisSession, applyAiRecord } from '../application/ai-session'
@@ -368,9 +373,21 @@ import type {
   StoredAiAnalysis
 } from '../domain/desktop'
 import { riskClass, riskLabel } from '../domain/risk'
-import { formatBytes, percent } from '../shared/format'
+import { formatBytes } from '../shared/format'
 import AiSettingsModal from './AiSettingsModal.vue'
 import AppIcon from './AppIcon.vue'
+
+const props = defineProps<{ requestedPath?: { path: string; id: number } | null }>()
+let appliedPathRequest = 0
+async function applyPathRequest() {
+  const request = props.requestedPath
+  if (!request || appliedPathRequest === request.id) return false
+  appliedPathRequest = request.id
+  mode.value = 'browse'
+  await loadDirectory(request.path)
+  return true
+}
+watch(() => props.requestedPath, () => { if (workspaceActive) void applyPathRequest() })
 
 type ExplorerMode = 'browse' | 'search'
 
@@ -392,6 +409,7 @@ const estimatingCount = ref(0)
 const estimatingPaths = ref(new Set<string>())
 const aiConfigured = ref(false)
 const aiBusy = ref(false)
+const refreshingExplanation = ref(false)
 const aiBusyMode = ref<AnalysisMode | null>(null)
 const aiError = ref('')
 const showAiSettings = ref(false)
@@ -813,7 +831,7 @@ function scheduleBackgroundSearchRefresh() {
 }
 
 function fingerprint(item: DirectoryItem, result: FileExplanation) {
-  return `${result.modifiedAt || item.modifiedAt || 0}:${item.size ?? result.size ?? 0}`
+  return result.evidenceFingerprint || `${result.modifiedAt || item.modifiedAt || 0}:${result.size ?? item.size ?? 0}`
 }
 
 function localExplanationKey(item: DirectoryItem) {
@@ -882,6 +900,7 @@ async function selectItem(item: DirectoryItem) {
   const api = desktopApi()
   if (!api) return
   const currentRequest = ++selectionRequestId
+  refreshingExplanation.value = true
   selected.value = item
   aiError.value = ''
   const cacheKey = localExplanationKey(item)
@@ -889,8 +908,10 @@ async function selectItem(item: DirectoryItem) {
   if (cachedLocal) {
     localExplanationCache.delete(cacheKey)
     localExplanationCache.set(cacheKey, cachedLocal)
-    await showExplanation(item, cachedLocal, currentRequest)
-    return
+    // Display an immediate local preview, but always revalidate the surrounding evidence.
+    explanation.value = { ...cachedLocal, title: item.name }
+  } else {
+    explanation.value = null
   }
   try {
     const result = await api.inspectExplain(item.path)
@@ -899,9 +920,12 @@ async function selectItem(item: DirectoryItem) {
     await showExplanation(item, result, currentRequest)
   } catch (error) {
     if (currentRequest === selectionRequestId) {
+      explanation.value = null
       const target = mode.value === 'search' ? searchError : inspectError
       target.value = error instanceof Error ? error.message : String(error)
     }
+  } finally {
+    if (currentRequest === selectionRequestId) refreshingExplanation.value = false
   }
 }
 
@@ -927,6 +951,7 @@ function handleRowDoubleClick(item: DirectoryItem) {
 }
 
 async function requestAi(mode: AnalysisMode) {
+  if (refreshingExplanation.value || aiBusy.value) return
   if (!aiConfigured.value) {
     showAiSettings.value = true
     return
@@ -935,6 +960,7 @@ async function requestAi(mode: AnalysisMode) {
   if (!api || !explanation.value || !selected.value) return
   const targetPath = selected.value.path
   const currentFingerprint = fingerprint(selected.value, explanation.value)
+  const targetSelection = selectionRequestId
   aiBusy.value = true
   aiBusyMode.value = mode
   aiError.value = ''
@@ -944,15 +970,23 @@ async function requestAi(mode: AnalysisMode) {
       aiError.value = result.reason || 'AI 服务没有返回有效结果'
       return
     }
+    const refreshed = await api.inspectExplain(targetPath)
+    if (refreshed.evidenceFingerprint && refreshed.evidenceFingerprint !== currentFingerprint) {
+      if (selected.value?.path === targetPath && targetSelection === selectionRequestId) {
+        await showExplanation(selected.value, refreshed, targetSelection)
+        aiError.value = '分析期间本地证据发生变化，结果未套用。请基于更新后的证据重新分析。'
+      }
+      return
+    }
     const record = aiSession.save(targetPath, currentFingerprint, result)
-    if (selected.value?.path === targetPath) {
+    if (selected.value?.path === targetPath && targetSelection === selectionRequestId && explanation.value && fingerprint(selected.value, explanation.value) === currentFingerprint) {
       explanation.value = applyAiRecord(explanation.value, record)
       await nextTick()
       explainPanel.value?.scrollTo({ top: 0, behavior: 'smooth' })
     }
     try {
       await api.aiAnalysisSave({ ...result, path: targetPath, fingerprint: currentFingerprint })
-      if (selected.value?.path === targetPath && explanation.value?.aiAnalyzed) {
+      if (selected.value?.path === targetPath && targetSelection === selectionRequestId && explanation.value?.aiAnalyzed && fingerprint(selected.value, explanation.value) === currentFingerprint) {
         explanation.value = { ...explanation.value, aiPersisted: true }
       }
     } catch (error) {
@@ -1153,7 +1187,8 @@ onMounted(() => {
   initialized = true
   void loadAiStatus()
   void loadIndexStatus()
-  void loadDirectory('C:\\')
+  if (props.requestedPath) void applyPathRequest()
+  else void loadDirectory('C:\\')
   nextTick(attachScrollerObserver)
 })
 
@@ -1201,6 +1236,7 @@ function stopActiveWork() {
 
 onActivated(() => {
   workspaceActive = true
+  void applyPathRequest()
   subscribeIndexProgress()
   if (!initialized) return
   void loadAiStatus()

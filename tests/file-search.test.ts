@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
 import { createFileSearchService, fileKind, hasWildcard, searchRanking, searchRelevanceScore, wildcardKind, wildcardSearchesPath, wildcardToLike } from '../desktop/file-search.cjs'
 
@@ -39,6 +39,7 @@ function serviceFor(root: string, options: Record<string, unknown> | number = {}
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   while (services.length) await services.pop()?.close()
   while (temporaryDirectories.length) {
     const directory = temporaryDirectories.pop()
@@ -47,6 +48,31 @@ afterEach(async () => {
 })
 
 describe('persistent file search index', () => {
+  it('preserves inaccessible subtrees while allowing unrelated ownership growth comparisons', async () => {
+    const root = fixture()
+    const blocked = path.join(root, 'Documents')
+    const service = serviceFor(root)
+    service.observeSpace({ entityId: 'blocked', entityName: 'Blocked', rootPath: blocked, basis: 'install-path' })
+    service.observeSpace({ entityId: 'pictures', entityName: 'Pictures', rootPath: path.join(root, 'Pictures'), basis: 'project-markers' })
+    await service.rebuild({ roots: [root] }); await service.waitForIdle()
+    const initial = await service.spaceSummary()
+    const beforeBytes = initial.entities.find((entity: any) => entity.id === 'blocked').bytes
+    const readdir = fs.promises.readdir.bind(fs.promises)
+    const spy = vi.spyOn(fs.promises, 'readdir').mockImplementation(((target: any, options: any) => {
+      if (String(target) === blocked) return Promise.reject(Object.assign(new Error('access denied'), { code: 'EACCES' }))
+      return readdir(target, options)
+    }) as any)
+    await service.rebuild({ roots: [root] }); await service.waitForIdle()
+    const summary = await service.spaceSummary()
+    expect(summary.entities.find((entity: any) => entity.id === 'blocked')).toMatchObject({ bytes: beforeBytes, deltaBytes: null })
+    expect(summary.entities.find((entity: any) => entity.id === 'pictures').deltaBytes).toBe(0)
+    expect(service.search({ query: 'quarterly-report', scope: 'all' }).items).toHaveLength(1)
+    spy.mockRestore()
+    fs.unlinkSync(path.join(blocked, 'quarterly-report.docx'))
+    await service.rebuild({ roots: [root] }); await service.waitForIdle()
+    expect(service.search({ query: 'quarterly-report', scope: 'all' }).items).toHaveLength(0)
+    expect((await service.spaceSummary()).entities.find((entity: any) => entity.id === 'blocked').deltaBytes).toBe(-14)
+  })
   it('indexes a controlled tree and applies scope, type and escaped SQL wildcard filters', async () => {
     const root = fixture()
     const service = serviceFor(root)

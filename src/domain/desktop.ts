@@ -151,6 +151,9 @@ export interface FileSearchQuery {
 }
 
 export interface FileSearchIndexStatus {
+  synchronizing?: boolean
+  coverageVersion?: number
+  revision?: number
   available: boolean
   indexed: boolean
   building: boolean
@@ -219,6 +222,9 @@ export interface RelatedLocation {
 }
 
 export interface SpaceRelationship {
+  basis?: string
+  limited?: boolean
+  components?: SpaceRelationship[]
   entityType?: 'project' | 'application' | 'system'
   entityId?: string
   entityName?: string
@@ -258,6 +264,8 @@ export interface AiDetails {
 }
 
 export interface FileExplanation {
+  evidenceFingerprint?: string
+  ledgerSaved?: boolean
   path: string
   name: string
   parent: string
@@ -294,6 +302,23 @@ export interface FileExplanation {
   aiThinkingLevel?: string
   aiTokenBudget?: number
   aiUsage?: Record<string, number> | null
+}
+
+export interface SpaceLedgerSummary {
+  generatedAt: string
+  index: FileSearchIndexStatus
+  locationCount: number
+  limit: number
+  measurement: 'indexed-logical-bytes'
+  entities: Array<{
+    id: string; name: string; kind: string; type: string
+    bytes: number; files: number; inferred: boolean
+    deltaBytes: number | null; baselineAt: string | null
+    locations: Array<{
+      path: string; bytes: number; files: number; basis: string; evidence: string[]
+      observedAt: string; counted: boolean; covered: boolean; shared: boolean; incomplete: boolean
+    }>
+  }>
 }
 
 export interface AiConfigDraft {
@@ -585,6 +610,8 @@ export interface ChangeResult {
     moved: number
     addedBytes: number
     removedBytes: number
+    modifiedBytes?: number
+    movedBytesDelta?: number
   }
 }
 

@@ -50,6 +50,7 @@ describe('Windows installed application inventory', () => {
   })
 
   it('rejects registry roots that are too broad to prove application ownership', () => {
+    for (const root of ['relative-folder', 'C:relative', 'C:\\Users', 'C:\\Users\\demo', 'C:\\Users\\demo\\AppData', 'C:\\Users\\demo\\AppData\\Local', 'D:\\Program Files\\Common Files']) expect(isSpecificApplicationRoot(root)).toBe(false)
     expect(isSpecificApplicationRoot('C:\\')).toBe(false)
     expect(isSpecificApplicationRoot('C:\\Windows')).toBe(false)
     expect(isSpecificApplicationRoot('C:\\Program Files')).toBe(false)
@@ -59,5 +60,16 @@ describe('Windows installed application inventory', () => {
       displayName: 'Bad Registry Entry',
       installLocation: 'C:\\Windows'
     }], '')).toBeNull()
+  })
+
+  it('does not pick an arbitrary application for a shared root or ambiguous name', () => {
+    const apps = ['one', 'two'].map(registryKey => ({ registryKey, displayName: 'Acme', installLocation: 'C:\\Apps\\Shared' }))
+    expect(matchInstalledApplication('C:\\Apps\\Shared\\runtime.dll', apps)).toBeNull()
+    expect(matchInstalledApplication('C:\\Users\\demo\\AppData\\Local\\Acme\\Cache', apps, 'Acme')).toBeNull()
+  })
+
+  it('distinguishes a display icon directory from a registered install path', () => {
+    const result = matchInstalledApplication('C:\\Apps\\Tool\\lib.dll', [{ registryKey: 'tool', displayName: 'Tool', displayIcon: 'C:\\Apps\\Tool\\icon.ico' }])
+    expect(result).toMatchObject({ matchType: 'icon-path', confidence: .86 })
   })
 })

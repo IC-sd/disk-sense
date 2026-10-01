@@ -40,7 +40,7 @@
 
     <section class="workspace">
       <KeepAlive>
-        <component :is="currentComponent" @navigate="navigate" />
+        <component :is="currentComponent" :requested-path="requestedPath" @navigate="navigate" @inspect-path="inspectPath" />
       </KeepAlive>
     </section>
   </main>
@@ -57,8 +57,9 @@ import SettingsPanel from './SettingsWorkspace.vue'
 type View = 'overview' | 'inspect' | 'cleaner' | 'settings'
 
 const view = ref<View>('overview')
+const requestedPath = ref<{ path: string; id: number } | null>(null)
 const navigation: Array<{ id: View; label: string; description: string; icon: string }> = [
-  { id: 'overview', label: '空间概览', description: '理解产品与空间入口', icon: 'overview' },
+  { id: 'overview', label: '空间概览', description: '空间归属与占用变化', icon: 'overview' },
   { id: 'inspect', label: '目录与文件', description: '解释每一个对象', icon: 'folder' },
   { id: 'cleaner', label: '垃圾清理', description: '清理与系统瘦身', icon: 'clean' },
   { id: 'settings', label: '设置与关于', description: '隐私、安全与版本', icon: 'settings' }
@@ -75,5 +76,9 @@ const currentComponent = computed(() => componentByView[view.value])
 function navigate(target: View) {
   view.value = target
   requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
+}
+function inspectPath(path: string) {
+  requestedPath.value = { path, id: (requestedPath.value?.id || 0) + 1 }
+  navigate('inspect')
 }
 </script>

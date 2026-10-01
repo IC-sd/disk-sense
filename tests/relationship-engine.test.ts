@@ -3,9 +3,59 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 // @ts-expect-error CommonJS desktop module is intentionally tested from TypeScript.
-import { catalogDirectory, conventionalApplicationContext, explainRelationship, findRelationshipLocations, roleForPath } from '../desktop/relationship-engine.cjs'
+import { catalogDirectory, conventionalApplicationContext, explainRelationship, explanationFingerprint, findRelationshipLocations, roleForPath } from '../desktop/relationship-engine.cjs'
 
 describe('space relationship engine', () => {
+  it('keeps dependency manifests as components of the consuming project', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-component-'))
+    const dependency = path.join(root, 'node_modules', 'widget')
+    try {
+      fs.mkdirSync(path.join(dependency, 'dist'), { recursive: true })
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'actual-project' }))
+      fs.writeFileSync(path.join(dependency, 'package.json'), JSON.stringify({ name: 'widget' }))
+      const result = await explainRelationship(path.join(dependency, 'dist', 'index.js'))
+      expect(result.entityName).toBe('actual-project')
+      expect(result.rootPath).toBe(root)
+      expect(result.components[0].entityName).toBe('widget')
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('uses the local data root for an application installed on another drive', async () => {
+    const result = await explainRelationship('C:\\Users\\demo\\AppData\\Local\\AcmeEditor\\Cache\\index', {
+      installedApplications: [{ registryKey: 'acme', displayName: 'Acme Editor', installLocation: 'D:\\Long\\Installation\\Path\\For\\Acme' }]
+    })
+    expect(result.rootPath).toBe('C:\\Users\\demo\\AppData\\Local\\AcmeEditor')
+    expect(result.role.id).toBe('cache')
+    expect(result.installLocation).toBe('D:\\Long\\Installation\\Path\\For\\Acme')
+    expect(roleForPath('C:\\Acme\\Cache\\index', 'D:\\Long\\Unrelated\\Path').id).toBe('cache')
+  })
+
+  it('invalidates the analysis fingerprint when a parent manifest changes but the file does not', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-fingerprint-'))
+    try {
+      fs.mkdirSync(path.join(root, 'src'))
+      const target = path.join(root, 'src', 'main.js')
+      fs.writeFileSync(target, 'fixed')
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'first' }))
+      const base = { path: target, size: 5, modifiedAt: 1 }
+      const first = { ...base, relationship: await explainRelationship(target) }
+      expect(explanationFingerprint(first)).toBe(explanationFingerprint({ ...base, relationship: await explainRelationship(target) }))
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'second-project' }))
+      expect(explanationFingerprint(first)).not.toBe(explanationFingerprint({ ...base, relationship: await explainRelationship(target) }))
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('keeps installation ownership ahead of a bundled package manifest', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-installed-'))
+    try {
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'internal-package' }))
+      const result = await explainRelationship(path.join(root, 'index.js'), {
+        installedApplications: [{ registryKey: 'installed', displayName: 'Actual Application', installLocation: root }]
+      })
+      expect(result.entityName).toBe('Actual Application')
+      expect(result.components[0].entityName).toBe('internal-package')
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  })
   it('catalogs projects from primary and supporting markers', () => {
     const result = catalogDirectory(['package.json', 'src', 'node_modules', 'pnpm-lock.yaml'])
     expect(result.id).toBe('node')

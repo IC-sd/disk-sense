@@ -5,6 +5,15 @@ import { completionPayload, requestEndpoint, requestHeaders, responseText } from
 import { describe, expect, it, vi } from 'vitest'
 
 describe('optional AI explainer', () => {
+  it('retains confirmed local ownership and risk in the persisted model result', () => {
+    const local = { risk: 'danger', handling: '保留系统文件', evidence: { relationship: {
+      entityName: 'Known application', basis: 'install-path',
+      components: [{ name: 'Internal package', rootPath: 'C:\\Apps\\Known\\resources', evidence: ['package.json'] }]
+    } } }
+    const result = enrichResult({ risk: 'safe', handling: '删除', belongsTo: '缓存' }, local)
+    expect(result).toMatchObject({ risk: 'danger', handling: '保留系统文件', belongsTo: 'Known application' })
+    expect(safeEvidence(local).relationship.components[0].name).toBe('Internal package')
+  })
   it('stays unconfigured when no provider is configured', async () => {
     const result = await review({ name: 'unknown.bin' }, { endpoint: '', model: 'test' })
     expect(result.ok).toBe(false)

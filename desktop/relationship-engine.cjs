@@ -1,11 +1,13 @@
 const path = require('node:path')
 const fsp = require('node:fs/promises')
 const os = require('node:os')
+const { createHash } = require('node:crypto')
 const { attribute } = require('./app-attribution.cjs')
 const { matchInstalledApplication } = require('./windows-app-inventory.cjs')
 
 const MAX_ANCESTORS = 8
 const MAX_DIRECTORY_ENTRIES = 600
+const RELATIONSHIP_VERSION = 2
 const GENERIC_OWNERS = new Set(['appdata', 'local', 'locallow', 'roaming', 'programdata', 'program files', 'program files (x86)', 'packages', 'applications', 'apps', 'common files', 'microsoft', 'google', 'tencent', 'alibaba'])
 
 const PROJECT_CATALOGERS = [
@@ -24,7 +26,7 @@ const PROJECT_CATALOGERS = [
 const ROLE_RULES = [
   { id: 'dependency', label: '项目依赖', risk: 'attention', names: ['node_modules', 'vendor', 'packages', '.venv', 'venv'] },
   { id: 'build-output', label: '构建产物', risk: 'attention', names: ['dist', 'build', 'out', 'target', 'bin', 'obj', 'intermediate'] },
-  { id: 'cache', label: '可重建缓存', risk: 'low', names: ['cache', '.cache', 'code cache', 'gpucache', 'gpu cache', 'shadercache', 'grshadercache', '__pycache__', '.gradle', '.vite', '.turbo', '.parcel-cache', 'deriveddatacache'] },
+  { id: 'cache', label: '缓存特征目录', risk: 'attention', names: ['cache', '.cache', 'code cache', 'gpucache', 'gpu cache', 'shadercache', 'grshadercache', '__pycache__', '.gradle', '.vite', '.turbo', '.parcel-cache', 'deriveddatacache'] },
   { id: 'log', label: '日志或诊断数据', risk: 'low', names: ['log', 'logs', 'crashpad', 'crashes', 'dumps', 'diagnostics'] },
   { id: 'temporary', label: '临时工作数据', risk: 'attention', names: ['temp', 'tmp', 'temporary', 'staging'] },
   { id: 'configuration', label: '配置与状态', risk: 'elevated', names: ['config', 'configuration', 'settings', 'preferences', 'user data', 'local state'] },
@@ -40,7 +42,8 @@ function normalizedSegments(filePath) {
 function roleForPath(filePath, rootPath = '') {
   const full = normalizedSegments(filePath)
   const root = rootPath ? normalizedSegments(rootPath) : []
-  const relevant = full.slice(Math.min(root.length, full.length)).map(value => value.toLowerCase())
+  const contains = root.length > 0 && root.every((segment, index) => segment.toLowerCase() === full[index]?.toLowerCase())
+  const relevant = full.slice(contains ? root.length : 0).map(value => value.toLowerCase())
   const leaf = relevant[relevant.length - 1] || path.basename(filePath).toLowerCase()
   const matches = []
   for (const rule of ROLE_RULES) {
@@ -57,7 +60,7 @@ function roleForPath(filePath, rootPath = '') {
     risk: selected.rule.risk,
     evidence: `最接近当前对象的路径层级包含“${selected.name}”`
   }
-  return { id: 'member', label: '组成内容', risk: 'unknown', evidence: '位于已识别实体的目录范围内' }
+  return { id: 'member', label: '组成内容', risk: 'unknown', evidence: contains ? '位于已识别实体的目录范围内；具体作用仍需确认' : '尚无足够的路径角色证据' }
 }
 
 async function directoryNames(directory) {
@@ -109,13 +112,20 @@ async function projectName(rootPath, catalog) {
 
 async function findProjectContext(filePath, isDirectory = false) {
   let current = isDirectory ? path.resolve(filePath) : path.dirname(path.resolve(filePath))
+  const contexts = []
   for (let depth = 0; depth <= MAX_ANCESTORS; depth += 1) {
     const names = await directoryNames(current)
     const catalog = catalogDirectory(names)
     if (catalog) {
       const name = await projectName(current, catalog)
       const role = roleForPath(filePath, current)
-      return {
+      const markerState = await Promise.all(names.filter(name => catalog.primaryMatches.some(marker => name.toLowerCase() === marker || name.toLowerCase().endsWith(marker))).map(async name => {
+        try {
+          const stat = await fsp.stat(path.join(current, name))
+          return [name, stat.size, stat.mtimeMs]
+        } catch { return [name, 'unavailable'] }
+      }))
+      contexts.push({
         entityType: 'project',
         entityId: `project:${catalog.id}:${current.toLowerCase()}`,
         entityName: name,
@@ -123,18 +133,30 @@ async function findProjectContext(filePath, isDirectory = false) {
         rootPath: current,
         role,
         confidence: catalog.confidence,
+        basis: 'project-markers',
+        markerState,
+        limited: names.length >= MAX_DIRECTORY_ENTRIES,
         evidence: [
           `项目根目录包含 ${catalog.primaryMatches.join('、')}`,
           ...(catalog.supportMatches.length ? [`同时发现 ${catalog.supportMatches.slice(0, 4).join('、')} 等结构标记`] : []),
           role.evidence
         ]
-      }
+      })
+      if (!normalizedSegments(current).some(part => ['node_modules', 'vendor', '.venv', 'venv', 'site-packages'].includes(part.toLowerCase()))) break
     }
     const parent = path.dirname(current)
     if (parent === current) break
     current = parent
   }
-  return null
+  if (!contexts.length) return null
+  let owner = contexts[0]
+  // A dependency's own manifest describes the component, not the project that uses it.
+  for (const candidate of contexts.slice(1)) {
+    const relative = path.relative(candidate.rootPath, owner.rootPath).split(path.sep)
+    if (relative.some(part => ['node_modules', 'vendor', '.venv', 'venv', 'site-packages'].includes(part.toLowerCase()))) owner = candidate
+    else break
+  }
+  return { ...owner, components: contexts.filter(candidate => candidate !== owner && candidate.rootPath.startsWith(owner.rootPath + path.sep)) }
 }
 
 function conventionalApplicationContext(filePath) {
@@ -161,35 +183,41 @@ function conventionalApplicationContext(filePath) {
     rootPath,
     role: roleForPath(resolved, rootPath),
     confidence: .66,
+    basis: 'directory-convention',
     evidence: [`位于 Windows 约定的应用目录 ${segments[rootIndex]}`, `目录层级指向“${owner}”`]
   }
 }
 
 async function explainRelationship(filePath, options = {}) {
   const project = await findProjectContext(filePath, Boolean(options.isDirectory))
-  if (project) return project
   const conventionalOwner = conventionalApplicationContext(filePath)
+  const knownOwner = attribute(filePath)
   const installedApplication = matchInstalledApplication(
     filePath,
     options.installedApplications,
-    conventionalOwner?.entityName
+    knownOwner?.name || conventionalOwner?.entityName
   )
   if (installedApplication) {
     const { application, root, matchType, confidence } = installedApplication
-    const role = roleForPath(filePath, root)
+    if (project && matchType === 'directory-name') return project
+    const footprintRoot = root || conventionalOwner?.rootPath || null
+    const role = roleForPath(filePath, footprintRoot)
     const evidence = matchType === 'install-path'
       ? `路径位于 Windows 登记的安装目录 ${root}`
-      : `目录名称与 Windows 已安装应用“${application.displayName}”一致`
+      : matchType === 'icon-path' ? `路径位于应用图标所在目录 ${root}，并非独立的安装目录证明`
+        : `目录名称与 Windows 已安装应用“${application.displayName}”一致；这是关联线索，不证明由它创建`
     return {
       entityType: 'application',
       entityId: `installed-application:${application.registryKey.toLowerCase()}`,
       entityName: application.displayName,
       entityKind: 'Windows 已安装应用',
-      rootPath: root || conventionalOwner?.rootPath || null,
+      rootPath: footprintRoot,
       installLocation: application.installLocation || null,
       publisher: application.publisher || null,
       role,
       confidence,
+      basis: matchType,
+      components: project ? [project] : [],
       evidence: [
         evidence,
         ...(application.publisher ? [`发布者：${application.publisher}`] : []),
@@ -197,7 +225,7 @@ async function explainRelationship(filePath, options = {}) {
       ]
     }
   }
-  const knownOwner = attribute(filePath)
+  if (project) return project
   if (knownOwner) {
     const role = roleForPath(filePath)
     return {
@@ -205,9 +233,10 @@ async function explainRelationship(filePath, options = {}) {
       entityId: `application:${knownOwner.id}`,
       entityName: knownOwner.name,
       entityKind: '已识别应用足迹',
-      rootPath: null,
+      rootPath: conventionalOwner?.rootPath || null,
       role,
       confidence: .94,
+      basis: 'known-signature',
       evidence: [knownOwner.evidence, role.evidence]
     }
   }
@@ -217,7 +246,17 @@ async function explainRelationship(filePath, options = {}) {
 function relationshipNarrative(relationship) {
   if (!relationship) return null
   const root = relationship.rootPath ? `，其关联根目录是 ${relationship.rootPath}` : ''
-  return `它被识别为“${relationship.entityName}”的${relationship.role.label}${root}。${relationship.evidence.join('；')}。`
+  const verb = ['directory-name', 'directory-convention', 'icon-path'].includes(relationship.basis) ? '可能关联到' : '证据指向'
+  return `${verb}“${relationship.entityName}”，路径角色为${relationship.role.label}${root}。${relationship.evidence.join('；')}。归属或缓存名称本身不代表可以删除。`
+}
+
+function explanationFingerprint(result) {
+  // Version the evidence, not just the selected file. Parent manifests and ownership can change independently.
+  return createHash('sha256').update(JSON.stringify({
+    version: RELATIONSHIP_VERSION, path: result.path, modifiedAt: result.modifiedAt, size: result.size,
+    risk: result.risk, source: result.source, reason: result.reason, evidence: result.evidence,
+    relationship: result.relationship, relatedLocations: result.relatedLocations, context: result.context
+  })).digest('hex')
 }
 
 async function findRelationshipLocations(relationship, currentPath, knownVolumes = []) {
@@ -268,5 +307,6 @@ module.exports = {
   conventionalApplicationContext,
   explainRelationship,
   relationshipNarrative,
-  findRelationshipLocations
+  findRelationshipLocations,
+  explanationFingerprint
 }

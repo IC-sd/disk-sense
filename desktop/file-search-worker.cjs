@@ -58,6 +58,12 @@ async function execute(message) {
       return service.cancel()
     case 'search':
       return service.search(payload.input)
+    case 'observeSpace':
+      return service.observeSpace(payload.relationship)
+    case 'spaceSummary':
+      return service.spaceSummary()
+    case 'forgetSpace':
+      return service.forgetSpace(payload.entityId)
     case 'checkpoint':
       return service.checkpoint()
     case 'waitForIdle':

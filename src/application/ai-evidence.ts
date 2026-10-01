@@ -52,6 +52,11 @@ export function createAiEvidence(input: Partial<FileExplanation> & Record<string
               ? { id: text(input.relationship.role.id), label: text(input.relationship.role.label), evidence: text(input.relationship.role.evidence) }
               : null,
             confidence: number(input.relationship.confidence),
+            basis: text(input.relationship.basis),
+            components: (input.relationship.components || []).slice(0, 8).map(component => ({
+              name: text(component.entityName), rootPath: text(component.rootPath),
+              evidence: (component.evidence || []).slice(0, 4).map(String)
+            })),
             evidence: Array.isArray(input.relationship.evidence) ? input.relationship.evidence.slice(0, 8).map(String) : []
           }
         : null

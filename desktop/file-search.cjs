@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { DatabaseSync } = require('node:sqlite')
+const { createSpaceLedger } = require('./space-ledger.cjs')
 const { pathSignals } = require('./explainer.cjs')
 const { normalizeRisk } = require('./risk.cjs')
 
@@ -370,11 +371,8 @@ function openSearchDatabase(databasePath) {
       COMMIT;
     `)
   } else if (hasExistingIndex && version !== SEARCH_SCHEMA_VERSION) {
-    database.close()
-    for (const suffix of ['', '-wal', '-shm']) {
-      try { fs.rmSync(`${databasePath}${suffix}`, { force: true }) } catch {}
-    }
-    database = new DatabaseSync(databasePath)
+    // Rebuild disposable search tables without destroying saved relationship evidence.
+    database.exec('DROP TRIGGER IF EXISTS search_files_delete_fts; DROP TABLE IF EXISTS search_fts; DROP TABLE IF EXISTS search_files; DROP TABLE IF EXISTS search_metadata; DROP TABLE IF EXISTS search_gaps;')
   }
   return database
 }
@@ -426,6 +424,7 @@ function createFileSearchService({
     PRAGMA user_version = ${SEARCH_SCHEMA_VERSION};
   `)
 
+  const spaceLedger = createSpaceLedger(database)
   const statements = {
     upsert: database.prepare(`
       INSERT INTO search_files (
@@ -446,9 +445,13 @@ function createFileSearchService({
     ftsUpsert: database.prepare(
       'INSERT OR REPLACE INTO search_fts(rowid, name) VALUES (?, ?)'
     ),
-    removeStale: database.prepare(
-      'DELETE FROM search_files WHERE path LIKE ? ESCAPE \'\\\' AND generation <> ?'
-    ),
+    removeStale: database.prepare(`DELETE FROM search_files WHERE path LIKE ? ESCAPE '\\' AND generation <> ?
+      AND NOT EXISTS (SELECT 1 FROM search_gaps gap WHERE search_files.path = gap.path COLLATE NOCASE
+        OR lower(substr(search_files.path, 1, length(gap.path) + 1)) = lower(gap.path || ?))`),
+    gapSet: database.prepare('INSERT OR REPLACE INTO search_gaps VALUES (?, ?)'),
+    gapRemove: database.prepare('DELETE FROM search_gaps WHERE path = ? COLLATE NOCASE'),
+    gapFind: database.prepare('SELECT reason FROM search_gaps WHERE path = ? COLLATE NOCASE'),
+    gapsRemoveTree: database.prepare(`DELETE FROM search_gaps WHERE path = ? COLLATE NOCASE OR path LIKE ? ESCAPE '\\'`),
     findPath: database.prepare(
       'SELECT path, is_directory FROM search_files WHERE path = ? COLLATE NOCASE'
     ),
@@ -477,6 +480,9 @@ function createFileSearchService({
   }
 
   let active = null
+  let indexRevision = 0
+  let generationSeed = Number(database.prepare('SELECT COALESCE(MAX(generation), 0) AS generation FROM search_files').get().generation)
+  const nextGeneration = () => (generationSeed = Math.max(Date.now(), generationSeed + 1))
   let closed = false
   const automatic = {
     enabled: false,
@@ -515,6 +521,9 @@ function createFileSearchService({
       available: true,
       indexed: countEntries() > 0,
       building: Boolean(active),
+      synchronizing: Boolean(automatic.processing),
+      revision: indexRevision,
+      coverageVersion: running?.coverageVersion || saved.coverageVersion || 0,
       phase: running?.phase || saved.phase || 'idle',
       roots: running?.roots || saved.roots || [],
       entries: running?.entries ?? countEntries(),
@@ -581,14 +590,18 @@ function createFileSearchService({
   async function inspectEntry(parent, entry, root, generation) {
     try {
       return await inspectTarget(path.join(parent, entry.name), root, generation)
-    } catch {
-      return null
+    } catch (error) {
+      statements.gapSet.run(path.join(parent, entry.name), String(error?.code || 'stat-failed'))
+      indexRevision++
+      return { inaccessible: true }
     }
   }
 
   function upsertItem(item) {
     const indexed = statements.upsert.get(...item.row)
     statements.ftsUpsert.run(indexed.rowid, item.row[1])
+    statements.gapRemove.run(item.target)
+    indexRevision++
   }
 
   async function indexRoot(root, generation, state, signal, options = {}) {
@@ -605,11 +618,14 @@ function createFileSearchService({
       try {
         entries = await fsp.readdir(current, { withFileTypes: true })
         state.directories += 1
-      } catch {
+      } catch (error) {
+        statements.gapSet.run(current, String(error?.code || 'read-failed'))
+        indexRevision++
         state.inaccessible += 1
         if (reportProgress) publish(state)
         continue
       }
+      statements.gapRemove.run(current)
 
       for (const chunk of chunksOf(entries, STAT_CONCURRENCY)) {
         if (signal.cancelled || state.entries >= entryLimit) break
@@ -619,6 +635,7 @@ function createFileSearchService({
         database.exec('BEGIN')
         try {
           for (const item of inspected) {
+            if (item.inaccessible) { state.inaccessible++; continue }
             upsertItem(item)
             state.entries += 1
             if (item.traverse) queue.push(item.target)
@@ -657,6 +674,8 @@ function createFileSearchService({
     try {
       statements.removePath.run(clean)
       statements.removeDescendants.run(`${escapeLike(prefix)}%`)
+      statements.gapsRemoveTree.run(clean, `${escapeLike(prefix)}%`)
+      indexRevision++
       database.exec('COMMIT')
     } catch (error) {
       database.exec('ROLLBACK')
@@ -667,7 +686,8 @@ function createFileSearchService({
   async function synchronizeTarget(target, root) {
     if (isDatabaseFile(target)) return
     const existing = statements.findPath.get(target)
-    const generation = Date.now()
+    const hasGap = Boolean(statements.gapFind.get(target))
+    const generation = nextGeneration()
     let item
     try {
       item = await inspectTarget(target, normalizeRoot(root), generation)
@@ -676,11 +696,13 @@ function createFileSearchService({
         if (existing) removeIndexedTarget(target)
         return
       }
+      statements.gapSet.run(target, String(error?.code || 'stat-failed'))
+      indexRevision++
       return
     }
     if (!item) return
     upsertItem(item)
-    if (!existing && item.traverse) {
+    if ((!existing || hasGap) && item.traverse) {
       const remainingCapacity = Math.max(0, maximumEntries - countEntries())
       const state = {
         entries: 0,
@@ -695,6 +717,11 @@ function createFileSearchService({
         entryLimit: Math.min(MAX_INCREMENTAL_SUBTREE_ENTRIES, remainingCapacity),
         reportProgress: false
       })
+      if (state.truncated) statements.gapSet.run(target, 'entry-limit')
+      else {
+        statements.removeStale.run(`${escapeLike(target.replace(/[\\/]+$/, '') + path.sep)}%`, generation, path.sep)
+        indexRevision++
+      }
     }
   }
 
@@ -858,7 +885,7 @@ function createFileSearchService({
     const roots = uniqueRoots(requestedRoots)
     if (!roots.length) throw new Error('没有找到可建立索引的磁盘')
 
-    const generation = Date.now()
+    const generation = nextGeneration()
     const signal = { cancelled: false }
     const state = {
       phase: 'building',
@@ -871,12 +898,14 @@ function createFileSearchService({
       startedAt: new Date().toISOString(),
       startedAtMs: Date.now(),
       lastProgressAt: 0,
+      coverageVersion: 1,
       truncated: false
     }
     const promise = (async () => {
       try {
         for (const root of roots) {
           if (signal.cancelled || state.truncated) break
+          statements.gapsRemoveTree.run(root.replace(/[\\/]+$/, ''), `${escapeLike(root.replace(/[\\/]+$/, '') + path.sep)}%`)
           await indexRoot(root, generation, state, signal)
         }
         if (!signal.cancelled && !state.truncated) {
@@ -884,7 +913,7 @@ function createFileSearchService({
           try {
             for (const root of roots) {
               const prefix = `${root.replace(/[\\/]+$/, '')}${path.sep}`.toLowerCase()
-              statements.removeStale.run(`${escapeLike(prefix)}%`, generation)
+              statements.removeStale.run(`${escapeLike(prefix)}%`, generation, path.sep)
             }
             database.exec('COMMIT')
           } catch (error) {
@@ -1098,6 +1127,7 @@ function createFileSearchService({
     stopAutomatic()
     if (active) active.signal.cancelled = true
     await waitForIdle()
+    await spaceLedger.waitForIdle()
     closed = true
     database.close()
   }
@@ -1106,12 +1136,16 @@ function createFileSearchService({
     stopAutomatic()
     if (active) active.signal.cancelled = true
     await waitForIdle()
+    await spaceLedger.waitForIdle()
     database.exec('PRAGMA wal_checkpoint(TRUNCATE)')
     return publicStatus()
   }
 
   return {
     status: publicStatus,
+    observeSpace: relationship => spaceLedger.observe(relationship),
+    spaceSummary: () => spaceLedger.summary(publicStatus),
+    forgetSpace: entityId => spaceLedger.forget(entityId),
     startAutomatic,
     stopAutomatic,
     rebuild,

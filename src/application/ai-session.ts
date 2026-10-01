@@ -1,5 +1,5 @@
 import type { AiDetails, AiReviewResult, FileExplanation } from '../domain/desktop'
-import { normalizeRisk } from '../domain/risk'
+import { normalizeRisk, riskRank } from '../domain/risk'
 
 type ParsedAiAnalysis = {
   what?: string
@@ -107,22 +107,28 @@ export function applyAiRecord<T extends Partial<FileExplanation>>(
   const kind = record.analysisMode === 'deep' ? 'AI 深入分析' : 'AI 普通分析'
   const what = parsed?.what || base.what || base.description || '暂未确定的对象'
   const purpose = parsed?.purpose || base.purpose || '证据不足'
+  const cannotLowerRisk = riskRank(base.risk) > riskRank(parsed?.risk || base.risk)
+  const confirmedOwner = ['install-path', 'project-markers', 'known-signature'].includes(base.relationship?.basis || '')
+    ? base.relationship?.entityName : null
+  const handling = cannotLowerRisk
+    ? base.handling || base.action || '本地证据提示风险，建议保留并进一步确认。'
+    : parsed?.handling || base.handling || base.action || '建议保留并进一步确认。'
   const details: AiDetails = {
     what,
     purpose,
-    belongsTo: parsed?.belongsTo || base.source || '尚未确认',
+    belongsTo: confirmedOwner || parsed?.belongsTo || base.belongsTo || base.source || '尚未确认',
     whyHere: parsed?.whyHere || base.whyHere || '当前证据不足以解释它为什么出现在这里。',
-    handling: parsed?.handling || base.action || '建议保留并进一步确认。'
+    handling
   }
 
   return {
     ...base,
     kind,
-    source: parsed?.belongsTo || base.source,
+    source: confirmedOwner || parsed?.belongsTo || base.source,
     description: `${what}。${purpose}`,
-    risk: normalizeRisk(parsed?.risk || base.risk),
+    risk: riskRank(parsed?.risk || base.risk) > riskRank(base.risk) ? normalizeRisk(parsed?.risk) : normalizeRisk(base.risk),
     confidence: typeof parsed?.confidence === 'number' ? parsed.confidence : base.confidence,
-    action: parsed?.handling || base.action,
+    action: handling,
     aiDetails: details,
     aiReasons: Array.isArray(parsed?.reasons) ? parsed.reasons.map(String) : [],
     aiMode: record.analysisMode,

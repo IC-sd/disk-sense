@@ -424,12 +424,12 @@ async function listDirectory(dir) {
   }
 }
 
-async function explainPath(filePath) {
+async function explainPath(filePath, { fresh = false } = {}) {
   const target = absoluteTarget(filePath)
   const stat = await fsp.lstat(target)
   const cacheKey = `${target.toLowerCase()}|${stat.size}|${stat.mtimeMs}`
   const cached = cacheRead(explanationCache, cacheKey)
-  if (cached) return cached
+  if (cached && !fresh) return cached
   const [siblings, directoryChildren, content] = await Promise.all([
     readDirectoryEntries(path.dirname(target), MAX_CONTEXT_SIBLINGS).then(value => value.entries).catch(() => []),
     stat.isDirectory() ? readDirectoryEntries(target, MAX_CONTEXT_SIBLINGS).then(value => value.entries).catch(() => []) : [],

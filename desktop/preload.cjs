@@ -8,6 +8,9 @@ function subscribe(channel, callback) {
 
 const bridge = {
   overviewGet: () => ipcRenderer.invoke('overview:get'),
+  spaceSummary: () => ipcRenderer.invoke('space:summary'),
+  spaceDiscover: () => ipcRenderer.invoke('space:discover'),
+  spaceForget: entityId => ipcRenderer.invoke('space:forget', entityId),
   appInfo: () => ipcRenderer.invoke('app:info'),
   appDataUsage: () => ipcRenderer.invoke('app:data-usage'),
   appAppearanceGet: () => ipcRenderer.invoke('app:appearance:get'),

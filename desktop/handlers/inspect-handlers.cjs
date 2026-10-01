@@ -2,8 +2,8 @@ const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
 const { storageRelationship, findRelatedLocationsAsync } = require('../app-attribution.cjs')
-const { explainRelationship, relationshipNarrative, findRelationshipLocations } = require('../relationship-engine.cjs')
-const { getInstalledApplications, peekInstalledApplications } = require('../windows-app-inventory.cjs')
+const { explainRelationship, relationshipNarrative, findRelationshipLocations, explanationFingerprint } = require('../relationship-engine.cjs')
+const { getInstalledApplications, peekInstalledApplications, isSpecificApplicationRoot } = require('../windows-app-inventory.cjs')
 const {
   status,
   review,
@@ -238,6 +238,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
   const loadExplainer = createExplainerLoader()
   void getInstalledApplications().catch(() => {})
   let activeAiRequest = null
+  let activeDiscovery = null
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
     nativePresentationCache.delete(filePath)
@@ -256,7 +257,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
     ...await loadExplainer().estimateDirectory(directory)
   }))
   ipcMain.handle('inspect:explain', async (_event, filePath) => {
-    const result = await loadExplainer().explainPath(filePath)
+    const result = await loadExplainer().explainPath(filePath, { fresh: true })
     const installedApplications = peekInstalledApplications()
     const volumeRelationship = storageRelationship(result.path)
     const presentation = await resolveFilePresentationAsync(result.path, shell)
@@ -271,7 +272,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
     }
     const knownVolumes = searchService?.cachedStatus?.().roots || []
     const [knownRelatedLocations, inferredRelatedLocations] = await Promise.all([
-      findRelatedLocationsAsync(result.path, knownVolumes),
+      findRelatedLocationsAsync(relationshipPath, knownVolumes),
       findRelationshipLocations(semanticRelationship, relationshipPath, knownVolumes)
     ])
     const shortcutLocations = presentation.target
@@ -282,16 +283,73 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
       values.findIndex(candidate => path.resolve(candidate.path).toLowerCase() === path.resolve(item.path).toLowerCase()) === index
     ))
     const narrative = relationshipNarrative(semanticRelationship)
-    return {
+    const explained = {
       ...result,
       belongsTo: semanticRelationship?.entityName || volumeRelationship.owner?.name || result.source,
       whyHere: narrative || result.whyHere,
       relationship: semanticRelationship ? { ...volumeRelationship, ...semanticRelationship } : volumeRelationship,
       relatedLocations: uniqueLocations.slice(0, 16)
     }
+    let ledgerSaved = false
+    if (semanticRelationship && searchService?.observeSpace) {
+      const roots = [semanticRelationship]
+      if (/^[a-z]:[\\/]/iu.test(semanticRelationship.installLocation || '') && isSpecificApplicationRoot(semanticRelationship.installLocation)) {
+        roots.push({ ...semanticRelationship, rootPath: semanticRelationship.installLocation, basis: 'install-path',
+          evidence: [`Windows 登记的安装目录：${semanticRelationship.installLocation}`] })
+      }
+      // Only persist observed roots, never guessed "related locations" or an AI claim.
+      for (const relationship of roots) {
+        if (!relationship.rootPath) continue
+        try {
+          const stat = await fsp.lstat(relationship.rootPath)
+          if (stat.isDirectory() && !stat.isSymbolicLink()) {
+            const saved = await searchService.observeSpace(relationship)
+            ledgerSaved ||= Boolean(saved.saved)
+          }
+        } catch { /* Attribution remains available if the optional index is unavailable. */ }
+      }
+    }
+    return { ...explained, evidenceFingerprint: explanationFingerprint(explained), ledgerSaved }
   })
 
   if (searchService) {
+    ipcMain.handle('space:forget', (_event, entityId) => {
+      if (!searchService.forgetSpace) throw new Error('空间台账暂时不可用。')
+      return searchService.forgetSpace(entityId)
+    })
+    ipcMain.handle('space:discover', () => {
+      if (!searchService.observeSpace) throw new Error('搜索索引暂不可用，无法保存空间归属。')
+      if (!activeDiscovery) activeDiscovery = (async () => {
+        const applications = await getInstalledApplications({ force: true })
+        const candidates = applications.filter(application => /^[a-z]:[\\/]/iu.test(application.installLocation || '') && isSpecificApplicationRoot(application.installLocation)).slice(0, 512)
+        let saved = 0
+        await mapConcurrent(candidates, 8, async application => {
+          const root = application.installLocation
+          try {
+            const stat = await fsp.lstat(root)
+            if (!stat.isDirectory() || stat.isSymbolicLink()) return
+            // Shared registry roots must pass the same ambiguity checks as individual inspection.
+            const { matchInstalledApplication } = require('../windows-app-inventory.cjs')
+            const match = matchInstalledApplication(root, applications)
+            if (!match || match.application.registryKey !== application.registryKey || match.matchType !== 'install-path') return
+            const result = await searchService.observeSpace({
+              entityId: `installed-application:${application.registryKey.toLowerCase()}`,
+              entityType: 'application', entityName: application.displayName, entityKind: 'Windows 已安装应用',
+              rootPath: root, installLocation: root, publisher: application.publisher || null,
+              basis: 'install-path', confidence: .98,
+              evidence: [`Windows 登记的安装目录：${root}`, ...(application.publisher ? [`发布者：${application.publisher}`] : [])]
+            })
+            if (result.saved) saved++
+          } catch { /* Missing/stale registry paths are not observations. */ }
+        })
+        return { saved }
+      })().finally(() => { activeDiscovery = null })
+      return activeDiscovery
+    })
+    ipcMain.handle('space:summary', () => {
+      if (!searchService.spaceSummary) throw new Error('空间台账暂时不可用，请检查搜索索引状态。')
+      return searchService.spaceSummary()
+    })
     ipcMain.handle('inspect:index-status', () => searchService.status())
     ipcMain.handle('inspect:index-start', (_event, input = {}) => searchService.rebuildScope({
       scope: input.scope === 'all' ? 'all' : 'drive',

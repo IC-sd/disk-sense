@@ -5,7 +5,7 @@ const path = require('node:path')
 const MAX_ENTRIES = 500000
 const MAX_MS = 60000
 const SKIP_NAMES = new Set(['System Volume Information', '$Recycle.Bin'])
-const INVENTORY_SCHEMA_VERSION = 4
+const INVENTORY_SCHEMA_VERSION = 5
 const INVENTORY_STAT_CONCURRENCY = 24
 
 function key(value) {
@@ -87,7 +87,6 @@ async function inventory(options = {}, hooks = {}) {
         continue
       }
       children = await fsp.readdir(current, { withFileTypes: true })
-      scannedDirectories.push(current)
       state.directories++
     } catch {
       state.inaccessible++
@@ -100,6 +99,8 @@ async function inventory(options = {}, hooks = {}) {
     const remainingForRoot = Math.max(0, perRootLimit - state.entries)
     const remainingGlobal = Math.max(0, maxEntries - entries.length)
     const candidates = sortedChildren.slice(0, Math.min(remainingForRoot, remainingGlobal))
+    let inspectedCount = 0
+    let inaccessibleChild = false
 
     for (let offset = 0; offset < candidates.length; offset += INVENTORY_STAT_CONCURRENCY) {
       if (signal?.aborted) return snapshot(true)
@@ -109,14 +110,16 @@ async function inventory(options = {}, hooks = {}) {
         const target = path.join(current, child.name)
         try {
           if (child.isSymbolicLink()) return { skippedLink: true }
-          const stat = await fsp.lstat(target)
+          const stat = await fsp.lstat(target, { bigint: true })
           if (stat.isSymbolicLink()) return { skippedLink: true }
           return {
             item: {
               path: target,
               kind: stat.isDirectory() ? 'directory' : 'file',
-              size: stat.size,
-              modifiedAt: stat.mtimeMs
+              size: Number(stat.size),
+              modifiedAt: Number(stat.mtimeNs) / 1e6,
+              // String IDs preserve Windows' 64-bit file indices without Number precision loss.
+              fileIdentity: stat.ino > 0n ? `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` : null
             }
           }
         } catch {
@@ -125,12 +128,14 @@ async function inventory(options = {}, hooks = {}) {
       }))
 
       for (const result of inspected) {
+        inspectedCount++
         if (result.skippedLink) {
           state.skippedLinks++
           continue
         }
         if (result.inaccessible) {
           state.inaccessible++
+          inaccessibleChild = true
           continue
         }
         const item = result.item
@@ -140,6 +145,9 @@ async function inventory(options = {}, hooks = {}) {
         if (item.kind === 'directory') childDirectories.push(item.path)
       }
     }
+
+    if (inspectedCount === sortedChildren.length && !inaccessibleChild) scannedDirectories.push(current)
+    else state.truncated = true
 
     if (candidates.length < sortedChildren.length) state.truncated = true
     if (state.entries >= perRootLimit && state.queueIndex < state.queue.length) state.truncated = true
@@ -190,8 +198,8 @@ function diff(before, after) {
   const groupByFileFingerprint = items => {
     const groups = new Map()
     for (const item of items) {
-      if (item.kind !== 'file') continue
-      const fingerprint = `${item.size}|${item.modifiedAt}`
+      if (item.kind !== 'file' || !item.fileIdentity) continue
+      const fingerprint = `${path.parse(path.resolve(item.path)).root.toLowerCase()}|${item.fileIdentity}`
       const matches = groups.get(fingerprint) || []
       matches.push(item)
       groups.set(fingerprint, matches)
@@ -200,13 +208,16 @@ function diff(before, after) {
   }
   const additionsByFingerprint = groupByFileFingerprint(added)
   const removalsByFingerprint = groupByFileFingerprint(removed)
+  const beforeIdentities = groupByFileFingerprint(before?.entries || [])
+  const afterIdentities = groupByFileFingerprint(after?.entries || [])
   const moved = []; const movedRemoved = new Set(); const movedAdded = new Set()
   for (const [fingerprint, removedMatches] of removalsByFingerprint) {
     const addedMatches = additionsByFingerprint.get(fingerprint)
     if (removedMatches.length !== 1 || addedMatches?.length !== 1) continue
+    if (beforeIdentities.get(fingerprint)?.length !== 1 || afterIdentities.get(fingerprint)?.length !== 1) continue
     const item = removedMatches[0]
     const match = addedMatches[0]
-    moved.push({ from: item.path, to: match.path, kind: item.kind, size: item.size })
+    moved.push({ from: item.path, to: match.path, kind: item.kind, size: match.size, beforeSize: item.size, evidence: 'same-file-identity' })
     movedRemoved.add(item.path.toLowerCase())
     movedAdded.add(match.path.toLowerCase())
   }
@@ -271,7 +282,9 @@ function diff(before, after) {
       modified: modified.length,
       moved: moved.length,
       addedBytes: actualAdded.reduce((sum, item) => sum + effectiveBytes(item), 0),
-      removedBytes: actualRemoved.reduce((sum, item) => sum + effectiveBytes(item), 0)
+      removedBytes: actualRemoved.reduce((sum, item) => sum + effectiveBytes(item), 0),
+      modifiedBytes: modified.filter(item => item.kind === 'file').reduce((sum, item) => sum + item.size - item.beforeSize, 0),
+      movedBytesDelta: moved.reduce((sum, item) => sum + item.size - item.beforeSize, 0)
     }
   }
 }

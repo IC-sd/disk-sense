@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Replaced the decorative overview with a persistent space-attribution view grouping observed software and project locations, their evidence, indexed occupancy and comparable growth.
+- Distinguished installed applications, owning projects and bundled dependencies; shared installation roots and name-only matches no longer silently choose an arbitrary owner.
+- Revalidated saved explanations against file and relationship evidence before reuse, and preserved locally established risk and ownership when applying AI analysis.
+- Tracked inaccessible index paths without treating their files as deleted; growth comparison pauses only for affected or incomplete scopes.
+- Used volume-local file identity rather than matching size and timestamps to identify moves, and included file modification deltas in change summaries.
+- Updated Electron and vulnerable transitive dependencies to patched versions.
+
 ## 0.9.0-beta.9 - 2026-09-14
 
 ### Changed

@@ -35,6 +35,7 @@ import type {
   MaintenanceStatus,
   NativeFilePresentation,
   OverviewSummary,
+  SpaceLedgerSummary,
   SlimmingItem
 } from '../domain/desktop'
 
@@ -42,6 +43,9 @@ type Unsubscribe = () => void
 
 export interface DesktopApi {
   overviewGet: () => Promise<OverviewSummary>
+  spaceSummary: () => Promise<SpaceLedgerSummary>
+  spaceDiscover: () => Promise<{ saved: number }>
+  spaceForget: (entityId: string) => Promise<{ removed: boolean }>
   appInfo: () => Promise<AppInfo>
   appDataUsage: () => Promise<DirectoryUsage>
   appAppearanceGet: () => Promise<AppearanceSettings>

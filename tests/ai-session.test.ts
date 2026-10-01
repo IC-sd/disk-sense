@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { AiAnalysisSession, MAX_AI_SESSION_RECORDS, applyAiRecord } from '../src/application/ai-session'
 
 describe('in-window AI analysis session', () => {
+  it('preserves local risk, handling and confirmed ownership when AI contradicts them', () => {
+    const record = new AiAnalysisSession().save('C:\\system.dll', 'evidence', {
+      parsed: { risk: 'safe', handling: '直接删除', belongsTo: '无用缓存' }
+    })
+    const result = applyAiRecord({ risk: 'danger' as const, handling: '请保留', relationship: { basis: 'install-path', entityName: 'Windows component' } }, record)
+    expect(result.risk).toBe('danger')
+    expect(result.aiDetails.handling).toBe('请保留')
+    expect(result.aiDetails.belongsTo).toBe('Windows component')
+  })
   it('restores an analysis for the same unchanged path', () => {
     const session = new AiAnalysisSession()
     const record = session.save('C:\\Example', '100:2048', {

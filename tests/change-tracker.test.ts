@@ -7,14 +7,50 @@ import path from 'node:path'
 
 describe('change tracker', () => {
   it('detects added, removed, modified and moved entries', () => {
-    const before = { entries: [{ path: 'C:/old.txt', kind: 'file', size: 2, modifiedAt: 1 }, { path: 'C:/same.txt', kind: 'file', size: 2, modifiedAt: 1 }, { path: 'C:/move.txt', kind: 'file', size: 3, modifiedAt: 2 }] }
-    const after = { entries: [{ path: 'C:/new.txt', kind: 'file', size: 4, modifiedAt: 3 }, { path: 'C:/same.txt', kind: 'file', size: 5, modifiedAt: 4 }, { path: 'D:/move.txt', kind: 'file', size: 3, modifiedAt: 2 }] }
+    const before = { entries: [{ path: 'C:/old.txt', kind: 'file', size: 2, modifiedAt: 1 }, { path: 'C:/same.txt', kind: 'file', size: 2, modifiedAt: 1 }, { path: 'C:/move.txt', kind: 'file', size: 3, modifiedAt: 2, fileIdentity: '1:99:1' }] }
+    const after = { entries: [{ path: 'C:/new.txt', kind: 'file', size: 4, modifiedAt: 3 }, { path: 'C:/same.txt', kind: 'file', size: 5, modifiedAt: 4 }, { path: 'C:/new/move.txt', kind: 'file', size: 3, modifiedAt: 2, fileIdentity: '1:99:1' }] }
     const result = diff(before, after)
     expect(result.summary.added).toBe(1)
     expect(result.summary.removed).toBe(1)
     expect(result.summary.modified).toBe(1)
     expect(result.summary.moved).toBe(1)
     expect(result.moved[0].from).toBe('C:/move.txt')
+  })
+
+  it('does not invent a move for unrelated files with identical sizes and timestamps', () => {
+    const result = diff({ entries: [{ path: 'C:/old.txt', kind: 'file', size: 100, modifiedAt: 123456 }] },
+      { entries: [{ path: 'D:/unrelated.bin', kind: 'file', size: 100, modifiedAt: 123456 }] })
+    expect(result.moved).toEqual([])
+    expect(result.summary).toMatchObject({ added: 1, removed: 1 })
+  })
+
+  it('does not infer a rename when another hard link with the same identity exists', () => {
+    const unchanged = { path: 'C:/shared.txt', kind: 'file', size: 100, modifiedAt: 1, fileIdentity: '1:99:1' }
+    const result = diff({ entries: [unchanged, { ...unchanged, path: 'C:/old.txt' }] },
+      { entries: [unchanged, { ...unchanged, path: 'C:/new.txt' }] })
+    expect(result.moved).toEqual([])
+  })
+
+  it('uses real file identity for a rename and preserves growth during the move', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-rename-'))
+    try {
+      fs.writeFileSync(path.join(root, 'old.txt'), 'a')
+      const before = await inventory({ roots: [root] })
+      fs.renameSync(path.join(root, 'old.txt'), path.join(root, 'new.txt'))
+      fs.appendFileSync(path.join(root, 'new.txt'), 'bc')
+      const after = await inventory({ roots: [root] })
+      expect(diff(before, after).summary).toMatchObject({ added: 0, removed: 0, moved: 1, movedBytesDelta: 2 })
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('does not claim an entry-limited directory was fully covered', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-partial-'))
+    try {
+      fs.writeFileSync(path.join(root, 'one'), 'a'); fs.writeFileSync(path.join(root, 'two'), 'b')
+      const snapshot = await inventory({ roots: [root], maxEntries: 1 })
+      expect(snapshot.scannedDirectories).not.toContain(root)
+      expect(snapshot.truncated).toBe(true)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
   })
 
   it('does not guess a move when duplicate fingerprints are ambiguous', () => {

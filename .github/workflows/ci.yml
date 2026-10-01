@@ -24,4 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm validate
+      - run: pnpm smoke:development
+        env:
+          DISK_SENSE_SMOKE_VIEW: overview
+          DISK_SENSE_SMOKE_SKIP_SCREENSHOT: '1'
       - run: pnpm audit --audit-level=moderate
