@@ -20,6 +20,7 @@ async function reservePort() {
 
 const port = await reservePort()
 const executable = path.resolve(process.argv[2] || 'release/win-unpacked/Disk Sense.exe')
+if (!fs.existsSync(executable)) throw new Error('Desktop executable is missing. For development, run node node_modules/electron/install.js; for a packaged check, build the Windows application first.')
 const developmentServerUrl = new URL(process.env.DISK_SENSE_DEV_SERVER_URL || 'http://127.0.0.1:5173/')
 const captureView = ['overview', 'inspect', 'cleaner', 'changes', 'settings'].includes(process.env.DISK_SENSE_SMOKE_VIEW)
   ? process.env.DISK_SENSE_SMOKE_VIEW

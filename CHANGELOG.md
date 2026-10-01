@@ -10,6 +10,7 @@
 - Tracked inaccessible index paths without treating their files as deleted; growth comparison pauses only for affected or incomplete scopes.
 - Used volume-local file identity rather than matching size and timestamps to identify moves, and included file modification deltas in change summaries.
 - Updated Electron and vulnerable transitive dependencies to patched versions.
+- Explicitly installed the Electron runtime after dependency installation so fresh Windows checkouts can launch desktop development and CI checks.
 
 ## 0.9.0-beta.9 - 2026-09-14
 

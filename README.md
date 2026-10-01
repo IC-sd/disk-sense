@@ -142,6 +142,8 @@ pnpm dev:desktop
 
 如果系统仍提示无法识别 `pnpm`，可执行 `npm install -g pnpm@11.9.0` 后重新打开 PowerShell。
 
+依赖安装会下载并校验 Electron 桌面运行文件，需要能够连接 GitHub 下载服务。若网络中断导致运行文件缺失，可在网络恢复后执行 `node node_modules/electron/install.js` 再启动。
+
 `pnpm dev:desktop` 会同时启动 Vite 和真实 Electron 桌面应用：
 
 - Vue、TypeScript 和 CSS 修改会在当前窗口热更新。
