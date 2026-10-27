@@ -42,6 +42,32 @@ afterEach(() => {
 })
 
 describe('cleanup safety boundary', () => {
+  it.each(['attempt', 'confirmation'])('stops the plan when durable %s persistence fails', async failure => {
+    const root = createRoot()
+    for (const name of ['first.tmp', 'second.tmp']) { const location = path.join(root, name); fs.writeFileSync(location, 'cache'); makeOld(location) }
+    const scan = await collectRuleFiles(ruleFor(root))
+    const vault = new CandidateVault()
+    vault.registerScan({ id: 'test-cache', selectable: true, configuredSelectable: true, files: scan.files })
+    const trashed: string[] = []
+    await expect(executeCleanupPlan({
+      requests: scan.files.map((file: any) => ({ candidateId: file.candidateId })), vault,
+      trashItem: async (location: string) => { trashed.push(location) },
+      getRunningProcesses: async () => new Set(),
+      onAttempt: () => { if (failure === 'attempt') throw new Error('journal-full') },
+      onResult: () => { if (failure === 'confirmation') throw new Error('journal-full') }
+    })).rejects.toThrow('journal-full')
+    expect(trashed).toHaveLength(failure === 'attempt' ? 0 : 1)
+    expect(scan.files.every((file: any) => fs.existsSync(file.path))).toBe(true)
+  })
+  it('does not descend into protected browser profiles inside temporary roots', async () => {
+    const root = createRoot(), profile = path.join(root, 'playwright_chromiumdev_profile-example')
+    fs.mkdirSync(profile)
+    const database = path.join(profile, 'Cookies'); fs.writeFileSync(database, 'identity'); makeOld(database)
+    const result = await collectRuleFiles(ruleFor(root, { ignoreDirectory: (name: string) => name.startsWith('playwright_') }))
+    expect(result.files).toHaveLength(0)
+    expect(result.skipped.excluded).toBe(1)
+    expect(fs.readFileSync(database, 'utf8')).toBe('identity')
+  })
   it('only generates candidates older than the rule retention window', async () => {
     const root = createRoot()
     const oldFile = path.join(root, 'old.tmp')

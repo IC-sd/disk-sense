@@ -25,6 +25,8 @@ import type {
   DataMigrationResult,
   DeviceInfo,
   DirectoryUsage,
+  PathSpaceMeasurement,
+  ToolCacheInspection,
   FileExplanation,
   FileSearchIndexStartResult,
   FileSearchIndexStatus,
@@ -35,7 +37,6 @@ import type {
   MaintenanceStatus,
   NativeFilePresentation,
   OverviewSummary,
-  SpaceLedgerSummary,
   SlimmingItem
 } from '../domain/desktop'
 
@@ -43,9 +44,6 @@ type Unsubscribe = () => void
 
 export interface DesktopApi {
   overviewGet: () => Promise<OverviewSummary>
-  spaceSummary: () => Promise<SpaceLedgerSummary>
-  spaceDiscover: () => Promise<{ saved: number }>
-  spaceForget: (entityId: string) => Promise<{ removed: boolean }>
   appInfo: () => Promise<AppInfo>
   appDataUsage: () => Promise<DirectoryUsage>
   appAppearanceGet: () => Promise<AppearanceSettings>
@@ -55,13 +53,23 @@ export interface DesktopApi {
   appOpenInstallDirectory: () => Promise<{ opened: boolean }>
   appMoveDataDirectory: () => Promise<DataMigrationResult>
   appRestart: () => Promise<{ restarted: boolean }>
+  appDiagnostics: () => Promise<{ generatedAt: string; context: unknown; records: unknown[]; redacted: boolean }>
+  appDiagnosticsCopy: () => Promise<{ copied: boolean }>
   inspectList: (dir?: string) => Promise<DirectoryListResult>
+  inspectListPage: (input: { sessionId: string; offset: number }) => Promise<DirectoryListResult>
+  inspectListClose: (input: { sessionId: string }) => Promise<{ closed: boolean }>
   inspectHydrate: (paths: string[]) => Promise<DirectoryItem[]>
   inspectEstimate: (dir: string) => Promise<DirectoryEstimate>
+  inspectSpace: (input: { path: string; requestId: string }) => Promise<PathSpaceMeasurement>
+  inspectSpaceCancel: (requestId?: string) => Promise<{ cancelled: boolean }>
   inspectExplain: (filePath: string) => Promise<FileExplanation>
+  inspectLocations: () => Promise<Array<{ name: string; path: string }>>
+  inspectFileAction: (input: { path: string; action: 'open' | 'reveal' | 'copy'; query?: string }) => Promise<{ ok: boolean; path: string; action: string }>
   inspectIndexStatus: () => Promise<FileSearchIndexStatus>
   inspectIndexStart: (input: { scope: 'drive' | 'all'; root?: string }) => Promise<FileSearchIndexStartResult>
   inspectIndexCancel: () => Promise<{ cancelled: boolean; generation?: string }>
+  inspectNtfsEnable: () => Promise<FileSearchIndexStartResult>
+  inspectNtfsDisable: () => Promise<FileSearchIndexStartResult>
   inspectSearch: (input: FileSearchQuery) => Promise<FileSearchResult>
   inspectFilePresentations: (paths: string[]) => Promise<Record<string, NativeFilePresentation>>
   onInspectIndexProgress: (callback: (data: FileSearchIndexStatus) => void) => Unsubscribe
@@ -71,7 +79,7 @@ export interface DesktopApi {
   aiConfigClear: () => Promise<AiConfigStatus>
   aiModels: (draft: Partial<AiConfigDraft>) => Promise<{ ok: boolean; reason?: string; models: AiModelOption[] }>
   aiTest: (draft: AiConfigDraft) => Promise<{ ok: boolean; reason?: string; model?: string }>
-  aiReview: (request: { evidence: unknown; mode: AnalysisMode }) => Promise<AiReviewResult>
+  aiReview: (request: { evidence: unknown; mode?: AnalysisMode }) => Promise<AiReviewResult>
   aiCancel: () => Promise<{ cancelled: boolean }>
   aiAnalysisGet: (request: { path: string; fingerprint: string }) => Promise<AiAnalysisLookup>
   aiAnalysisSave: (request: { path: string; fingerprint: string } & Partial<AiReviewResult>) => Promise<StoredAiAnalysis>
@@ -81,6 +89,7 @@ export interface DesktopApi {
   changesCancel: () => Promise<{ cancelled: boolean; id?: string }>
   onChangesProgress: (callback: (data: ChangeProgress) => void) => Unsubscribe
   cleanerRules: () => Promise<CleanerRule[]>
+  cleanerToolCaches: () => Promise<ToolCacheInspection>
   cleanerScan: (id: string) => Promise<CleanerScanResult>
   cleanerScanCancel: (id?: string) => Promise<{ cancelled: boolean; count: number }>
   onCleanerScanProgress: (callback: (data: CleanerScanProgress) => void) => Unsubscribe
@@ -90,8 +99,9 @@ export interface DesktopApi {
   cleanerSlimmingHistory: () => Promise<MaintenanceJob[]>
   onCleanerSlimmingProgress: (callback: (data: MaintenanceProgress) => void) => Unsubscribe
   cleanerHistory: () => Promise<CleanupJobSummary[]>
-  cleanerHistoryDetail: (id: string) => Promise<CleanupJob>
-  cleanerHistoryClear: () => Promise<{ cleared: boolean }>
+  cleanerHistoryDetail: (id: string | { id: string; offset?: number; limit?: number }) => Promise<CleanupJob>
+  cleanerHistoryClear: () => Promise<{ cleared: boolean; retained?: number }>
+  cleanerHistoryAcknowledge: (id: string) => Promise<{ acknowledged: boolean }>
   cleanerExclusions: () => Promise<CleanupExclusion[]>
   cleanerExclusionAdd: (input: { path: string; mode: 'exact' | 'prefix'; reason?: string }) => Promise<CleanupExclusion>
   cleanerExclusionRemove: (id: string) => Promise<{ removed: boolean }>

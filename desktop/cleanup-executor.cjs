@@ -1,4 +1,4 @@
-const { validateCandidate, runningExecutableNames, PROCESS_CHECK_FAILED } = require('./cleaner.cjs')
+const { validateCandidate, runningExecutableNames, PROCESS_CHECK_FAILED, pathKey } = require('./cleaner.cjs')
 
 const CANDIDATE_TTL_MS = 30 * 60 * 1000
 const MAX_EXECUTE_FILES = 5000
@@ -22,6 +22,7 @@ class CandidateVault {
         ...file,
         selectable: Boolean(result.selectable),
         configuredSelectable: Boolean(result.configuredSelectable),
+        ruleVersion: result.version,
         registeredAt
       })
     }
@@ -95,6 +96,7 @@ async function executeCleanup(input = {}) {
   const rejectedOverflow = Math.max(0, (Array.isArray(requests) ? requests.length : 0) - requested.length)
   const results = []
   const seen = input.seenCandidateIds instanceof Set ? input.seenCandidateIds : new Set()
+  const processedPaths = input.processedPaths instanceof Set ? input.processedPaths : new Set()
   const readRunningProcesses = async () => {
     try {
       const value = await getRunningProcesses()
@@ -108,8 +110,10 @@ async function executeCleanup(input = {}) {
   let guardedSinceCheck = 0
   let succeeded = 0
   let failed = 0
+  let requestOrdinal = -1
 
-  const record = (result, current = result.path) => {
+  const record = async (result, current = result.path) => {
+    await input.onResult?.({ ordinal: (input.requestOffset || 0) + requestOrdinal, result })
     results.push(result)
     if (result.success) succeeded++
     else failed++
@@ -123,11 +127,12 @@ async function executeCleanup(input = {}) {
   }
 
   for (const request of requested) {
+    requestOrdinal++
     if (signal?.aborted) break
     const candidateId = String(request?.candidateId || '')
     const candidate = vault.get(candidateId)
     if (!candidate || seen.has(candidateId)) {
-      record(publicResult(request, {
+      await record(publicResult(request, {
         success: false,
         error: seen.has(candidateId) ? '重复的清理候选已跳过' : '该文件不在当前有效扫描结果中'
       }))
@@ -136,24 +141,24 @@ async function executeCleanup(input = {}) {
     seen.add(candidateId)
 
     if (!candidate.selectable || !candidate.configuredSelectable) {
-      record(publicResult(candidate, { success: false, error: '该规则当前不允许执行清理' }))
+      await record(publicResult(candidate, { success: false, error: '该规则当前不允许执行清理' }))
       continue
     }
     if (!EXECUTABLE_RISKS.has(candidate.risk)) {
-      record(publicResult(candidate, { success: false, error: '该风险等级不允许执行自动清理' }))
+      await record(publicResult(candidate, { success: false, error: '该风险等级不允许执行自动清理' }))
       continue
     }
     if (isExcluded(candidate.path)) {
-      record(publicResult(candidate, { success: false, error: '该文件已加入用户排除项，已阻止处理' }))
+      await record(publicResult(candidate, { success: false, error: '该文件已加入用户排除项，已阻止处理' }))
       continue
     }
     if (now() - candidate.registeredAt > CANDIDATE_TTL_MS) {
       vault.delete(candidateId)
-      record(publicResult(candidate, { success: false, error: '扫描结果已经过期，请重新扫描' }))
+      await record(publicResult(candidate, { success: false, error: '扫描结果已经过期，请重新扫描' }))
       continue
     }
     if ((candidate.processNames || []).length && running.has(PROCESS_CHECK_FAILED)) {
-      record(publicResult(candidate, { success: false, error: '无法确认相关应用是否正在运行，已阻止处理' }))
+      await record(publicResult(candidate, { success: false, error: '无法确认相关应用是否正在运行，已阻止处理' }))
       continue
     }
     if ((candidate.processNames || []).length) {
@@ -164,32 +169,41 @@ async function executeCleanup(input = {}) {
         guardedSinceCheck = 1
       }
       if (running.has(PROCESS_CHECK_FAILED)) {
-        record(publicResult(candidate, { success: false, error: '无法确认相关应用是否正在运行，已阻止处理' }))
+        await record(publicResult(candidate, { success: false, error: '无法确认相关应用是否正在运行，已阻止处理' }))
         continue
       }
     }
     const blocking = (candidate.processNames || []).filter(name => running.has(name.toLowerCase()))
     if (blocking.length) {
-      record(publicResult(candidate, { success: false, error: `检测到 ${blocking.join('、')} 正在运行，请关闭后重新扫描` }))
+      await record(publicResult(candidate, { success: false, error: `检测到 ${blocking.join('、')} 正在运行，请关闭后重新扫描` }))
       continue
     }
 
+    const candidatePathKey = pathKey(candidate.canonicalPath)
+    if (processedPaths.has(candidatePathKey)) {
+      await record(publicResult(candidate, { success: false, error: '同一路径已由其他规则处理，重复候选已跳过' }))
+      continue
+    }
     const validation = await validateCandidate(candidate, { now: now() })
     if (!validation.ok) {
-      record(publicResult(candidate, { success: false, error: validation.reason }))
+      await record(publicResult(candidate, { success: false, error: validation.reason }))
       continue
     }
 
+    let outcome
+    await input.onAttempt?.({ ordinal: (input.requestOffset || 0) + requestOrdinal, candidate })
     try {
-      await trashItem(candidate.canonicalPath)
+      await trashItem(candidate.canonicalPath, candidate)
+      processedPaths.add(candidatePathKey)
       vault.delete(candidateId)
-      record(publicResult(candidate, { success: true }))
+      outcome = publicResult(candidate, { success: true })
     } catch (error) {
-      record(publicResult(candidate, {
+      outcome = publicResult(candidate, {
         success: false,
         error: error?.code === 'EBUSY' ? '文件正在被占用' : String(error?.message || '移入回收站失败')
-      }))
+      })
     }
+    await record(outcome)
   }
 
   const movedToTrashBytes = results.filter(item => item.success).reduce((sum, item) => sum + item.size, 0)
@@ -212,6 +226,7 @@ async function executeCleanupPlan(input = {}) {
   const rejectedOverflow = Math.max(0, allRequests.length - requests.length)
   const results = []
   const seenCandidateIds = new Set()
+  const processedPaths = new Set()
   let succeeded = 0
   let failed = 0
   let movedToTrashBytes = 0
@@ -222,7 +237,9 @@ async function executeCleanupPlan(input = {}) {
     const batchResult = await executeCleanup({
       ...input,
       requests: batch,
+      requestOffset: offset,
       seenCandidateIds,
+      processedPaths,
       onProgress: progress => input.onProgress?.({
         ...progress,
         processed: offset + progress.processed,

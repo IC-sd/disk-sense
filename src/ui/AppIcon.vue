@@ -79,6 +79,10 @@
       <path d="M8 3H4a1 1 0 0 0-1 1v4M16 3h4a1 1 0 0 1 1 1v4M8 21H4a1 1 0 0 1-1-1v-4M16 21h4a1 1 0 0 0 1-1v-4" />
       <circle cx="12" cy="12" r="3.5" />
     </template>
+    <template v-else-if="name === 'refresh'">
+      <path d="M20 7v5h-5M4 17v-5h5" />
+      <path d="M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9" />
+    </template>
     <template v-else-if="name === 'search'">
       <circle cx="10.5" cy="10.5" r="6.5" />
       <path d="M15.5 15.5L21 21" />

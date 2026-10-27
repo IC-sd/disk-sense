@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-20T11:53:20.264Z",
+  "node": "v22.22.3",
+  "engineSha256": "bb2cb60921db965bcd4e925779b36b470416cf17a37b21098a28ebc9d0a60d71",
+  "catalog": {
+    "entries": 905131,
+    "loadMs": 7351.57,
+    "nameOrderBuildMs": 1920.52,
+    "heapIncreaseMiB": 246.64,
+    "rssIncreaseMiB": 439.3,
+    "distinctFoldedBasenames": 434638,
+    "nameCodeUnits": 27593905,
+    "fullPathCodeUnits": 101757513,
+    "representation": "JS objects, normalized full paths, Map<rowid,ordinal>, sorted references and Uint32 name ranks; NOT a compact final catalog"
+  },
+  "cases": [
+    {
+      "query": "word",
+      "candidateCount": 3512,
+      "distinctCandidateNames": 2541,
+      "relevanceTotal": 3459,
+      "rankingOnly": {
+        "fullSort200Ms": 1.29,
+        "exactTop200Ms": 1.07
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 23.03,
+        "inspectedCatalogRows": 174603,
+        "candidateIntegerRankSortMs": 1.72
+      },
+      "pageIdNamePathFetchMs": 0.32,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    },
+    {
+      "query": "vsc",
+      "candidateCount": 21715,
+      "distinctCandidateNames": 10795,
+      "relevanceTotal": 21639,
+      "rankingOnly": {
+        "fullSort200Ms": 5.5,
+        "exactTop200Ms": 2.94
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 5.15,
+        "inspectedCatalogRows": 8695,
+        "candidateIntegerRankSortMs": 14.8
+      },
+      "pageIdNamePathFetchMs": 0.32,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    },
+    {
+      "query": "report",
+      "candidateCount": 2762,
+      "distinctCandidateNames": 1692,
+      "relevanceTotal": 2727,
+      "rankingOnly": {
+        "fullSort200Ms": 0.98,
+        "exactTop200Ms": 0.19
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 22.04,
+        "inspectedCatalogRows": 138217,
+        "candidateIntegerRankSortMs": 1.31
+      },
+      "pageIdNamePathFetchMs": 0.32,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    },
+    {
+      "query": "baogao",
+      "candidateCount": 79,
+      "distinctCandidateNames": 79,
+      "relevanceTotal": 78,
+      "rankingOnly": {
+        "fullSort200Ms": 0.01,
+        "exactTop200Ms": 0.02
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 135.75,
+        "inspectedCatalogRows": 904912,
+        "candidateIntegerRankSortMs": 0.03
+      },
+      "pageIdNamePathFetchMs": 0.39,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    },
+    {
+      "query": "Documents report",
+      "candidateCount": 15,
+      "distinctCandidateNames": 4,
+      "relevanceTotal": 15,
+      "rankingOnly": {
+        "fullSort200Ms": 0,
+        "exactTop200Ms": 0
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 141.02,
+        "inspectedCatalogRows": 868261,
+        "candidateIntegerRankSortMs": 0.01
+      },
+      "pageIdNamePathFetchMs": 0.09,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    },
+    {
+      "query": "ext:txt",
+      "candidateCount": 5300,
+      "distinctCandidateNames": 3548,
+      "relevanceTotal": 5300,
+      "rankingOnly": {
+        "fullSort200Ms": 2.61,
+        "exactTop200Ms": 0.43
+      },
+      "nameProjection": {
+        "membershipAndScanMs": 37.22,
+        "inspectedCatalogRows": 202008,
+        "candidateIntegerRankSortMs": 4.31
+      },
+      "pageIdNamePathFetchMs": 0.39,
+      "verified": [
+        "same-relevance-total",
+        "same-relevance-first-two-pages",
+        "same-name-total-and-first-two-pages",
+        "same-ordered-page-identities"
+      ]
+    }
+  ],
+  "scope": "One frozen metadata snapshot; unchanged production recall and scoring captured before sorting; five warm phase samples, no GUI",
+  "limitations": [
+    "Candidate recall, scoring and application deduplication costs are excluded from replay timings",
+    "Catalog loading, global ordering and memory are paid separately; this is not a cold-start or compact-format benchmark",
+    "Top K visits every candidate; it does not prove interactive million-result performance or a deep-pagination strategy",
+    "A sparse query can force a preordered catalog scan; choose between candidate sort and order intersection using cost estimates",
+    "No incremental input reuse, live snapshot publication, USN replay or production replacement is implemented here",
+    "The page fetch measures only id/name/path, not icons, full metadata or rendering"
+  ]
+}

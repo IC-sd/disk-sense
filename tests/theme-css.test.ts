@@ -4,6 +4,7 @@ import path from 'node:path'
 
 const themeCss = fs.readFileSync(path.resolve('src/ui/theme.css'), 'utf8')
 const extraCss = fs.readFileSync(path.resolve('src/ui/extra.css'), 'utf8')
+const workspaceCss = fs.readFileSync(path.resolve('src/ui/workspace.css'), 'utf8')
 const explorerSource = fs.readFileSync(path.resolve('src/ui/ExplorerWorkspace.vue'), 'utf8')
 
 function sourceFiles(directory: string): string[] {
@@ -92,8 +93,8 @@ describe('light and dark theme surfaces', () => {
 
     expect(searchControls).not.toContain('AI 设置')
     expect(searchControls).not.toContain('showAiSettings')
-    expect(explorerSource).toContain("@click=\"requestAi('normal')\"")
-    expect(explorerSource).toContain("@click=\"requestAi('deep')\"")
+    expect(explorerSource).toContain('@click="requestAi"')
+    expect(explorerSource).not.toContain("requestAi('deep')")
     expect(browseToolbar).toBeGreaterThan(fileListStart)
     expect(browseToolbar).toBeLessThan(listHeader)
   })
@@ -107,7 +108,7 @@ describe('light and dark theme surfaces', () => {
     expect(extraCss).toMatch(/\.search-result-name mark\s*\{[^}]*color:\s*var\(--blue-strong\)/s)
     expect(extraCss).toMatch(/\.search-result-row\.priority-primary \.row-result-type b\s*\{/s)
     expect(extraCss).toMatch(/\.search-result-row\.priority-secondary \.row-result-type b\s*\{/s)
-    expect(explorerSource).toContain("'search-awaiting-selection': mode === 'search' && !selected")
+    expect(explorerSource).toContain("'search-awaiting-selection': mode === 'search' && !searchAnalysisOpen")
     expect(explorerSource).toContain('class="native-result-icon"')
     expect(extraCss).toMatch(/\.explorer-layout\.search-awaiting-selection \.explain-panel\s*\{[^}]*display:\s*none/s)
     expect(extraCss).toMatch(/\.native-result-icon\s*\{[^}]*object-fit:\s*contain/s)
@@ -144,7 +145,7 @@ describe('light and dark theme surfaces', () => {
     const source = sourceFiles(path.resolve('src'))
       .map(filePath => fs.readFileSync(filePath, 'utf8'))
       .join('\n')
-    const cssClasses = [...`${themeCss}\n${extraCss}`.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)]
+    const cssClasses = [...`${themeCss}\n${extraCss}\n${workspaceCss}`.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)]
       .map(match => match[1])
     const dynamicClass = /^(?:risk-(?:safe|low|attention|elevated|danger)|priority-(?:primary|secondary)|kind-(?:added|modified|removed|application|archive|audio|code|document|image|installer|video))$/u
     const unused = [...new Set(cssClasses)]

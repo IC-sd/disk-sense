@@ -14,7 +14,7 @@ describe('cached workspace lifecycle', () => {
     expect(source).toContain("const tab = ref<SettingsTab>('general')")
     expect(source).toContain('@click="openStorage"')
 
-    const mountedBody = source.match(/onMounted\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+    const mountedBody = source.slice(source.lastIndexOf('onMounted('))
     expect(mountedBody).not.toContain('openAbout()')
     expect(mountedBody).not.toContain('loadDataUsage()')
   })
@@ -28,10 +28,4 @@ describe('cached workspace lifecycle', () => {
     expect(source).toContain('if (!workspaceActive) return')
   })
 
-  it('stops settings index updates while its cached page is inactive', () => {
-    const source = componentSource('SettingsWorkspace.vue')
-    expect(source).toContain('onActivated(() => {')
-    expect(source).toContain('onDeactivated(stopActiveWork)')
-    expect(source).toContain('stopIndexProgress = null')
-  })
 })

@@ -8,6 +8,7 @@ import { coordinateDataMigration, directoryUsage, finalizePendingMigration, migr
 const temporaryRoots: string[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
 
@@ -94,6 +95,9 @@ describe('application settings and data placement', () => {
     fs.writeFileSync(path.join(source, 'disk-sense-state.json.operations.json'), JSON.stringify({ version: 1, cleanupJobs: [], maintenanceJobs: [] }))
     fs.writeFileSync(path.join(source, 'disk-sense-state.json.analyses.json'), JSON.stringify({ version: 1, aiAnalyses: [] }))
     fs.writeFileSync(path.join(source, 'disk-sense-search.sqlite'), 'sqlite-index-fixture')
+    const journalId = '12345678-1234-1234-1234-123456789012'
+    fs.mkdirSync(path.join(source, 'cleanup-quarantine'))
+    fs.writeFileSync(path.join(source, 'cleanup-quarantine', `${journalId}.jsonl`), '{"type":"job"}\n')
 
     const result = await migrateDataDirectory({
       source,
@@ -113,6 +117,7 @@ describe('application settings and data placement', () => {
     expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json.operations.json'), 'utf8'))).toMatchObject({ version: 1 })
     expect(JSON.parse(fs.readFileSync(path.join(target, 'disk-sense-state.json.analyses.json'), 'utf8'))).toMatchObject({ version: 1 })
     expect(fs.readFileSync(path.join(target, 'disk-sense-search.sqlite'), 'utf8')).toBe('sqlite-index-fixture')
+    expect(fs.readFileSync(path.join(target, 'cleanup-quarantine', `${journalId}.jsonl`), 'utf8')).toBe('{"type":"job"}\n')
     expect(JSON.parse(fs.readFileSync(pointerFile, 'utf8')).path).toBe(target)
     expect(resolveDataLocation({ appDataPath: root, environment: {} }).userDataPath).toBe(target)
   })
@@ -166,5 +171,93 @@ describe('application settings and data placement', () => {
     expect(JSON.parse(fs.readFileSync(path.join(migration.target, 'disk-sense-state.json'), 'utf8')).cleanupJobs)
       .toEqual([{ id: 'after' }])
     expect(finalizePendingMigration(migration.target).synchronized).toBeUndefined()
+  })
+
+  async function pendingMigration() {
+    const root = temporaryRoot()
+    const source = path.join(root, 'source')
+    const pointerFile = path.join(root, 'Disk Sense', 'data-location.json')
+    fs.mkdirSync(source)
+    const stateName = 'disk-sense-state.json'
+    const operationsName = `${stateName}.operations.json`
+    fs.writeFileSync(path.join(source, stateName), JSON.stringify({ appearance: { theme: 'dark' } }))
+    fs.writeFileSync(path.join(source, operationsName), JSON.stringify({ cleanupJobs: [{ id: 'before' }] }))
+    const { target } = await migrateDataDirectory({ source, selectedDirectory: path.join(root, 'destination'), pointerFile })
+    fs.writeFileSync(path.join(source, stateName), JSON.stringify({ appearance: { theme: 'light' } }))
+    fs.writeFileSync(path.join(source, operationsName), JSON.stringify({ cleanupJobs: [{ id: 'after' }] }))
+    return { root, source, target, pointerFile, stateName, operationsName }
+  }
+
+  it.each(['EACCES', 'ENOSPC'])('keeps the original directory active after a partial handoff fails with %s and retries safely', async code => {
+    const fixture = await pendingMigration()
+    const { root, source, target, pointerFile, stateName, operationsName } = fixture
+    const rename = fs.renameSync
+    const failure = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(to) === path.join(target, operationsName)) throw Object.assign(new Error(code), { code })
+      return rename(from, to)
+    })
+    const fallback = resolveDataLocation({ appDataPath: root, environment: {} })
+    expect(fallback.userDataPath).toBe(source)
+    expect(fallback.migrationRecovery).toMatchObject({ source, target })
+    expect(fallback.migrationRecovery.detail).toContain(code)
+    expect(fallback.migrationRecovery.message).toContain(code === 'ENOSPC' ? '可用空间不足' : '没有写入权限')
+    expect(JSON.parse(fs.readFileSync(path.join(source, operationsName), 'utf8')).cleanupJobs).toEqual([{ id: 'after' }])
+    expect(JSON.parse(fs.readFileSync(path.join(target, stateName), 'utf8')).appearance.theme).toBe('light')
+    expect(JSON.parse(fs.readFileSync(path.join(target, operationsName), 'utf8')).cleanupJobs).toEqual([{ id: 'before' }])
+    expect(fs.existsSync(path.join(target, `${operationsName}.handoff`))).toBe(false)
+    expect(JSON.parse(fs.readFileSync(pointerFile, 'utf8')).path).toBe(target)
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'migration.json'), 'utf8')).finalizedAt).toBeUndefined()
+    failure.mockRestore()
+
+    // Activity continues against the original data until the next startup.
+    fs.writeFileSync(path.join(source, operationsName), JSON.stringify({ cleanupJobs: [{ id: 'latest-on-retry' }] }))
+    const retry = resolveDataLocation({ appDataPath: root, environment: {} })
+    expect(retry.userDataPath).toBe(target)
+    expect(retry.migrationRecovery).toBeNull()
+    expect(JSON.parse(fs.readFileSync(path.join(target, operationsName), 'utf8')).cleanupJobs).toEqual([{ id: 'latest-on-retry' }])
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'migration.json'), 'utf8')).finalizedAt).toBeTruthy()
+  })
+
+  it('falls back even if the last completion-marker write fails', async () => {
+    const { root, source, target } = await pendingMigration()
+    const rename = fs.renameSync
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(to) === path.join(target, 'migration.json')) throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+      return rename(from, to)
+    })
+    const result = resolveDataLocation({ appDataPath: root, environment: {} })
+    expect(result.userDataPath).toBe(source)
+    expect(result.migrationRecovery.detail).toContain('EACCES')
+  })
+
+  it('refuses to open an unfinished target when its original directory is unavailable', async () => {
+    const { root, source, target, pointerFile } = await pendingMigration()
+    expect(path.dirname(source)).toBe(root)
+    fs.rmSync(source, { recursive: true, force: true })
+    expect(() => resolveDataLocation({ appDataPath: root, environment: {} })).toThrow('原目录不可用')
+    expect(fs.existsSync(target)).toBe(true)
+    expect(JSON.parse(fs.readFileSync(pointerFile, 'utf8')).path).toBe(target)
+  })
+
+  it('refuses an unreadable migration state instead of assuming a handoff completed', async () => {
+    const { root, target } = await pendingMigration()
+    fs.writeFileSync(path.join(target, 'migration.json'), '{invalid')
+    expect(() => resolveDataLocation({ appDataPath: root, environment: {} })).toThrow('已停止打开目标目录')
+  })
+
+  it('does not create a new empty data directory when the saved location has disappeared', async () => {
+    const { root, target } = await pendingMigration()
+    expect(path.dirname(path.dirname(target))).toBe(root)
+    fs.rmSync(target, { recursive: true, force: true })
+    expect(() => resolveDataLocation({ appDataPath: root, environment: {} })).toThrow('保存的数据目录当前不可访问')
+    expect(fs.existsSync(target)).toBe(false)
+  })
+
+  it('keeps a finalized destination usable after the retained source is removed', async () => {
+    const { root, source, target } = await pendingMigration()
+    expect(finalizePendingMigration(target).finalized).toBe(true)
+    expect(path.dirname(source)).toBe(root)
+    fs.rmSync(source, { recursive: true, force: true })
+    expect(resolveDataLocation({ appDataPath: root, environment: {} }).userDataPath).toBe(target)
   })
 })

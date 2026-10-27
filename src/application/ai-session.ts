@@ -1,5 +1,6 @@
 import type { AiDetails, AiReviewResult, FileExplanation } from '../domain/desktop'
 import { normalizeRisk, riskRank } from '../domain/risk'
+import { ANALYSIS_VERSION, PROMPT_VERSION, EVIDENCE_VERSION, CONFIRMED_BASES } from './ai-contract'
 
 type ParsedAiAnalysis = {
   what?: string
@@ -10,6 +11,8 @@ type ParsedAiAnalysis = {
   confidence?: number
   handling?: string
   reasons?: unknown[]
+  evidenceRefs?: Record<string, string[]>
+  uncertainties?: string[]
 }
 
 export type AiSessionRecord = {
@@ -22,6 +25,11 @@ export type AiSessionRecord = {
   usage?: Record<string, number> | null
   analyzedAt: number
   fingerprint: string
+  analysisVersion?: string
+  promptVersion?: string
+  evidenceVersion?: number
+  evidenceDigest?: string
+  provider?: string
 }
 
 export const MAX_AI_SESSION_RECORDS = 500
@@ -40,7 +48,7 @@ export class AiAnalysisSession {
   get(path: string, fingerprint: string) {
     const recordKey = key(path)
     const record = this.records.get(recordKey)
-    if (record?.fingerprint !== fingerprint) return null
+    if (!record || record.fingerprint !== fingerprint || record.analysisVersion !== ANALYSIS_VERSION || record.promptVersion !== PROMPT_VERSION || record.evidenceVersion !== EVIDENCE_VERSION) return null
     this.records.delete(recordKey)
     this.records.set(recordKey, record)
     return record
@@ -56,7 +64,12 @@ export class AiAnalysisSession {
       tokenBudget: result.tokenBudget,
       usage: result.usage || null,
       analyzedAt: Date.now(),
-      fingerprint
+      fingerprint,
+      analysisVersion: result.analysisVersion || ANALYSIS_VERSION,
+      promptVersion: result.promptVersion || PROMPT_VERSION,
+      evidenceVersion: result.evidenceVersion ?? EVIDENCE_VERSION,
+      evidenceDigest: result.evidenceDigest,
+      provider: result.provider
     }
     const recordKey = key(path)
     this.records.delete(recordKey)
@@ -70,6 +83,10 @@ export class AiAnalysisSession {
   }
 
   remember(path: string, record: AiSessionRecord) {
+    // Persistent lookups validate old versions before reaching this compatibility entrypoint.
+    record.analysisVersion ??= ANALYSIS_VERSION
+    record.promptVersion ??= PROMPT_VERSION
+    record.evidenceVersion ??= EVIDENCE_VERSION
     const recordKey = key(path)
     this.records.delete(recordKey)
     this.records.set(recordKey, record)
@@ -108,7 +125,7 @@ export function applyAiRecord<T extends Partial<FileExplanation>>(
   const what = parsed?.what || base.what || base.description || '暂未确定的对象'
   const purpose = parsed?.purpose || base.purpose || '证据不足'
   const cannotLowerRisk = riskRank(base.risk) > riskRank(parsed?.risk || base.risk)
-  const confirmedOwner = ['install-path', 'project-markers', 'known-signature'].includes(base.relationship?.basis || '')
+  const confirmedOwner = CONFIRMED_BASES.includes(base.relationship?.basis || '')
     ? base.relationship?.entityName : null
   const handling = cannotLowerRisk
     ? base.handling || base.action || '本地证据提示风险，建议保留并进一步确认。'
@@ -127,7 +144,7 @@ export function applyAiRecord<T extends Partial<FileExplanation>>(
     source: confirmedOwner || parsed?.belongsTo || base.source,
     description: `${what}。${purpose}`,
     risk: riskRank(parsed?.risk || base.risk) > riskRank(base.risk) ? normalizeRisk(parsed?.risk) : normalizeRisk(base.risk),
-    confidence: typeof parsed?.confidence === 'number' ? parsed.confidence : base.confidence,
+    confidence: typeof parsed?.confidence === 'number' ? Math.max(0, Math.min(1, Number.isFinite(parsed.confidence) ? parsed.confidence : 0)) : base.confidence,
     action: handling,
     aiDetails: details,
     aiReasons: Array.isArray(parsed?.reasons) ? parsed.reasons.map(String) : [],

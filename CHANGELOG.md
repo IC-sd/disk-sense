@@ -1,10 +1,31 @@
 # Changelog
 
+## Unreleased — Functional hardening (2026-10-27)
+
+- Added on-demand physical allocation measurements, resumable directory enumeration, signature-based file evidence, application/package manifests and versioned AI evidence contracts.
+- Staged native snapshots before atomic publication and persisted resumable USN replay phases; exposed bounded search lifecycle diagnostics without claiming Listary parity.
+- Added validated versioned cleanup definitions, shared scan reads, tool-native cache inspection, and durable cleanup/maintenance journals with uncertain-result review and complete detail pagination.
+- Hardened atomic state handoff, maintenance outcome reporting, diagnostic redaction, keyboard focus behavior, packaged Electron fuses and whole-application desktop checks. See `docs/functional-implementation-2026-10-27.md` for evidence and limits.
+
+## Unreleased — Directory and search workflow
+
+- Removed the duplicate file-search/index-maintenance card from Settings; search remains in Directory and Files. Removed homepage space attribution and its ledger/discovery endpoints while retaining per-file relationship analysis and existing database contents.
+
+- Made file search a keyboard-first workspace with explicit open, reveal, copy-path and on-demand analysis actions; added in-app Ctrl+K, input-method handling, multi-keyword queries, extension filters and bounded fuzzy matching.
+- Added common locations, local favorites, forward navigation, directory filtering and natural/name/size/modified sorting while retaining lazy metadata and virtual rows.
+- Replaced the normal/deep AI choice with one provider-default analysis; simplified service setup, explicit model loading, connection feedback and an entry from Settings.
+- Documented the focused design and verified upstream references in `docs/design.md` rather than adding separate plans for every module.
+
 ## Unreleased
 
 ### Changed
 
-- Replaced the decorative overview with a persistent space-attribution view grouping observed software and project locations, their evidence, indexed occupancy and comparable growth.
+- Unified desktop typography, neutral dark/light surfaces, compact navigation and tabs, capacity-first overview, optional evidence details and keyboard focus styling across every workspace.
+- Removed the homepage change-record workspace, its scan/baseline actions and baseline statistic, leaving disk capacity as the overview focus.
+- Removed the governance/recovery tab and its strategy, package-guidance, cross-volume isolation and restoration endpoints; cleanup now uses the Recycle Bin only, with historical audit data preserved.
+- Discovered bounded user cache settings and unverified legacy locations for npm, pip, uv, pnpm and NuGet; package stores remain observation-only and cannot enter generic file deletion.
+- Excluded temporary Playwright/Puppeteer profiles from ordinary Temp cleanup; existing legacy journals remain preserved during application-data migration.
+
 - Distinguished installed applications, owning projects and bundled dependencies; shared installation roots and name-only matches no longer silently choose an arbitrary owner.
 - Revalidated saved explanations against file and relationship evidence before reuse, and preserved locally established risk and ownership when applying AI analysis.
 - Tracked inaccessible index paths without treating their files as deleted; growth comparison pauses only for affected or incomplete scopes.

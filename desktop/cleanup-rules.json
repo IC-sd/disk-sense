@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "recycle-bin",
+      "version": 1,
+      "title": "回收站",
+      "category": "Windows",
+      "risk": "attention",
+      "reason": "统计各本地磁盘回收站中仍可恢复的文件数量和占用空间。",
+      "safetyNote": "当前只读取容量，不提供清空操作；清空回收站属于永久删除，需要单独设计确认和恢复边界。",
+      "selectable": false,
+      "minimumAgeDays": 0,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "user-temp",
+      "version": 1,
+      "title": "用户临时文件",
+      "category": "Windows",
+      "risk": "low",
+      "reason": "识别用户临时目录的完整占用；只有至少 7 天未修改的文件才进入清理候选。",
+      "safetyNote": "不会跟随符号链接或目录联接，执行前会再次校验文件身份。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "windows-temp",
+      "version": 1,
+      "title": "Windows 临时文件",
+      "category": "Windows",
+      "risk": "low",
+      "reason": "识别 Windows 临时目录的完整占用；只有至少 7 天未修改且可访问的文件才进入清理候选。",
+      "safetyNote": "部分文件需要管理员权限，本版本不会自动提权或强制删除。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "crash-dumps",
+      "version": 1,
+      "title": "程序崩溃转储",
+      "category": "诊断",
+      "risk": "low",
+      "reason": "识别程序崩溃诊断文件；最近 7 天的转储只统计并保留，便于排查刚发生的问题。",
+      "safetyNote": "删除后不影响程序运行，但会失去对应崩溃的调试信息。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "error-reports",
+      "version": 1,
+      "title": "Windows 错误报告",
+      "category": "诊断",
+      "risk": "low",
+      "reason": "识别 Windows 错误报告和诊断队列；最近 14 天的内容只统计并保留。",
+      "safetyNote": "如果正在排查系统或应用故障，应先取消选择。",
+      "selectable": true,
+      "minimumAgeDays": 14,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "thumbnail-cache",
+      "version": 1,
+      "title": "缩略图缓存",
+      "category": "Windows",
+      "risk": "safe",
+      "reason": "资源管理器生成的图片和视频缩略图，可由 Windows 自动重新生成。",
+      "safetyNote": "只匹配 thumbcache 数据库，不处理该目录中的其他文件。",
+      "selectable": true,
+      "minimumAgeDays": 1,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "icon-cache",
+      "version": 1,
+      "title": "图标缓存",
+      "category": "Windows",
+      "risk": "safe",
+      "reason": "资源管理器生成的文件和应用图标索引，损坏或删除后可由 Windows 自动重建。",
+      "safetyNote": "只匹配 Explorer 目录中的图标缓存数据库，不处理用户文件或其他数据库。",
+      "selectable": true,
+      "minimumAgeDays": 1,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "directx-cache",
+      "version": 1,
+      "title": "DirectX Shader 缓存",
+      "category": "图形",
+      "risk": "safe",
+      "reason": "识别显卡着色器缓存；最近 3 天的内容保留，其余可由游戏和应用重新生成。",
+      "safetyNote": "首次重新运行相关游戏或应用时可能出现短暂编译等待。",
+      "selectable": true,
+      "minimumAgeDays": 3,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "chrome-cache",
+      "version": 1,
+      "title": "Chrome 浏览器缓存",
+      "category": "浏览器",
+      "risk": "low",
+      "reason": "只扫描各 Profile 的 Cache、Code Cache 和 GPUCache，不触碰 Cookie、密码、历史记录和书签。",
+      "safetyNote": "Chrome 运行时禁止执行，防止与正在写入的缓存发生竞争。",
+      "selectable": true,
+      "minimumAgeDays": 3,
+      "processNames": [
+        "chrome.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "edge-cache",
+      "version": 1,
+      "title": "Edge 浏览器缓存",
+      "category": "浏览器",
+      "risk": "low",
+      "reason": "只扫描各 Profile 的可重建缓存，不触碰登录状态和用户资料。",
+      "safetyNote": "Edge 运行时禁止执行，关闭浏览器并重新扫描后才可选择。",
+      "selectable": true,
+      "minimumAgeDays": 3,
+      "processNames": [
+        "msedge.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "chromium-family-cache",
+      "version": 1,
+      "title": "其他 Chromium 浏览器缓存",
+      "category": "浏览器",
+      "risk": "low",
+      "reason": "识别 Brave、Vivaldi、Chromium 与 Opera 各用户配置中的可重建页面、代码、媒体和图形缓存。",
+      "safetyNote": "不扫描 Cookie、登录数据、历史记录、书签、扩展、下载或站点数据库；相关浏览器运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 3,
+      "processNames": [
+        "brave.exe",
+        "vivaldi.exe",
+        "chromium.exe",
+        "opera.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "firefox-cache",
+      "version": 1,
+      "title": "Firefox 浏览器缓存",
+      "category": "浏览器",
+      "risk": "low",
+      "reason": "只扫描各 Firefox Profile 的 cache2 可重建缓存，不触碰书签、历史、扩展和登录数据。",
+      "safetyNote": "Firefox 运行时禁止执行，关闭浏览器并重新扫描后才可选择。",
+      "selectable": true,
+      "minimumAgeDays": 3,
+      "processNames": [
+        "firefox.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "vscode-cache",
+      "version": 1,
+      "title": "Visual Studio Code 缓存",
+      "category": "开发工具",
+      "risk": "low",
+      "reason": "只扫描 VS Code 的界面和代码缓存，不处理扩展、用户设置、工作区状态或项目文件。",
+      "safetyNote": "VS Code 运行时禁止执行，避免与缓存写入发生竞争。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "Code.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "discord-cache",
+      "version": 1,
+      "title": "Discord 客户端缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "只扫描 Discord 的可重建界面缓存，不处理账号、数据库、下载或聊天内容。",
+      "safetyNote": "Discord 运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "Discord.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "dingtalk-cache",
+      "version": 1,
+      "title": "钉钉界面缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "只识别钉钉程序目录中名称明确的页面、代码和图形缓存目录。",
+      "safetyNote": "不处理聊天数据库、接收文件、下载、账号配置或用户文档；钉钉运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "DingTalk.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "qq-renderer-cache",
+      "version": 1,
+      "title": "QQ 界面渲染缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "只识别 QQ 的代码与图形渲染缓存，不把名称含糊的 Cache 目录当作垃圾。",
+      "safetyNote": "不处理聊天记录、图片、视频、文件、账号数据或数据库；QQ 运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "QQ.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "wemeet-cache",
+      "version": 1,
+      "title": "腾讯会议界面缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "识别腾讯会议客户端中可重新生成的页面、代码与图形缓存。",
+      "safetyNote": "不处理会议录制、下载、账号数据、配置或日志；腾讯会议运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "wemeetapp.exe",
+        "wemeet.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "teams-cache",
+      "version": 1,
+      "title": "Microsoft Teams 客户端缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "识别传统与新版 Teams 客户端中名称明确的可重建界面、代码和图形缓存。",
+      "safetyNote": "不处理登录状态、聊天数据库、下载文件、配置或其他应用数据；Teams 运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "Teams.exe",
+        "ms-teams.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "slack-cache",
+      "version": 1,
+      "title": "Slack 客户端缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "只扫描 Slack 的界面缓存、代码缓存和 GPU 缓存。",
+      "safetyNote": "不处理账号、工作区配置、数据库或下载文件；Slack 运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "slack.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "desktop-utility-cache",
+      "version": 1,
+      "title": "常见桌面工具界面缓存",
+      "category": "应用缓存",
+      "risk": "low",
+      "reason": "识别 Notion、Postman、Figma、Obsidian、Spotify 与 Clash Verge 等桌面工具的标准可重建界面缓存。",
+      "safetyNote": "只接受明确的 Cache、Code Cache、GPUCache 等子目录；任何一个相关应用运行时都不会执行清理。",
+      "selectable": true,
+      "minimumAgeDays": 7,
+      "processNames": [
+        "Notion.exe",
+        "Postman.exe",
+        "Figma.exe",
+        "Obsidian.exe",
+        "Spotify.exe",
+        "clash-verge.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "jetbrains-cache",
+      "version": 1,
+      "title": "JetBrains IDE 可重建缓存",
+      "category": "开发工具",
+      "risk": "low",
+      "reason": "扫描 JetBrains IDE 各版本的索引缓存和临时目录，后续启动时会重新生成。",
+      "safetyNote": "不处理项目、配置、插件、Local History 或 Maven/Gradle 仓库；IDE 运行时禁止执行。",
+      "selectable": true,
+      "minimumAgeDays": 14,
+      "processNames": [
+        "idea64.exe",
+        "webstorm64.exe",
+        "pycharm64.exe",
+        "rider64.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "windows-minidumps",
+      "version": 1,
+      "title": "Windows 小型内存转储",
+      "category": "诊断",
+      "risk": "low",
+      "reason": "识别系统蓝屏小型转储；最近 14 天的内容保留用于故障诊断。",
+      "safetyNote": "如果仍在排查蓝屏问题应保留；无权限文件会跳过，不会自动提权。",
+      "selectable": true,
+      "minimumAgeDays": 14,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "npm-cache",
+      "version": 1,
+      "title": "npm 下载缓存",
+      "category": "开发工具",
+      "risk": "low",
+      "reason": "观察用户配置位置与旧默认位置；下载缓存由 npm 自身核验和管理，不逐文件拆散内部索引。",
+      "safetyNote": "不处理项目中的 node_modules、配置文件或全局安装包。",
+      "selectable": false,
+      "minimumAgeDays": 14,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "pip-cache",
+      "version": 1,
+      "title": "pip 下载缓存",
+      "category": "开发工具",
+      "risk": "low",
+      "reason": "观察配置位置与旧默认位置；使用 pip cache 管理下载缓存，不对内部文件执行通用清理。",
+      "safetyNote": "不处理虚拟环境、Python 包安装目录或项目文件。",
+      "selectable": false,
+      "minimumAgeDays": 14,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "nuget-cache",
+      "version": 1,
+      "title": "NuGet HTTP 缓存",
+      "category": "开发工具",
+      "risk": "low",
+      "reason": "观察 NuGet HTTP 下载缓存；通过 dotnet nuget locals 维护，不逐文件破坏工具内部结构。",
+      "safetyNote": "不处理全局包目录、项目依赖和离线包源。",
+      "selectable": false,
+      "minimumAgeDays": 14,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "uv-cache",
+      "version": 1,
+      "title": "uv 工具存储",
+      "category": "开发工具",
+      "risk": "attention",
+      "reason": "观察配置位置及默认位置；通过工具维护或配置迁移，避免破坏链接、锁和依赖关系。",
+      "safetyNote": "不对存储内部文件执行通用删除，也不修改工具配置。",
+      "selectable": false,
+      "minimumAgeDays": 0,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "pnpm-cache",
+      "version": 1,
+      "title": "pnpm 工具存储",
+      "category": "开发工具",
+      "risk": "attention",
+      "reason": "观察配置位置及默认位置；通过工具维护或配置迁移，避免破坏链接、锁和依赖关系。",
+      "safetyNote": "不对存储内部文件执行通用删除，也不修改工具配置。",
+      "selectable": false,
+      "minimumAgeDays": 0,
+      "processNames": [],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    },
+    {
+      "id": "windows-update-cache",
+      "version": 1,
+      "title": "Windows 更新下载缓存",
+      "category": "Windows 更新",
+      "risk": "attention",
+      "reason": "可能包含正在使用的更新文件，必须先确认更新状态并通过 Windows 官方维护流程处理。",
+      "safetyNote": "当前只检测，不提供文件级删除。",
+      "selectable": false,
+      "minimumAgeDays": 30,
+      "processNames": [
+        "TiWorker.exe",
+        "MoUsoCoreWorker.exe",
+        "TrustedInstaller.exe"
+      ],
+      "source": "Disk Sense 内置规则 · docs/cleanup-safety.md"
+    }
+  ]
+}

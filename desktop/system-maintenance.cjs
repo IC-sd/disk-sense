@@ -277,7 +277,7 @@ function progressFromChunk(chunk) {
 
 function spawnCommand(executable, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
+    const child = (options.spawn || spawn)(executable, args, {
       windowsHide: true,
       shell: false,
       windowsVerbatimArguments: false,
@@ -285,16 +285,25 @@ function spawnCommand(executable, args, options = {}) {
     })
     let stdout = ''
     let stderr = ''
+    let progressTail = ''
+    let lastPercent = null
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
     child.stdout.on('data', chunk => {
       stdout = appendBounded(stdout, chunk, MAX_STDOUT_CHARS)
-      options.onProgress?.(progressFromChunk(chunk))
+      // DISM percentages can be split across data chunks (e.g. "42." / "5%").
+      progressTail = appendBounded(progressTail, chunk, 512)
+      const progress = progressFromChunk(progressTail)
+      if (progress.percent != null) lastPercent = Math.max(lastPercent || 0, progress.percent)
+      options.onProgress?.({ ...progress, percent: lastPercent })
     })
     child.stderr.on('data', chunk => {
       stderr = appendBounded(stderr, chunk, MAX_STDERR_CHARS)
       options.onProgress?.({ ...progressFromChunk(chunk), percent: null })
     })
     child.once('error', reject)
-    child.once('exit', (code, signal) => resolve({
+    // close waits for stdout/stderr to drain; exit may precede the final DISM result.
+    child.once('close', (code, signal) => resolve({
       exitCode: Number.isInteger(code) ? code : -1,
       signal: signal || null,
       stdout,
@@ -328,7 +337,7 @@ async function maintenanceStatus(options = {}) {
       .map(name => [name, platform === 'win32' && existsSync(systemExecutable(name, windowsDirectory))])
   )
   const elevated = await detectElevation({ ...options, platform, windowsDirectory, existsSync })
-  return { platform, elevated, commands }
+  return { platform, elevated, commands, checkedAt: new Date().toISOString() }
 }
 
 function readAvailableBytes(root = 'C:\\') {
@@ -350,8 +359,20 @@ function parseDismAnalysis(stdout) {
   }
 }
 
+function maintenanceOutcome(action, result) {
+  const signal = result.signal || null
+  const dism = action.executable?.toLowerCase() === 'dism.exe'
+  const rebootState = !signal && dism && result.exitCode === 3010 ? 'required'
+    : !signal && dism && result.exitCode === 1641 ? 'initiated' : 'not-reported'
+  const success = !signal && (result.exitCode === 0 || rebootState !== 'not-reported')
+  return { success, signal, rebootState, restartRequired: rebootState !== 'not-reported',
+    outcome: !success ? signal ? 'interrupted' : 'failed' : rebootState !== 'not-reported' ? 'restart-required' : action.kind === 'command' ? 'completed' : 'settings-opened' }
+}
+
 function resultMessage(action, result) {
-  if (result.exitCode !== 0) {
+  const outcome = maintenanceOutcome(action, result)
+  if (!outcome.success) {
+    if (outcome.signal) return `Windows 维护进程已中断（${outcome.signal}），请核对系统状态，程序不会自动重试。`
     const detail = String(result.stderr || result.stdout || '').trim().split(/\r?\n/).filter(Boolean).at(-1)
     return detail ? `Windows 返回错误：${detail.slice(0, 300)}` : `Windows 命令执行失败（代码 ${result.exitCode}）`
   }
@@ -363,7 +384,7 @@ function resultMessage(action, result) {
     }
     if (analysis.cleanupRecommended === false) return 'Windows 判断当前组件存储无需清理。'
   }
-  return action.successMessage
+  return `${action.successMessage}${outcome.restartRequired ? ' Windows 报告需要重新启动才能完成此操作；Disk Sense 不会自动重启。' : ''}`
 }
 
 function assertConfirmation(action, confirmation) {
@@ -380,12 +401,14 @@ async function executeMaintenanceAction(input = {}, options = {}) {
   const status = options.status || await maintenanceStatus(options)
   const availability = actionAvailability(action, status)
   if (!availability.enabled) throw new Error(availability.disabledReason)
+  if (options.signal?.aborted) throw new Error('系统维护在启动前已取消')
 
   const startedAt = new Date().toISOString()
   const beforeAvailableBytes = (options.readAvailableBytes || readAvailableBytes)()
   const emit = payload => options.onProgress?.({
     actionId: action.id,
     phase: 'running',
+    cancellable: false,
     percent: null,
     message: action.label,
     ...payload
@@ -416,10 +439,9 @@ async function executeMaintenanceAction(input = {}, options = {}) {
   }
 
   const afterAvailableBytes = (options.readAvailableBytes || readAvailableBytes)()
-  const reclaimedBytes = action.readOnly || beforeAvailableBytes == null || afterAvailableBytes == null
-    ? 0
-    : Math.max(0, afterAvailableBytes - beforeAvailableBytes)
-  const success = commandResult.exitCode === 0
+  const observedAvailableDeltaBytes = Number.isFinite(beforeAvailableBytes) && Number.isFinite(afterAvailableBytes)
+    ? afterAvailableBytes - beforeAvailableBytes : null
+  const outcome = maintenanceOutcome(action, commandResult)
   const result = {
     id: `maintenance-${Date.now()}`,
     actionId: action.id,
@@ -429,19 +451,27 @@ async function executeMaintenanceAction(input = {}, options = {}) {
     readOnly: Boolean(action.readOnly),
     irreversible: action.irreversible,
     requiresAdmin: action.requiresAdmin,
-    success,
+    ...outcome,
     exitCode: commandResult.exitCode,
     startedAt,
     finishedAt: new Date().toISOString(),
-    reclaimedBytes,
+    // A volume delta includes unrelated writes. It cannot prove this job reclaimed it.
+    reclaimedBytes: 0,
+    observedAvailableDeltaBytes,
+    spaceMeasurement: 'volume-delta-not-attributed',
+    cancellable: false,
+    analysis: action.id === 'component-analyze' && outcome.success ? parseDismAnalysis(commandResult.stdout) : null,
     message: resultMessage(action, commandResult),
     stdoutTail: String(commandResult.stdout || '').slice(-4000),
     stderrTail: String(commandResult.stderr || '').slice(-2000)
   }
   options.onProgress?.({
     actionId: action.id,
-    phase: success ? 'completed' : 'failed',
-    percent: success ? 100 : null,
+    phase: outcome.success ? 'completed' : 'failed',
+    outcome: outcome.outcome,
+    restartRequired: outcome.restartRequired,
+    cancellable: false,
+    percent: outcome.success ? 100 : null,
     message: result.message
   })
   return result
@@ -456,6 +486,7 @@ module.exports = {
   detectElevation,
   maintenanceStatus,
   parseDismAnalysis,
+  maintenanceOutcome,
   executeMaintenanceAction,
   assertConfirmation,
   actionAvailability,

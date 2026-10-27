@@ -4,6 +4,73 @@ const PROVIDERS = Object.freeze({
   AZURE: 'azure-openai',
   LOCAL: 'local-openai'
 })
+const { redactSensitiveText } = require('./ai-safety.cjs')
+const CAPABILITIES = Object.freeze({
+  [PROVIDERS.CHAT]: Object.freeze({ modelList: true, structuredOutput: 'json-object', cancellation: true, transportRetries: 0 }),
+  [PROVIDERS.RESPONSES]: Object.freeze({ modelList: true, structuredOutput: 'prompt-json', cancellation: true, transportRetries: 0 }),
+  [PROVIDERS.AZURE]: Object.freeze({ modelList: false, structuredOutput: 'json-object', cancellation: true, transportRetries: 0 }),
+  [PROVIDERS.LOCAL]: Object.freeze({ modelList: true, structuredOutput: 'json-object', cancellation: true, transportRetries: 0 })
+})
+function providerCapabilities(provider) { return CAPABILITIES[normalizeProvider(provider)] }
+
+class ProviderError extends Error {
+  constructor(message, { code = 'NETWORK_ERROR', status = null, retryable = false, retryAfterMs = null } = {}) {
+    super(redactSensitiveText(message))
+    this.name = 'ProviderError'
+    this.code = code
+    this.status = status
+    this.retryable = retryable
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
+function providerError(response, detail, operation = 'AI 请求') {
+  const status = Number(response?.status) || 0
+  const codes = { 401: 'AUTHENTICATION', 403: 'PERMISSION', 404: 'NOT_FOUND', 429: 'RATE_LIMIT' }
+  const hints = { 401: 'API 密钥无效或未填写', 403: '当前密钥没有访问权限', 404: '服务地址或模型不存在', 429: '请求过于频繁或额度不足' }
+  const hint = hints[status] || (status >= 500 ? '服务暂时不可用，请稍后重试' : '请检查服务协议、模型名称和连接地址')
+  const retryAfter = response?.headers?.get?.('retry-after')
+  const seconds = Number(retryAfter)
+  const retryAfterMs = retryAfter && Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1000, 3600000) : null
+  return new ProviderError(`${operation}失败（${status}）：${hint}${detail ? `。${redactSensitiveText(detail).slice(0, 180)}` : ''}`, {
+    status, code: codes[status] || (status >= 500 ? 'SERVICE_UNAVAILABLE' : 'INVALID_REQUEST'), retryable: status === 429 || status >= 500, retryAfterMs
+  })
+}
+
+function createRequestContext(signal, timeoutMs) {
+  const controller = new AbortController()
+  let timedOut = false
+  const cancel = () => controller.abort()
+  signal?.addEventListener?.('abort', cancel, { once: true })
+  if (signal?.aborted) controller.abort()
+  const timeout = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
+  const check = () => {
+    if (controller.signal.aborted) throw new ProviderError(timedOut ? 'AI 请求超时，请检查 API 地址或网络' : 'AI 分析已取消', { code: timedOut ? 'TIMEOUT' : 'CANCELLED', retryable: timedOut })
+  }
+  return {
+    signal: controller.signal, check,
+    error(error) {
+      check()
+      if (error instanceof ProviderError) return error
+      return new ProviderError(`AI 请求失败：${String(error?.message || error || '网络连接失败')}`)
+    },
+    dispose() { clearTimeout(timeout); signal?.removeEventListener?.('abort', cancel) }
+  }
+}
+
+function compatiblePayload(payload, provider, status, detail) {
+  if (![400, 422].includes(Number(status))) return null
+  const message = String(detail || '').toLowerCase()
+  if (!/(?:unsupported|not supported|not allowed|unknown|unrecognized|unexpected|invalid parameter|不支持)/.test(message)) return null
+  const next = JSON.parse(JSON.stringify(payload))
+  const fields = normalizeProvider(provider) === PROVIDERS.RESPONSES
+    ? ['reasoning', 'store'] : ['response_format', 'reasoning_effort', 'max_tokens', 'temperature']
+  const field = fields.find(name => Object.hasOwn(next, name) && message.includes(name))
+  if (!field) return null
+  if (field === 'max_tokens') { next.max_completion_tokens = next.max_tokens; delete next.max_tokens }
+  else delete next[field]
+  return next
+}
 
 function normalizeProvider(value) {
   return Object.values(PROVIDERS).includes(value) ? value : PROVIDERS.CHAT
@@ -84,13 +151,13 @@ function completionPayload(config, system, prompt, modeConfig) {
       input: prompt,
       store: false,
       max_output_tokens: modeConfig.maxTokens,
-      reasoning: { effort: modeConfig.reasoningEffort }
+      ...(modeConfig.reasoningEffort ? { reasoning: { effort: modeConfig.reasoningEffort } } : {})
     }
   }
   return {
     model: config.model,
     temperature: 0.1,
-    reasoning_effort: modeConfig.reasoningEffort,
+    ...(modeConfig.reasoningEffort ? { reasoning_effort: modeConfig.reasoningEffort } : {}),
     max_tokens: modeConfig.maxTokens,
     response_format: { type: 'json_object' },
     messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }]
@@ -127,6 +194,12 @@ function fallbackPayload(payload, provider, attempt) {
 }
 
 module.exports = {
+  CAPABILITIES,
+  providerCapabilities,
+  ProviderError,
+  providerError,
+  createRequestContext,
+  compatiblePayload,
   PROVIDERS,
   normalizeProvider,
   isPrivateHost,

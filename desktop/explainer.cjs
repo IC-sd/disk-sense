@@ -1,18 +1,11 @@
 const fsp = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
-const { normalizeRisk } = require('./risk.cjs')
+const { normalizeRisk, riskRank } = require('./risk.cjs')
+const { EVIDENCE_VERSION, MAX_PREFIX_BYTES, identifyPrefix } = require('./file-evidence.cjs')
 
 const TEXT_EXTENSIONS = new Set(['.txt', '.log', '.md', '.json', '.jsonc', '.xml', '.ini', '.cfg', '.conf', '.yml', '.yaml', '.toml', '.csv', '.env', '.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.java', '.cs', '.cpp', '.h', '.bat', '.cmd', '.ps1', '.sql', '.html', '.css'])
-const BINARY_SIGNATURES = [
-  { starts: '4D5A', type: 'Windows PE 可执行文件' },
-  { starts: '25504446', type: 'PDF 文档' },
-  { starts: '504B0304', type: 'ZIP/Office/归档容器' },
-  { starts: '53514C69746520666F726D6174203300', type: 'SQLite 数据库' },
-  { starts: '89504E470D0A1A0A', type: 'PNG 图片' },
-  { starts: 'FFD8FF', type: 'JPEG 图片' }
-]
-const MAX_CONTENT_BYTES = 32768
+const MAX_CONTENT_BYTES = MAX_PREFIX_BYTES
 const MAX_ITEMS = 5000
 const MAX_CONTEXT_SIBLINGS = 80
 const DIRECTORY_SAMPLE_NODES = 180
@@ -51,7 +44,7 @@ function absoluteTarget(value, fallback = '') {
 function humanBytes(bytes) { if (bytes < 1024) return `${bytes} B`; const units = ['KB', 'MB', 'GB', 'TB']; let i = -1; let value = bytes; do { value /= 1024; i++ } while (value >= 1024 && i < units.length - 1); return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[i]}` }
 
 async function readHeadAsync(filePath, maxBytes) {
-  const requestedBytes = Math.max(0, Math.floor(Number(maxBytes) || 0))
+  const requestedBytes = Math.min(MAX_CONTENT_BYTES, Math.max(0, Math.floor(Number(maxBytes) || 0)))
   if (!requestedBytes) return Buffer.alloc(0)
   const handle = await fsp.open(filePath, 'r')
   try {
@@ -104,19 +97,17 @@ function pathSignals(filePath) {
 async function readContentAsync(filePath, stat) {
   const ext = path.extname(filePath).toLowerCase()
   if (stat.isDirectory() || stat.isSymbolicLink?.()) return null
-  if (!TEXT_EXTENSIONS.has(ext)) {
-    try {
-      const header = (await readHeadAsync(filePath, 16)).toString('hex').toUpperCase()
-      const match = BINARY_SIGNATURES.find(item => header.startsWith(item.starts))
-      return match ? { kind: 'binary-signature', signature: match.type, preview: null } : null
-    } catch { return null }
-  }
-  if (stat.size > 10 * 1024 * 1024) return null
   try {
-    const buffer = (await readHeadAsync(filePath, MAX_CONTENT_BYTES)).toString('utf8')
-    const printable = buffer.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim()
+    const buffer = await readHeadAsync(filePath, MAX_CONTENT_BYTES)
+    const fileType = identifyPrefix(buffer, filePath, stat.size)
+    if (fileType) return { kind: 'binary-signature', signature: fileType.type, fileType, bytes: buffer.length, preview: null }
+    if (!TEXT_EXTENSIONS.has(ext)) return null
+    const decoded = buffer.toString('utf8')
+    const controls = decoded.match(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/g) || []
+    if (controls.length > Math.max(2, decoded.length * .01)) return { kind: 'unrecognized-binary', bytes: buffer.length, preview: null, source: 'file-header' }
+    const printable = decoded.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim()
     if (!printable) return null
-    return { kind: 'text-preview', bytes: Math.min(stat.size, MAX_CONTENT_BYTES), preview: printable.slice(0, 1200) }
+    return { kind: 'text-preview', source: 'bounded-text', bytes: buffer.length, prefixLimited: stat.size > buffer.length, preview: printable.slice(0, 1200) }
   } catch { return null }
 }
 
@@ -125,10 +116,12 @@ function inferFromContent(filePath, content) {
   if (content.kind === 'binary-signature') {
     const type = content.signature
     if (type.includes('SQLite')) return { source: '应用数据库', classification: 'application-database', confidence: .9, risk: 'high', reason: '文件头符合 SQLite 数据库特征，不能当作普通缓存删除。' }
-    if (type.includes('PE')) return { source: 'Windows 可执行文件', classification: 'executable', confidence: .96, risk: 'high', reason: '文件头符合 Windows 可执行文件特征，应结合所在目录和签名判断来源。' }
-    if (type.includes('PDF') || type.includes('图片')) return { source: '用户文档或媒体', classification: 'user-content', confidence: .92, risk: 'unknown', reason: '文件签名表明它是用户文档或媒体内容，应由用户决定是否保留。' }
+    if (content.fileType?.format === 'mz') return { source: '尚未确认的 MZ 文件', classification: 'unclassified', confidence: .55, risk: 'attention', reason: '仅有 MZ 文件头不足以确认 Windows PE 格式；不能据此判断文件是否安全或可清理。' }
+    if (type.includes('PE') || content.fileType?.format === 'elf') return { source: '可执行文件或运行组件', classification: 'executable', confidence: .96, risk: 'high', reason: '文件头符合可执行文件特征，应结合所在目录和可信签名判断来源；格式识别不能证明安全性。' }
+    if (type.includes('PDF') || type.includes('图片') || type.includes('文档') || type.includes('音频') || type.includes('媒体') || type.includes('视频')) return { source: '用户文档或媒体', classification: 'user-content', confidence: .92, risk: 'unknown', reason: '文件签名表明它是用户文档或媒体内容，应由用户决定是否保留。' }
     return { source: '归档或容器文件', classification: 'archive-or-container', confidence: .85, risk: 'medium', reason: '文件签名表明它可能是压缩包、Office 文档或其他容器。' }
   }
+  if (typeof content.preview !== 'string') return null
   const text = content.preview.toLowerCase()
   if (text.includes('package.json') || text.includes('node_modules')) return { source: 'Node.js 项目或工具', classification: 'development-data', confidence: .92, reason: '文件内容出现 Node.js 项目特征，结合所在路径判断它属于开发工具或项目数据。' }
   if (text.includes('sqlite') || text.includes('database')) return { source: '应用数据库或索引', classification: 'application-database', confidence: .86, reason: '文件内容出现数据库特征，可能保存应用状态、索引或用户数据。' }
@@ -299,9 +292,19 @@ function explain(filePath, stat, siblings = [], directoryContext = null, directo
   const siblingNames = siblings.slice(0, 12).map(item => item.name).filter(Boolean)
   const childNames = directoryChildren.slice(0, 60).map(item => item.name).filter(Boolean)
   const strongerInfo = isLink ? null : nameInfo || contentInfo
-  const merged = strongerInfo ? { ...pathInfo, ...strongerInfo, risk: strongerInfo.risk || (strongerInfo.classification === 'application-database' ? 'high' : pathInfo.risk) } : directoryContext && pathInfo.classification === 'unclassified' ? { ...pathInfo, ...directoryContext } : pathInfo
+  const merged = strongerInfo ? { ...pathInfo, ...strongerInfo, risk: strongerInfo.risk || (strongerInfo.classification === 'application-database' ? 'high' : pathInfo.risk) } : directoryContext && pathInfo.classification === 'unclassified' ? { ...pathInfo, ...directoryContext } : { ...pathInfo }
+  // Format/name observations never weaken an independently known path or database risk.
+  for (const observation of [pathInfo, nameInfo, contentInfo]) {
+    if (observation && riskRank(observation.risk) > riskRank(merged.risk)) merged.risk = observation.risk
+  }
+  const observations = [
+    { ...pathInfo, id: 'path', source: 'path-rule', label: pathInfo.source },
+    ...(nameInfo ? [{ ...nameInfo, id: 'name', source: 'name-and-siblings', label: nameInfo.source }] : []),
+    ...(content ? [{ id: 'content', source: content.fileType ? 'file-header' : 'bounded-text', confidence: content.fileType?.confidence || contentInfo?.confidence || .4, format: content.fileType?.format || null, extensionConflict: Boolean(content.fileType?.extensionConflict), status: content.fileType?.status || content.kind }] : []),
+    ...(directoryContext ? [{ ...directoryContext, id: 'directory', source: 'directory-structure', label: directoryContext.source }] : [])
+  ]
   const meaning = meaningFor(merged, filePath, stat.isDirectory())
-  return { path: filePath, name, parent, size: stat.size, modifiedAt: stat.mtimeMs, isDirectory: stat.isDirectory(), isLink, ...merged, risk: normalizeRisk(merged.risk), ...meaning, analysisMode: 'local-evidence', needsReview: merged.confidence < .6, aiEligible: merged.confidence < .6, evidence: { pathSegments: labels(filePath).slice(-8), parent, siblingNames, childNames, directoryShape: stat.isDirectory() ? directoryShape(directoryChildren) : null, content, directoryContext }, contentPreview: content?.preview || null }
+  return { path: filePath, name, parent, size: stat.size, modifiedAt: stat.mtimeMs, isDirectory: stat.isDirectory(), isLink, ...merged, risk: normalizeRisk(merged.risk), ...meaning, analysisMode: 'local-evidence', needsReview: merged.confidence < .6 || Boolean(content?.fileType?.extensionConflict), aiEligible: merged.confidence < .6, evidence: { version: EVIDENCE_VERSION, observations, fileType: content?.fileType || null, pathSegments: labels(filePath).slice(-8), parent, siblingNames, childNames, directoryShape: stat.isDirectory() ? directoryShape(directoryChildren) : null, content, directoryContext }, contentPreview: content?.preview || null }
 }
 
 async function readDirectoryEntries(directory, limit = MAX_ITEMS) {
@@ -402,7 +405,11 @@ async function hydrateDirectoryItems(values, limit = MAX_METADATA_BATCH) {
 async function listDirectory(dir) {
   const root = absoluteTarget(dir, 'C:\\')
   const listing = await readDirectoryEntries(root, MAX_ITEMS)
-  const items = listing.entries
+  return presentDirectoryPage(root, listing.entries, listing.truncated)
+}
+
+async function presentDirectoryPage(root, entries, truncated = false) {
+  const items = entries
     .map(entry => itemFromDirectoryEntry(root, entry))
     .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name))
   const initialMetadata = await hydrateDirectoryItems(
@@ -414,7 +421,7 @@ async function listDirectory(dir) {
   return {
     path: root,
     items: stagedItems,
-    truncated: listing.truncated,
+    truncated,
     context: {
       siblingCount: stagedItems.length,
       analyzed: 'path-name-parent-lazy-size',
@@ -439,4 +446,4 @@ async function explainPath(filePath, { fresh = false } = {}) {
   return cacheWrite(explanationCache, cacheKey, explain(target, stat, siblings, directoryContext, directoryChildren, content))
 }
 
-module.exports = { listDirectory, hydrateDirectoryItems, inspectDirectoryItem, explainPath, explain, pathSignals, readHeadAsync, readContentAsync, readDirectoryEntries, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, INITIAL_LIST_METADATA, MAX_METADATA_BATCH, ESTIMATE_CACHE_TTL_MS }
+module.exports = { absoluteTarget, presentDirectoryPage, listDirectory, hydrateDirectoryItems, inspectDirectoryItem, explainPath, explain, pathSignals, readHeadAsync, readContentAsync, readDirectoryEntries, inferFromName, summarizeDirectory, directoryShape, estimateDirectory, mapConcurrent, humanBytes, MAX_CONTENT_BYTES, LIST_STAT_CONCURRENCY, INITIAL_LIST_METADATA, MAX_METADATA_BATCH, ESTIMATE_CACHE_TTL_MS }

@@ -1,0 +1,219 @@
+{
+  "date": "2026-10-22T10:35:21.151Z",
+  "entries": 930372,
+  "cases": [
+    {
+      "query": "repo",
+      "total": 25565,
+      "referenceFetched": 25641,
+      "reuseFetched": 25641,
+      "reused": 0,
+      "referenceFirst500Ms": 676.52,
+      "reuseFirst500Ms": 485.02,
+      "estimatedRetainedBytes": 10881028,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "repor",
+      "total": 3161,
+      "referenceFetched": 3207,
+      "reuseFetched": 0,
+      "reused": 3207,
+      "referenceFirst500Ms": 157.32,
+      "reuseFirst500Ms": 182.77,
+      "estimatedRetainedBytes": 13864938,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "report",
+      "total": 3111,
+      "referenceFetched": 3146,
+      "reuseFetched": 0,
+      "reused": 3146,
+      "referenceFirst500Ms": 146.84,
+      "reuseFirst500Ms": 121.06,
+      "estimatedRetainedBytes": 15738756,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "repor",
+      "total": 3161,
+      "referenceFetched": 3207,
+      "reuseFetched": 61,
+      "reused": 3146,
+      "referenceFirst500Ms": 187.01,
+      "reuseFirst500Ms": 150.78,
+      "estimatedRetainedBytes": 17642906,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "vs",
+      "total": 32896,
+      "referenceFetched": 33266,
+      "reuseFetched": 33084,
+      "reused": 182,
+      "referenceFirst500Ms": 1576.83,
+      "reuseFirst500Ms": 1276.66,
+      "estimatedRetainedBytes": 21815596,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "vsc",
+      "total": 21920,
+      "referenceFetched": 21995,
+      "reuseFetched": 0,
+      "reused": 21995,
+      "referenceFirst500Ms": 412.65,
+      "reuseFirst500Ms": 252.54,
+      "estimatedRetainedBytes": 31845316,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "vsco",
+      "total": 19867,
+      "referenceFetched": 19890,
+      "reuseFetched": 0,
+      "reused": 19890,
+      "referenceFirst500Ms": 289.96,
+      "reuseFirst500Ms": 128.5,
+      "estimatedRetainedBytes": 39962172,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "vsc",
+      "total": 21920,
+      "referenceFetched": 21995,
+      "reuseFetched": 2105,
+      "reused": 19890,
+      "referenceFirst500Ms": 359.7,
+      "reuseFirst500Ms": 200.12,
+      "estimatedRetainedBytes": 49349844,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "bao",
+      "total": 1166,
+      "referenceFetched": 1239,
+      "reuseFetched": 1235,
+      "reused": 4,
+      "referenceFirst500Ms": 98.4,
+      "reuseFirst500Ms": 77.69,
+      "estimatedRetainedBytes": 33323852,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "baog",
+      "total": 108,
+      "referenceFetched": 113,
+      "reuseFetched": 0,
+      "reused": 113,
+      "referenceFirst500Ms": 45.74,
+      "reuseFirst500Ms": 41.23,
+      "estimatedRetainedBytes": 22056284,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "baogao",
+      "total": 78,
+      "referenceFetched": 79,
+      "reuseFetched": 0,
+      "reused": 79,
+      "referenceFirst500Ms": 44.4,
+      "reuseFirst500Ms": 25.47,
+      "estimatedRetainedBytes": 12224598,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "baogao ",
+      "total": 78,
+      "referenceFetched": 79,
+      "reuseFetched": 0,
+      "reused": 79,
+      "referenceFirst500Ms": 28.27,
+      "reuseFirst500Ms": 30.83,
+      "estimatedRetainedBytes": 882198,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "baogao",
+      "total": 78,
+      "referenceFetched": 79,
+      "reuseFetched": 0,
+      "reused": 79,
+      "referenceFirst500Ms": 27.35,
+      "reuseFirst500Ms": 26.07,
+      "estimatedRetainedBytes": 230548,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "Documents",
+      "total": 2899,
+      "referenceFetched": 2899,
+      "reuseFetched": 2899,
+      "reused": 0,
+      "referenceFirst500Ms": 89.35,
+      "reuseFirst500Ms": 74.96,
+      "estimatedRetainedBytes": 1573318,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    },
+    {
+      "query": "Documents report",
+      "total": 17,
+      "referenceFetched": 17,
+      "reuseFetched": 0,
+      "reused": 17,
+      "referenceFirst500Ms": 47.56,
+      "reuseFirst500Ms": 50.79,
+      "estimatedRetainedBytes": 1667438,
+      "oversizedActive": false,
+      "allPagesEqual": true
+    }
+  ],
+  "sourceHashes": [
+    {
+      "file": "desktop/search-engine.cjs",
+      "sha256": "d23c861916d8a685c09eee18d6f57a061f6d29cd007745e4490c8bdcf942ccbb"
+    },
+    {
+      "file": "desktop/search-candidate-session.cjs",
+      "sha256": "d12c89848f6ce99956ac7fe113f0e7ebc1f4314a292704009e762ef9a031e1ee"
+    },
+    {
+      "file": "desktop/search-session-cache.cjs",
+      "sha256": "324c93a7fbcb0d614542fee5fedfc2a0ba8054316e0ff5b175e9bed29e55f388"
+    },
+    {
+      "file": "desktop/search-result-view.cjs",
+      "sha256": "946bdb85bf842a3ff74ebad9c5811667f0a7f7d14ffd44bf6fdba1ac2ba180f9"
+    }
+  ],
+  "checks": [
+    "same-query-total",
+    "all-pages-ordered-identity-and-metadata-digest",
+    "no-duplicate-pages",
+    "active-session-survives-budget",
+    "reuse-exercised"
+  ],
+  "scope": "Same frozen index; complete ID recall on both variants; query-result cache disabled; alternate variant order; one first-500 sample per input, not GUI latency",
+  "limits": [
+    "Full recall SQL and abbreviation name verification still execute",
+    "Fetch counts cover ranking metadata, not page presentation or matcher-internal reads",
+    "Single timing samples are diagnostic, not a speedup or Listary parity claim",
+    "Retained-byte estimates are conservative and exclude runtime/SQLite/transient RSS",
+    "One oversized active snapshot is retained for correct stable pagination; other views/sessions are evicted"
+  ]
+}

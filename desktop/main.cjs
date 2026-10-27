@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, session } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, clipboard, safeStorage, dialog, session } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const packageMetadata = require('../package.json')
@@ -20,17 +20,22 @@ const { createFileSearchWorkerService } = require('./file-search-client.cjs')
 const { createDiagnostics } = require('./diagnostics.cjs')
 const { normalizeDevelopmentServerUrl } = require('./development.cjs')
 const { createOperationCoordinator } = require('./operation-coordinator.cjs')
+const { createOperationJournal } = require('./operation-journal.cjs')
 const { lockDownSession } = require('./security.cjs')
 
 app.setName('Disk Sense')
-const dataLocation = resolveDataLocation({
-  appDataPath: app.getPath('appData'),
-  environment: process.env
-})
+let dataLocation
+try {
+  dataLocation = resolveDataLocation({ appDataPath: app.getPath('appData'), environment: process.env })
+} catch (error) {
+  dialog.showErrorBox('无法打开 Disk Sense 数据', error instanceof Error ? error.message : String(error))
+  app.exit(1)
+}
 app.setPath('userData', dataLocation.userDataPath)
 
 let win
 let db
+let operationJournal
 let searchService
 let automaticSearchTimer
 let dataUsagePromise = null
@@ -54,6 +59,7 @@ const aiAnalysisStore = createAiAnalysisStore({ getDb: () => db })
 const diagnostics = createDiagnostics(path.join(app.getPath('userData'), 'disk-sense.log'))
 const operationCoordinator = createOperationCoordinator()
 diagnostics.installProcessMonitors()
+if (dataLocation.migrationRecovery) diagnostics.log('warn', 'data-migration-recovery', dataLocation.migrationRecovery)
 function sendToRenderer(channel, payload) {
   if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
   win.webContents.send(channel, payload)
@@ -100,6 +106,8 @@ function unavailableSearchService(error) {
   return {
     status,
     startAutomatic: reject,
+    enableNtfs: reject,
+    disableNtfs: reject,
     stopAutomatic: () => {},
     rebuildScope: reject,
     search: reject,
@@ -119,7 +127,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 680,
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
-    backgroundColor: theme === 'light' ? '#edf1f5' : '#08111d',
+    backgroundColor: theme === 'light' ? '#f3f5f8' : '#101216',
     autoHideMenuBar: true,
     // Vite may briefly re-optimize dependencies after a lockfile change.
     // Keep the development shell visible instead of waiting indefinitely for
@@ -193,12 +201,14 @@ function addOverviewHandlers() {
       userDataPath,
       defaultUserDataPath: dataLocation.defaultUserDataPath,
       dataExternallyManaged: dataLocation.externallyManaged,
+      migrationRecovery: dataLocation.migrationRecovery || null,
       dataUsage: dataUsageCache,
       appearance: {
         theme: normalizeTheme(db.read().appearance?.theme)
       },
       stateVersion: Number(db.read().version || 0),
       aiConfigured: aiConfig.publicConfig().configured,
+      runtimeVersions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome },
       security: {
         rendererSandbox: true,
         contextIsolation: true,
@@ -211,6 +221,10 @@ function addOverviewHandlers() {
     }
   })
   ipcMain.handle('app:data-usage', () => appDataUsage())
+  const diagnosticSnapshot = () => diagnostics.snapshot({ version: applicationVersion(), packaged: app.isPackaged,
+    runtime: process.versions, platform: process.platform, architecture: process.arch, operation: operationCoordinator.status?.() })
+  ipcMain.handle('app:diagnostics', () => diagnosticSnapshot())
+  ipcMain.handle('app:diagnostics-copy', () => { clipboard.writeText(JSON.stringify(diagnosticSnapshot(), null, 2)); return { copied: true } })
   ipcMain.handle('app:appearance:get', () => ({
     theme: normalizeTheme(db.read().appearance?.theme)
   }))
@@ -218,7 +232,7 @@ function addOverviewHandlers() {
     const theme = normalizeTheme(input?.theme)
     db.read().appearance = { theme }
     db.save()
-    if (win && !win.isDestroyed()) win.setBackgroundColor(theme === 'light' ? '#edf1f5' : '#08111d')
+    if (win && !win.isDestroyed()) win.setBackgroundColor(theme === 'light' ? '#f3f5f8' : '#101216')
     return { theme }
   })
   ipcMain.handle('app:device-info', () => collectDeviceInfo({
@@ -251,7 +265,7 @@ function addOverviewHandlers() {
     const releaseOperation = operationCoordinator.acquire('data-migration', `migration-${Date.now()}`)
     try {
       const migration = await coordinateDataMigration({
-        checkpoint: () => searchService?.checkpoint(),
+        checkpoint: async () => { operationJournal?.checkpoint(); await searchService?.checkpoint() },
         saveState: () => db.save(),
         migrate: () => migrateDataDirectory({
           source: app.getPath('userData'),
@@ -302,6 +316,10 @@ if (!singleInstance) {
   app.whenReady().then(() => {
     lockDownSession(session.defaultSession)
     db = store(path.join(app.getPath('userData'), 'disk-sense-state.json'))
+    try {
+      operationJournal = createOperationJournal(path.join(app.getPath('userData'), 'disk-sense-operations.sqlite'))
+      operationJournal.recover()
+    } catch (error) { diagnostics.log('error', 'operation-journal-unavailable', error) }
     diagnostics.log('info', 'application-ready', {
       version: applicationVersion(),
       packaged: app.isPackaged,
@@ -326,9 +344,9 @@ if (!singleInstance) {
       })
       searchService = unavailableSearchService(error)
     }
-    registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell })
+    registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell, clipboard })
     registerChangeHandlers({ ipcMain, db, sendToRenderer, operationCoordinator })
-    registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer, operationCoordinator })
+    registerCleanerHandlers({ ipcMain, db, shell, sendToRenderer, operationCoordinator, journal: operationJournal, requireJournal: true, diagnostics })
     createWindow()
     if (!smokeTest) {
       automaticSearchTimer = setTimeout(() => {

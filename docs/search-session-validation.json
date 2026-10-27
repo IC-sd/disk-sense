@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-22",
+  "implementationDate": "2026-10-21",
+  "scope": "Candidate sessions and independently paged sort views; production NTFS collection and SQLite recall retained",
+  "checks": {
+    "vitest": {
+      "passed": true,
+      "files": 36,
+      "tests": 247,
+      "command": "node node_modules/vitest/vitest.mjs run --configLoader runner --maxWorkers=2 --testTimeout=15000",
+      "note": "Default 5-second run timed out in an existing cleaner process-enumeration test; unchanged assertions passed with two workers and a 15-second timeout"
+    },
+    "typecheck": {
+      "passed": true
+    },
+    "productionBuild": {
+      "passed": true
+    },
+    "desktopSyntax": {
+      "passed": true,
+      "modules": 39
+    },
+    "electronDevelopment": {
+      "passed": true,
+      "title": "Disk Sense",
+      "hmrConnected": true,
+      "search": {
+        "pinyinHighlighted": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "keyboardSelection": true,
+      "nativeIcon": true,
+      "layoutFits": true,
+      "settingsReady": true,
+      "historyReady": true,
+      "isolation": "Own temporary profile and controlled 145-file pagination fixture",
+      "screenshot": "release/smoke-inspect.png"
+    },
+    "frozenIndex": {
+      "entries": 905131,
+      "beforeEngineSha256": "bb2cb60921db965bcd4e925779b36b470416cf17a37b21098a28ebc9d0a60d71",
+      "currentEngineSha256": "e707aeb881cf658210c4666664a71a944e8d31d5d98eb588b486f26fbe702d3b",
+      "currentCandidateHelperSha256": "75a15eea48eb4b0e30c78d11c3473351a3a027574e9fab3c9e4e5903645a664c",
+      "sameRecallCountsAsBefore": true,
+      "queries": [
+        {
+          "query": "word",
+          "candidateCount": 3512,
+          "relevanceTotal": 3459,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        },
+        {
+          "query": "vsc",
+          "candidateCount": 21715,
+          "relevanceTotal": 21639,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        },
+        {
+          "query": "report",
+          "candidateCount": 2762,
+          "relevanceTotal": 2727,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        },
+        {
+          "query": "baogao",
+          "candidateCount": 79,
+          "relevanceTotal": 78,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        },
+        {
+          "query": "Documents report",
+          "candidateCount": 15,
+          "relevanceTotal": 15,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        },
+        {
+          "query": "ext:txt",
+          "candidateCount": 5300,
+          "relevanceTotal": 5300,
+          "checks": [
+            "same-relevance-total",
+            "same-relevance-first-two-pages",
+            "same-name-total-and-first-two-pages",
+            "same-ordered-page-identities"
+          ]
+        }
+      ],
+      "limit": "Pre/post count equality plus current comparator versus complete-sort first-two-page oracle; not a stored pre/post full ranking comparison"
+    }
+  },
+  "sources": [
+    {
+      "file": "desktop/search-engine.cjs",
+      "sha256": "e707aeb881cf658210c4666664a71a944e8d31d5d98eb588b486f26fbe702d3b"
+    },
+    {
+      "file": "desktop/search-candidate-session.cjs",
+      "sha256": "75a15eea48eb4b0e30c78d11c3473351a3a027574e9fab3c9e4e5903645a664c"
+    },
+    {
+      "file": "desktop/search-result-view.cjs",
+      "sha256": "28ba34812d36dd1680458a4719afd7fdeafb61e70ac1d70204dfad0c9f645d5f"
+    },
+    {
+      "file": "src/ui/ExplorerWorkspace.vue",
+      "sha256": "697e1d42175b1df00f2910c940b57dbb8124a5ef3dc47e52a2ae94748047efa5"
+    },
+    {
+      "file": "vite.config.ts",
+      "sha256": "8c1ed415cb2e4787a1c7f78b04cfc18678d8923ff67ec871968a906539f88a6a"
+    },
+    {
+      "file": "scripts/smoke-desktop.mjs",
+      "sha256": "b57391c8f001d565215012e5bc5fc6df6cd18c48c70160fd7fcf950b1fd3fb83"
+    },
+    {
+      "file": "scripts/smoke-development.mjs",
+      "sha256": "a2c43f9aaecc4e740cef82dc0e39ecf8f97b216241be6f04511fc38ede943fda"
+    }
+  ],
+  "limits": [
+    "No new Listary timing/parity comparison",
+    "New queries still read all candidate names/paths/ranking metadata from SQLite and score all relevance candidates",
+    "All sort partitions are sorted before page one; only global merging and presentation materialization are demand-driven",
+    "Name interning is per candidate session, not a persistent compact whole-disk catalog",
+    "Session budget counts candidates, not full byte size of retained views; a single huge session can exceed 250000 candidates",
+    "Initial indexing, large offline replay, and an actual Windows reboot were not changed or revalidated in this phase"
+  ]
+}

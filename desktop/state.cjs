@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { atomicWriteJson } = require('./atomic-file.cjs')
 
 const STATE_VERSION = 7
 const SIDECAR_VERSION = 1
@@ -33,19 +34,7 @@ function readJsonWithBackup(file) {
 }
 
 function atomicWrite(file, value, pretty = false) {
-  const temporary = `${file}.tmp`
-  const backup = `${file}.bak`
-  const serialized = JSON.stringify(value, null, pretty ? 2 : 0)
-  fs.writeFileSync(temporary, serialized, { encoding: 'utf8', flag: 'w' })
-  if (fs.existsSync(file)) {
-    try {
-      JSON.parse(fs.readFileSync(file, 'utf8'))
-      fs.copyFileSync(file, backup)
-    } catch {
-      // Never replace a known-good backup with a malformed primary file.
-    }
-  }
-  fs.renameSync(temporary, file)
+  atomicWriteJson(file, value, { backup: true, pretty })
 }
 
 function store(file) {

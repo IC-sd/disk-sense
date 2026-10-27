@@ -1,0 +1,66 @@
+/* The AI setup dialog keeps service choice, connection fields and actions distinct. */
+#app .ai-settings-overlay { padding: 24px; background: rgba(7, 8, 12, .58); backdrop-filter: blur(5px); }
+#app .modal-card.ai-settings-card { display: flex; flex-direction: column; width: min(640px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); padding: 0; overflow: hidden; color: var(--text); border: 1px solid var(--line-bright); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+#app .ai-settings-card .modal-title { flex: none; gap: 20px; align-items: flex-start; margin: 0; padding: 22px 24px 19px; border-bottom: 1px solid var(--line); }
+#app .ai-settings-card .kicker { margin: 0 0 4px; color: var(--subtle); font-size: 10px; letter-spacing: .05em; }
+#app .ai-settings-card .modal-title h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+#app .ai-settings-card .settings-intro { margin: 6px 0 0; color: var(--subtle); font-size: 12px; line-height: 1.6; }
+#app .ai-settings-card .modal-close { display: grid; width: 28px; height: 28px; min-width: 28px; padding: 0; place-items: center; color: var(--subtle); border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 22px; line-height: 1; }
+#app .ai-settings-card .modal-close:hover { color: var(--text); border-color: var(--line); background: var(--control-hover); }
+#app .ai-settings-card .ai-settings-body { min-height: 0; padding: 20px 24px; overflow-y: auto; overscroll-behavior: contain; }
+#app .ai-settings-card .ai-section-heading { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+#app .ai-settings-card .ai-section-heading h3 { margin: 0; color: var(--text); font-size: 12px; font-weight: 550; }
+#app .ai-settings-card .ai-section-heading > span { color: var(--subtle); font-size: 10px; }
+#app .ai-settings-card .ai-config-state { display: inline-flex; gap: 6px; align-items: center; }
+#app .ai-settings-card .ai-config-state::before { width: 5px; height: 5px; content: ""; border-radius: 50%; background: var(--subtle); }
+#app .ai-settings-card .ai-config-state.configured { color: var(--green); }
+#app .ai-settings-card .ai-config-state.configured::before { background: var(--green); }
+#app .ai-settings-card .ai-service-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0 10px; }
+#app .ai-settings-card .ai-service-presets button { position: relative; min-height: 68px; padding: 12px 10px; color: var(--muted); text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); cursor: pointer; }
+#app .ai-settings-card .ai-service-presets button:hover:not(:disabled) { color: var(--text); border-color: var(--line-bright); background: var(--surface-strong); }
+#app .ai-settings-card .ai-service-presets button.active { color: var(--blue); border-color: var(--blue); background: color-mix(in srgb, var(--blue) 7%, var(--surface)); }
+#app .ai-settings-card .ai-service-presets button.active::after { position: absolute; top: 8px; right: 8px; width: 4px; height: 4px; content: ""; border-radius: 50%; background: var(--blue); }
+#app .ai-settings-card .ai-service-presets b { display: block; color: inherit; font-size: 12px; font-weight: 550; }
+#app .ai-settings-card .ai-service-presets small { display: block; margin-top: 5px; color: var(--subtle); font-size: 10px; line-height: 1.4; }
+#app .ai-settings-card .ai-protocol-options { margin: 0; color: var(--subtle); font-size: 11px; }
+#app .ai-settings-card .ai-protocol-options > summary { width: fit-content; padding: 3px 0; color: var(--subtle); font-size: 11px; cursor: pointer; }
+#app .ai-settings-card .ai-protocol-options > summary > span { margin-left: 8px; color: var(--muted); }
+#app .ai-settings-card .ai-protocol-options[open] { padding-bottom: 6px; }
+#app .ai-settings-card .ai-connection-fields { margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
+#app .ai-settings-card label { display: block; margin-top: 15px; color: var(--muted); font-size: 11px; font-weight: 500; }
+#app .ai-settings-card input, #app .ai-settings-card select { display: block; width: 100%; height: 38px; margin-top: 7px; padding: 0 11px; color: var(--text); font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; outline: none; background: var(--field-bg); color-scheme: inherit; }
+#app .ai-settings-card input:hover:not(:disabled), #app .ai-settings-card select:hover:not(:disabled) { border-color: var(--line-bright); }
+#app .ai-settings-card input:focus, #app .ai-settings-card select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 13%, transparent); }
+#app .ai-settings-card input[aria-invalid="true"] { border-color: color-mix(in srgb, var(--red) 65%, var(--line)); }
+#app .ai-settings-card input:disabled, #app .ai-settings-card select:disabled { opacity: .6; cursor: not-allowed; }
+#app .ai-settings-card input::placeholder { color: var(--subtle); font-size: 11px; }
+#app .ai-settings-card label small { display: block; margin-top: 6px; color: var(--subtle); font-size: 10px; font-weight: 400; line-height: 1.6; }
+#app .ai-settings-card label small.ai-field-invalid { color: var(--red); }
+#app .ai-settings-card .ai-stored-key { float: right; color: var(--green); font-size: 10px; font-weight: 400; }
+#app .ai-settings-card .model-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+#app .ai-settings-card .model-picker .quiet { height: 38px; min-height: 38px; margin: 7px 0 0; padding: 0 12px; color: var(--control-text); font-size: 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--control-bg); }
+#app .ai-settings-card .model-picker .quiet:hover:not(:disabled) { background: var(--control-hover); }
+#app .ai-settings-card .ai-privacy { display: block; margin: 19px 0 0; padding: 12px 13px; color: var(--muted); border: 1px solid var(--info-border); border-radius: 8px; background: var(--info-bg); }
+#app .ai-settings-card .ai-privacy > summary { color: var(--muted); font-size: 11px; cursor: pointer; }
+#app .ai-settings-card .ai-privacy > span { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+#app .ai-settings-card .ai-connection-message { margin: 13px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+#app .ai-settings-card .ai-connection-message.success-message { color: var(--green); border-color: color-mix(in srgb, var(--green) 25%, var(--line)); background: color-mix(in srgb, var(--green) 6%, var(--surface)); }
+#app .ai-settings-card .ai-connection-message.error-message { color: var(--red); border-color: color-mix(in srgb, var(--red) 25%, var(--line)); background: color-mix(in srgb, var(--red) 6%, var(--surface)); }
+#app .ai-settings-card .modal-actions { display: flex; flex: none; gap: 8px; align-items: center; margin: 0; padding: 15px 24px; border-top: 1px solid var(--line); background: var(--surface); }
+#app .ai-settings-card .modal-actions > span { flex: 1; }
+#app .ai-settings-card .modal-actions > button { min-height: 34px; padding: 0 12px; white-space: nowrap; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; }
+#app .ai-settings-card .modal-actions .quiet { color: var(--control-text); background: var(--control-bg); }
+#app .ai-settings-card .modal-actions .quiet:hover:not(:disabled) { background: var(--control-hover); }
+#app .ai-settings-card .modal-actions .danger-quiet { color: var(--red); border-color: transparent; background: transparent; }
+#app .ai-settings-card .modal-actions .danger-quiet:hover:not(:disabled) { background: var(--danger-control-bg); }
+#app .ai-settings-card .modal-actions .scan { color: #fff; border-color: var(--blue-strong); background: var(--blue-strong); box-shadow: none; }
+#app .ai-settings-card .modal-actions .scan:hover:not(:disabled) { background: color-mix(in srgb, var(--blue-strong) 86%, white); }
+#app .ai-settings-card button:disabled { opacity: .48; cursor: not-allowed; }
+@media (max-height: 760px) {
+  #app .ai-settings-card .modal-title { padding: 17px 22px 14px; }
+  #app .ai-settings-card .ai-settings-body { padding: 16px 22px; }
+  #app .ai-settings-card .ai-service-presets button { min-height: 61px; padding-block: 10px; }
+  #app .ai-settings-card .ai-connection-fields { margin-top: 14px; padding-top: 14px; }
+  #app .ai-settings-card label { margin-top: 12px; }
+  #app .ai-settings-card .modal-actions { padding: 13px 22px; }
+}

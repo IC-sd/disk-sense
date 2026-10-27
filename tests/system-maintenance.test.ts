@@ -1,9 +1,11 @@
 // @ts-expect-error CommonJS desktop module is intentionally tested from the TypeScript suite.
-import { executeMaintenanceAction, inspectSlimming, maintenanceActions, parseDismAnalysis, systemExecutable } from '../desktop/system-maintenance.cjs'
+import { executeMaintenanceAction, inspectSlimming, maintenanceActions, parseDismAnalysis, systemExecutable, spawnCommand } from '../desktop/system-maintenance.cjs'
 // @ts-expect-error CommonJS desktop handler helper is intentionally tested from the TypeScript suite.
 import { failedMaintenanceJob } from '../desktop/handlers/cleaner-handlers.cjs'
 import { describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 
 const elevatedStatus = {
   platform: 'win32',
@@ -116,7 +118,8 @@ describe('Windows system maintenance safety boundary', () => {
       '/NoRestart'
     ])
     expect(calls[0].purpose).toBe('component-cleanup')
-    expect(result).toMatchObject({ success: true, reclaimedBytes: 75, irreversible: false })
+    expect(result).toMatchObject({ success: true, reclaimedBytes: 0, observedAvailableDeltaBytes: 75,
+      spaceMeasurement: 'volume-delta-not-attributed', outcome: 'completed', irreversible: false })
     expect(progress).not.toHaveLength(0)
   })
 
@@ -165,5 +168,59 @@ describe('Windows system maintenance safety boundary', () => {
       reclaimablePackages: null,
       cleanupRecommended: null
     })
+  })
+
+  it.each([3010, 1641])('preserves successful DISM exit %i as pending restart, without triggering restart', async exitCode => {
+    const runCommand = vi.fn(async () => ({ exitCode, stdout: '', stderr: '' }))
+    const result = await executeMaintenanceAction({ actionId: 'component-cleanup', confirmation: '清理组件' }, {
+      status: elevatedStatus, existsSync: () => true, runCommand, readAvailableBytes: () => 100
+    })
+    expect(result).toMatchObject({ success: true, exitCode, outcome: 'restart-required', restartRequired: true, reclaimedBytes: 0 })
+    expect(result.message).toContain('不会自动重启')
+    expect(runCommand).toHaveBeenCalledOnce()
+    expect(runCommand.mock.calls[0]).toBeDefined()
+  })
+
+  it('marks killed commands interrupted, even if a runner supplies exit code zero', async () => {
+    const result = await executeMaintenanceAction({ actionId: 'component-cleanup', confirmation: '清理组件' }, {
+      status: elevatedStatus, existsSync: () => true,
+      runCommand: async () => ({ exitCode: 0, signal: 'SIGTERM', stdout: '', stderr: '' }),
+      readAvailableBytes: () => 100
+    })
+    expect(result).toMatchObject({ success: false, outcome: 'interrupted', signal: 'SIGTERM', restartRequired: false, reclaimedBytes: 0 })
+  })
+
+  it('does not attribute free volume space to a failed maintenance job', async () => {
+    let bytes = 100
+    const result = await executeMaintenanceAction({ actionId: 'component-cleanup', confirmation: '清理组件' }, {
+      status: elevatedStatus, existsSync: () => true,
+      runCommand: async () => { bytes = 200; return { exitCode: 87, stdout: '', stderr: 'invalid option' } }, readAvailableBytes: () => bytes
+    })
+    expect(result).toMatchObject({ success: false, outcome: 'failed', reclaimedBytes: 0, observedAvailableDeltaBytes: 100 })
+  })
+
+  it('waits for output drain and parses percentages split over stdout chunks', async () => {
+    const child: any = new EventEmitter()
+    child.stdout = new PassThrough(); child.stderr = new PassThrough()
+    const progress: any[] = []
+    let settled = false
+    const promise = spawnCommand('fixture.exe', [], { spawn: () => child, onProgress: (p: any) => progress.push(p) }).then((r: any) => { settled = true; return r })
+    child.stdout.write('42.'); child.stdout.write('5%\n')
+    child.emit('exit', 0, null)
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    child.stdout.write('The operation completed successfully.\n')
+    child.emit('close', 0, null)
+    const result = await promise
+    expect(result.stdout).toContain('completed successfully')
+    expect(progress.some(p => p.percent === 42.5)).toBe(true)
+  })
+
+  it('can cancel before launch while exposing running maintenance as non-cancellable', async () => {
+    const runCommand = vi.fn()
+    await expect(executeMaintenanceAction({ actionId: 'component-cleanup', confirmation: '清理组件' }, {
+      status: elevatedStatus, signal: AbortSignal.abort(), runCommand
+    })).rejects.toThrow('启动前已取消')
+    expect(runCommand).not.toHaveBeenCalled()
   })
 })

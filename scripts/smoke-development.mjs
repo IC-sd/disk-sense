@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import process from 'node:process'
-import { createServer } from 'vite'
+
+process.stderr.write('[development-smoke] Loading Vite\n')
+const { createServer } = await import('vite')
 
 const host = '127.0.0.1'
 const requestedPort = Number.parseInt(process.env.DISK_SENSE_SMOKE_DEV_PORT || '5189', 10)
+process.stderr.write('[development-smoke] Creating development server\n')
 const server = await createServer({
   configLoader: 'runner',
   server: {
@@ -16,6 +19,7 @@ const server = await createServer({
 
 try {
   await server.listen()
+  process.stderr.write('[development-smoke] Development server ready\n')
   const address = server.httpServer?.address()
   const port = typeof address === 'object' && address ? address.port : requestedPort
   const servedHtml = await (await fetch(`http://${host}:${port}/`)).text()

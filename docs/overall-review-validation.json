@@ -1,0 +1,1348 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "environment": {
+    "node": "v22.22.3",
+    "platform": "win32",
+    "architecture": "x64",
+    "pnpm": "11.9.0",
+    "electron": "43.7.7"
+  },
+  "scope": "Working tree including uncommitted and untracked implementation; no business implementation changed by this review",
+  "checks": {
+    "existingUnitTests": {
+      "exitCode": 0,
+      "files": 40,
+      "tests": 301,
+      "log": ".cache/overall-audit-tests.log"
+    },
+    "typecheck": {
+      "exitCode": 0
+    },
+    "productionBuild": {
+      "exitCode": 0,
+      "modules": 43
+    },
+    "desktopSyntax": {
+      "exitCode": 0,
+      "modules": 41
+    },
+    "diffCheck": {
+      "exitCode": 0
+    },
+    "supplementalRegression": {
+      "exitCode": 1,
+      "tests": 1,
+      "failed": 1,
+      "expectedBehavior": "Invalidated explanation must release its loading state",
+      "actual": "refreshingExplanation remains true",
+      "command": "node node_modules/vitest/vitest.mjs run --config .cache/overall-audit-vitest.config.mjs --configLoader runner --maxWorkers=1 --testTimeout=15000",
+      "log": ".cache/overall-audit-reproductions.log"
+    }
+  },
+  "findings": [
+    {
+      "id": "R1",
+      "priority": "P1",
+      "file": "desktop/app-settings.cjs",
+      "line": 133,
+      "title": "Migration handoff failure ignored before switching data directory",
+      "reproduced": true,
+      "evidence": {
+        "reproduced": true,
+        "injectedFailures": 1,
+        "selectedPartialDestination": true,
+        "destinationTheme": "light",
+        "destinationLatestJob": "before-migration",
+        "sourceLatestJob": "after-migration",
+        "errorReturnedToCaller": false,
+        "finalized": false
+      }
+    },
+    {
+      "id": "R2",
+      "priority": "P1",
+      "file": "package.json",
+      "line": 34,
+      "title": "Shipped Electron runtime lacks compromised intermediate-certificate mitigation",
+      "installedVersion": "43.7.7",
+      "patchedSameBranch": "43.8.1",
+      "source": "https://github.com/electron/electron/security/advisories/GHSA-jr5w-w6x2-84p9"
+    },
+    {
+      "id": "R3",
+      "priority": "P2",
+      "file": "src/ui/ExplorerWorkspace.vue",
+      "line": 1420,
+      "title": "Invalidating pending analysis leaves refreshingExplanation set",
+      "reproduced": true
+    }
+  ],
+  "dependencies": {
+    "all": {
+      "exitCode": 1,
+      "vulnerabilities": {
+        "info": 0,
+        "low": 3,
+        "moderate": 10,
+        "high": 7,
+        "critical": 0
+      },
+      "dependencies": 1,
+      "devDependencies": 363,
+      "optionalDependencies": 54,
+      "totalDependencies": 364,
+      "advisoryRecords": [
+        {
+          "id": 1240991,
+          "module": "http-cache-semantics",
+          "severity": "high",
+          "title": "http-cache-semantics max-stale handling can disclose cross-user cached responses",
+          "url": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
+          "vulnerableVersions": "<=4.2.0",
+          "patchedVersions": ">=4.2.1",
+          "findings": [
+            {
+              "version": "4.2.0",
+              "paths": [
+                ".>electron-builder>app-builder-lib>@electron/get>got>cacheable-request>http-cache-semantics",
+                ".>electron-builder>dmg-builder>app-builder-lib>@electron/get>got>cacheable-request>http-cache-semantics"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1241209,
+          "module": "source-map-js",
+          "severity": "high",
+          "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+          "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+          "vulnerableVersions": ">=1.0.0 <1.2.2",
+          "patchedVersions": ">=1.2.2",
+          "findings": [
+            {
+              "version": "1.2.1",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite>postcss>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-sfc>@vue/compiler-core>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-sfc>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-sfc>@vue/compiler-ssr>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-sfc>postcss>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/compiler-sfc>source-map-js",
+                ".>@vitejs/plugin-vue>vue>@vue/server-renderer>@vue/compiler-ssr>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>vite>postcss>source-map-js",
+                ".>vitest>@vitest/mocker>vite>postcss>source-map-js",
+                ".>vitest>vite>postcss>source-map-js",
+                ".>vue>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>vue>@vue/compiler-sfc>@vue/compiler-core>source-map-js",
+                ".>vue>@vue/compiler-sfc>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>vue>@vue/compiler-sfc>@vue/compiler-ssr>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>vue>@vue/compiler-sfc>postcss>source-map-js",
+                ".>vue>@vue/compiler-sfc>source-map-js",
+                ".>vue>@vue/server-renderer>@vue/compiler-ssr>@vue/compiler-dom>@vue/compiler-core>source-map-js",
+                ".>vue-tsc>@vue/language-core>@vue/compiler-dom>@vue/compiler-core>source-map-js"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1241259,
+          "module": "@vue/server-renderer",
+          "severity": "high",
+          "title": "@vue/server-renderer: XSS via missing CR in attribute-name blacklist",
+          "url": "https://github.com/advisories/GHSA-g2v6-rqmx-r4w6",
+          "vulnerableVersions": "<3.5.42",
+          "patchedVersions": ">=3.5.42",
+          "findings": [
+            {
+              "version": "3.5.40",
+              "paths": [
+                ".>@vitejs/plugin-vue>vue>@vue/server-renderer",
+                ".>vue>@vue/server-renderer"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242624,
+          "module": "vite",
+          "severity": "moderate",
+          "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
+          "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+          "vulnerableVersions": ">=8.0.0 <=8.1.5",
+          "patchedVersions": ">=8.1.6",
+          "findings": [
+            {
+              "version": "8.1.5",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite",
+                ".>vite",
+                ".>vitest>@vitest/mocker>vite",
+                ".>vitest>vite"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242653,
+          "module": "vite",
+          "severity": "moderate",
+          "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
+          "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+          "vulnerableVersions": ">=8.0.0 <=8.1.5",
+          "patchedVersions": ">=8.1.6",
+          "findings": [
+            {
+              "version": "8.1.5",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite",
+                ".>vite",
+                ".>vitest>@vitest/mocker>vite",
+                ".>vitest>vite"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242660,
+          "module": "vite",
+          "severity": "high",
+          "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
+          "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+          "vulnerableVersions": ">=8.0.0 <=8.1.5",
+          "patchedVersions": ">=8.1.6",
+          "findings": [
+            {
+              "version": "8.1.5",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite",
+                ".>vite",
+                ".>vitest>@vitest/mocker>vite",
+                ".>vitest>vite"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242726,
+          "module": "vite",
+          "severity": "low",
+          "title": "Vite: Cross origin script execution through Vite custom middleware",
+          "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+          "vulnerableVersions": ">=8.0.0 <=8.1.5",
+          "patchedVersions": ">=8.1.6",
+          "findings": [
+            {
+              "version": "8.1.5",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite",
+                ".>vite",
+                ".>vitest>@vitest/mocker>vite",
+                ".>vitest>vite"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242732,
+          "module": "vite",
+          "severity": "moderate",
+          "title": "Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine",
+          "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22",
+          "vulnerableVersions": ">=8.0.0 <=8.1.5",
+          "patchedVersions": ">=8.1.6",
+          "findings": [
+            {
+              "version": "8.1.5",
+              "paths": [
+                ".>@vitejs/plugin-vue>vite",
+                ".>vite",
+                ".>vitest>@vitest/mocker>vite",
+                ".>vitest>vite"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242767,
+          "module": "@vitest/mocker",
+          "severity": "moderate",
+          "title": "Vitest: Code injection via unauthenticated manual mock registration",
+          "url": "https://github.com/advisories/GHSA-qxg6-89mg-rqv8",
+          "vulnerableVersions": ">=2.1.0-beta.7 <4.1.12",
+          "patchedVersions": ">=4.1.12",
+          "findings": [
+            {
+              "version": "4.1.11",
+              "paths": [
+                ".>vitest>@vitest/mocker"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1242769,
+          "module": "@vitest/mocker",
+          "severity": "moderate",
+          "title": "Vitest: Windows backslash traversal bypasses the @vitest/mocker redirect allowlist fix",
+          "url": "https://github.com/advisories/GHSA-xp26-3454-mjgp",
+          "vulnerableVersions": ">=4.1.11 <4.1.12",
+          "patchedVersions": ">=4.1.12",
+          "findings": [
+            {
+              "version": "4.1.11",
+              "paths": [
+                ".>vitest>@vitest/mocker"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243070,
+          "module": "electron",
+          "severity": "high",
+          "title": "Electron: Mitigation for compromised eMudhra intermediate certificates",
+          "url": "https://github.com/advisories/GHSA-jr5w-w6x2-84p9",
+          "vulnerableVersions": ">=43.0.0-alpha.1 <43.8.1",
+          "patchedVersions": ">=43.8.1",
+          "findings": [
+            {
+              "version": "43.7.7",
+              "paths": [
+                ".>electron"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243078,
+          "module": "undici",
+          "severity": "moderate",
+          "title": "undici vulnerable to Denial of Service via unbounded memory in the EventSource parser",
+          "url": "https://github.com/advisories/GHSA-4qv8-2p9j-2685",
+          "vulnerableVersions": ">=7.0.0 <7.30.1",
+          "patchedVersions": ">=7.30.1",
+          "findings": [
+            {
+              "version": "7.29.1",
+              "paths": [
+                ".>electron>@electron/get>undici"
+              ],
+              "dev": true,
+              "optional": true,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243079,
+          "module": "undici",
+          "severity": "moderate",
+          "title": "undici vulnerable to Denial of Service via unbounded memory in the EventSource parser",
+          "url": "https://github.com/advisories/GHSA-4qv8-2p9j-2685",
+          "vulnerableVersions": ">=6.5.0 <6.29.1",
+          "patchedVersions": ">=6.29.1",
+          "findings": [
+            {
+              "version": "6.28.1",
+              "paths": [
+                ".>electron-builder>app-builder-lib>@electron/rebuild>node-gyp>undici",
+                ".>electron-builder>dmg-builder>app-builder-lib>@electron/rebuild>node-gyp>undici"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243081,
+          "module": "undici",
+          "severity": "moderate",
+          "title": "undici vulnerable to Subresource Integrity bypass via non-lowercase algorithm tokens",
+          "url": "https://github.com/advisories/GHSA-f72v-6w45-q472",
+          "vulnerableVersions": ">=7.15.0 <7.30.1",
+          "patchedVersions": ">=7.30.1",
+          "findings": [
+            {
+              "version": "7.29.1",
+              "paths": [
+                ".>electron>@electron/get>undici"
+              ],
+              "dev": true,
+              "optional": true,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243098,
+          "module": "fast-uri",
+          "severity": "moderate",
+          "title": "fast-uri vulnerable to URI scheme spoofing via percent-encoded scheme decoding",
+          "url": "https://github.com/advisories/GHSA-w74x-v6f9-j3xg",
+          "vulnerableVersions": ">=3.0.0 <3.1.9",
+          "patchedVersions": ">=3.1.9",
+          "findings": [
+            {
+              "version": "3.1.8",
+              "paths": [
+                ".>electron-builder>app-builder-lib>ajv>fast-uri",
+                ".>electron-builder>dmg-builder>app-builder-lib>ajv>fast-uri"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243101,
+          "module": "fast-uri",
+          "severity": "low",
+          "title": "fast-uri vulnerable to improper path equivalence in relative reference normalization",
+          "url": "https://github.com/advisories/GHSA-xhq7-xmqj-769h",
+          "vulnerableVersions": ">=3.0.0 <3.1.9",
+          "patchedVersions": ">=3.1.9",
+          "findings": [
+            {
+              "version": "3.1.8",
+              "paths": [
+                ".>electron-builder>app-builder-lib>ajv>fast-uri",
+                ".>electron-builder>dmg-builder>app-builder-lib>ajv>fast-uri"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243104,
+          "module": "fast-uri",
+          "severity": "moderate",
+          "title": "fast-uri vulnerable to host confusion via unchecked WHATWG host canonicalization",
+          "url": "https://github.com/advisories/GHSA-wjr9-j795-jxcr",
+          "vulnerableVersions": ">=3.1.3 <3.1.9",
+          "patchedVersions": ">=3.1.9",
+          "findings": [
+            {
+              "version": "3.1.8",
+              "paths": [
+                ".>electron-builder>app-builder-lib>ajv>fast-uri",
+                ".>electron-builder>dmg-builder>app-builder-lib>ajv>fast-uri"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243107,
+          "module": "fast-uri",
+          "severity": "low",
+          "title": "fast-uri vulnerable to scheme injection via an unescaped first-segment colon in suffix references",
+          "url": "https://github.com/advisories/GHSA-333x-w4r6-6crp",
+          "vulnerableVersions": ">=3.0.0 <3.1.9",
+          "patchedVersions": ">=3.1.9",
+          "findings": [
+            {
+              "version": "3.1.8",
+              "paths": [
+                ".>electron-builder>app-builder-lib>ajv>fast-uri",
+                ".>electron-builder>dmg-builder>app-builder-lib>ajv>fast-uri"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243113,
+          "module": "undici",
+          "severity": "high",
+          "title": "undici vulnerable to Denial of Service via unhandled error on excessive content-encodings",
+          "url": "https://github.com/advisories/GHSA-xjj6-f33q-929c",
+          "vulnerableVersions": ">=7.18.0 <7.30.1",
+          "patchedVersions": ">=7.30.1",
+          "findings": [
+            {
+              "version": "7.29.1",
+              "paths": [
+                ".>electron>@electron/get>undici"
+              ],
+              "dev": true,
+              "optional": true,
+              "bundled": false
+            }
+          ]
+        },
+        {
+          "id": 1243114,
+          "module": "undici",
+          "severity": "high",
+          "title": "undici vulnerable to Denial of Service via unhandled error on excessive content-encodings",
+          "url": "https://github.com/advisories/GHSA-xjj6-f33q-929c",
+          "vulnerableVersions": ">=6.23.0 <6.29.1",
+          "patchedVersions": ">=6.29.1",
+          "findings": [
+            {
+              "version": "6.28.1",
+              "paths": [
+                ".>electron-builder>app-builder-lib>@electron/rebuild>node-gyp>undici",
+                ".>electron-builder>dmg-builder>app-builder-lib>@electron/rebuild>node-gyp>undici"
+              ],
+              "dev": true,
+              "optional": false,
+              "bundled": false
+            }
+          ]
+        }
+      ]
+    },
+    "prod": {
+      "exitCode": 0,
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "dependencies": 1,
+      "devDependencies": 0,
+      "optionalDependencies": 0,
+      "totalDependencies": 1
+    },
+    "ciGate": {
+      "command": "pnpm audit --audit-level=moderate",
+      "exitCode": 1
+    },
+    "note": "devDependency classification does not exclude the shipped Electron binary. Advisory records may repeat a GHSA for multiple major ranges."
+  },
+  "desktop": [
+    {
+      "mode": "production-file",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "exitCode": 0,
+      "rendered": true,
+      "hmrWebSocketConnected": null,
+      "security": {
+        "rendererSandbox": true,
+        "contextIsolation": true,
+        "rendererPermissionsDenied": true,
+        "permanentDelete": false,
+        "remoteAiRequiresHttps": true,
+        "systemMaintenanceAllowlist": true
+      },
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "frontendChecks": 121,
+      "failedChecks": [],
+      "captures": [
+        {
+          "name": "overview",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\overview.png"
+        },
+        {
+          "name": "browse",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\browse.png"
+        },
+        {
+          "name": "browse-analysis",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\browse-analysis.png"
+        },
+        {
+          "name": "search-empty",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\search-empty.png"
+        },
+        {
+          "name": "search-no-results",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\search-no-results.png"
+        },
+        {
+          "name": "search-results",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\search-results.png"
+        },
+        {
+          "name": "search-analysis",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\search-analysis.png"
+        },
+        {
+          "name": "cleaner",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner.png"
+        },
+        {
+          "name": "cleaner-exclusions",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-exclusions.png"
+        },
+        {
+          "name": "cleaner-discovery-limited",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-discovery-limited.png"
+        },
+        {
+          "name": "cleaner-unavailable-rule",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-unavailable-rule.png"
+        },
+        {
+          "name": "cleaner-scan-results",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-scan-results.png"
+        },
+        {
+          "name": "cleaner-rule-files",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-rule-files.png"
+        },
+        {
+          "name": "cleanup-confirmation",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleanup-confirmation.png"
+        },
+        {
+          "name": "cleaner-slimming",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-slimming.png"
+        },
+        {
+          "name": "cleaner-history",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\cleaner-history.png"
+        },
+        {
+          "name": "history-detail",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\history-detail.png"
+        },
+        {
+          "name": "history-clear-confirmation",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\history-clear-confirmation.png"
+        },
+        {
+          "name": "settings-general",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\settings-general.png"
+        },
+        {
+          "name": "settings-storage",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\settings-storage.png"
+        },
+        {
+          "name": "settings-about",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\settings-about.png"
+        },
+        {
+          "name": "ai-settings",
+          "width": 1282,
+          "height": 865,
+          "file": "release\\frontend-full-dark-1280-fixtures\\ai-settings.png"
+        }
+      ],
+      "cleanupExecuted": false,
+      "log": ".cache/overall-audit-production-dark.log"
+    },
+    {
+      "mode": "development-vite",
+      "theme": "light",
+      "width": 1000,
+      "height": 680,
+      "exitCode": 0,
+      "rendered": true,
+      "hmrWebSocketConnected": true,
+      "security": {
+        "rendererSandbox": true,
+        "contextIsolation": true,
+        "rendererPermissionsDenied": true,
+        "permanentDelete": false,
+        "remoteAiRequiresHttps": true,
+        "systemMaintenanceAllowlist": true
+      },
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "frontendChecks": 121,
+      "failedChecks": [],
+      "captures": [
+        {
+          "name": "overview",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\overview.png"
+        },
+        {
+          "name": "browse",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\browse.png"
+        },
+        {
+          "name": "browse-analysis",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\browse-analysis.png"
+        },
+        {
+          "name": "search-empty",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\search-empty.png"
+        },
+        {
+          "name": "search-no-results",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\search-no-results.png"
+        },
+        {
+          "name": "search-results",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\search-results.png"
+        },
+        {
+          "name": "search-analysis",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\search-analysis.png"
+        },
+        {
+          "name": "cleaner",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner.png"
+        },
+        {
+          "name": "cleaner-exclusions",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-exclusions.png"
+        },
+        {
+          "name": "cleaner-discovery-limited",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-discovery-limited.png"
+        },
+        {
+          "name": "cleaner-unavailable-rule",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-unavailable-rule.png"
+        },
+        {
+          "name": "cleaner-scan-results",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-scan-results.png"
+        },
+        {
+          "name": "cleaner-rule-files",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-rule-files.png"
+        },
+        {
+          "name": "cleanup-confirmation",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleanup-confirmation.png"
+        },
+        {
+          "name": "cleaner-slimming",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-slimming.png"
+        },
+        {
+          "name": "cleaner-history",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\cleaner-history.png"
+        },
+        {
+          "name": "history-detail",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\history-detail.png"
+        },
+        {
+          "name": "history-clear-confirmation",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\history-clear-confirmation.png"
+        },
+        {
+          "name": "settings-general",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\settings-general.png"
+        },
+        {
+          "name": "settings-storage",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\settings-storage.png"
+        },
+        {
+          "name": "settings-about",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\settings-about.png"
+        },
+        {
+          "name": "ai-settings",
+          "width": 1002,
+          "height": 682,
+          "file": "release\\frontend-full-light-1000-fixtures\\ai-settings.png"
+        }
+      ],
+      "cleanupExecuted": false,
+      "log": ".cache/overall-audit-development-light.log"
+    }
+  ],
+  "native": {
+    "persistent": true,
+    "connected": true,
+    "serviceRunning": true,
+    "serviceStartup": "Automatic",
+    "volumes": [
+      {
+        "root": "C:\\",
+        "available": true,
+        "filesystem": "NTFS",
+        "error": 0
+      },
+      {
+        "root": "D:\\",
+        "available": true,
+        "filesystem": "NTFS",
+        "error": 0
+      }
+    ],
+    "installedOrEnabledService": false,
+    "rebuiltVolumes": false,
+    "rebootTest": false
+  },
+  "performance": {
+    "portable5000Concurrent": {
+      "fixtureFiles": 5000,
+      "indexedEntries": 5022,
+      "scanner": "portable",
+      "indexDurationMs": 2433,
+      "entriesPerSecond": 2064,
+      "mainEventLoopMaximumDelayMs": 33.6,
+      "searchMedianMs": 81.1,
+      "searchP95Ms": 353.8,
+      "searchMaximumMs": 397.9,
+      "queries": [
+        {
+          "query": "project",
+          "medianMs": 233.4,
+          "p95Ms": 357.2
+        },
+        {
+          "query": "project-000777",
+          "medianMs": 50.6,
+          "p95Ms": 71.3
+        },
+        {
+          "query": "*.docx",
+          "medianMs": 262.6,
+          "p95Ms": 397.9
+        },
+        {
+          "query": "project-004",
+          "medianMs": 185.6,
+          "p95Ms": 224.3
+        },
+        {
+          "query": "group-002 project",
+          "medianMs": 143.2,
+          "p95Ms": 353.8
+        },
+        {
+          "query": "ext:pdf",
+          "medianMs": 31.8,
+          "p95Ms": 67.8
+        },
+        {
+          "query": "prj777",
+          "medianMs": 4,
+          "p95Ms": 20.2
+        }
+      ]
+    },
+    "portable5000Separate": {
+      "fixtureFiles": 5000,
+      "indexedEntries": 5022,
+      "scanner": "portable",
+      "indexDurationMs": 2222,
+      "entriesPerSecond": 2260,
+      "mainEventLoopMaximumDelayMs": 15.8,
+      "searchMedianMs": 37.6,
+      "searchP95Ms": 275.5,
+      "searchMaximumMs": 544,
+      "queries": [
+        {
+          "query": "project",
+          "medianMs": 139.8,
+          "p95Ms": 544
+        },
+        {
+          "query": "project-000777",
+          "medianMs": 36,
+          "p95Ms": 68.9
+        },
+        {
+          "query": "*.docx",
+          "medianMs": 206,
+          "p95Ms": 341.6
+        },
+        {
+          "query": "project-004",
+          "medianMs": 75.2,
+          "p95Ms": 227.8
+        },
+        {
+          "query": "group-002 project",
+          "medianMs": 33.1,
+          "p95Ms": 248.6
+        },
+        {
+          "query": "ext:pdf",
+          "medianMs": 14.3,
+          "p95Ms": 33.2
+        },
+        {
+          "query": "prj777",
+          "medianMs": 1.8,
+          "p95Ms": 7.3
+        }
+      ]
+    },
+    "note": "Worker service requests with at most 300 returned items; not GUI first-screen latency, no isolated OS load or proof of steady-state cache. Not full-disk or Listary parity."
+  },
+  "unverified": [
+    "External real AI endpoints/credentials",
+    "Installer install/uninstall, packaging and signing",
+    "Real cleanup and system maintenance commands",
+    "Windows reboot and live USN replay",
+    "Cross-device/Windows-version/long-running pressure",
+    "Remote CI state"
+  ],
+  "actualUserCleanupExecuted": false,
+  "actualUserDataMigrated": false,
+  "businessImplementationChanged": false,
+  "sourceSha256": [
+    {
+      "file": "desktop/ai-analysis-store.cjs",
+      "sha256": "5cfef4d1aeef355c2cff9d105247907aae99412179ada850ef9192805e21fc24"
+    },
+    {
+      "file": "desktop/ai-explainer.cjs",
+      "sha256": "a049cb017fcd23b5f601c3f914de636dc95ef07e5a91cd510a944c856c7fd533"
+    },
+    {
+      "file": "desktop/ai-provider.cjs",
+      "sha256": "0820ccc8f68ec1c58d3e7435cc10b187df99f755faaf90822505eb978dd01afd"
+    },
+    {
+      "file": "desktop/app-attribution.cjs",
+      "sha256": "023a61a943922ddf404c3d571fc528b81ffc71b362c6b753c1b1a81427d3a93d"
+    },
+    {
+      "file": "desktop/app-settings.cjs",
+      "sha256": "78b02fc3024367edc42f8be00711bf41536bffedb4e9cde38c9c8aefceb141e2"
+    },
+    {
+      "file": "desktop/change-tracker.cjs",
+      "sha256": "118bd3eef6f359299a2a733a0cf785f93ad21df95f46acc64837d08d79c078c9"
+    },
+    {
+      "file": "desktop/cleaner.cjs",
+      "sha256": "2516071bb360dad18787a8a1420d6a7c51585de6830ddb8adb5eb10ee9261734"
+    },
+    {
+      "file": "desktop/cleanup-discovery.cjs",
+      "sha256": "3c5f47a8730e5f8a8347202a778e65472018d17ae4e901ee5a1832be4c4129ca"
+    },
+    {
+      "file": "desktop/cleanup-executor.cjs",
+      "sha256": "60933792477db80f220bef11b400780f8a2f87d3f0febf9a915967081b1e9305"
+    },
+    {
+      "file": "desktop/development.cjs",
+      "sha256": "57a5082a1fff56bbcb75261e1cee6d17c743da6b4dda692969bd94c0218a21ac"
+    },
+    {
+      "file": "desktop/device-info.cjs",
+      "sha256": "8a777e5ab68726324177264b2e6e3c9eabae944cb74cf1609f7cd9ee0b2da75b"
+    },
+    {
+      "file": "desktop/diagnostics.cjs",
+      "sha256": "798bc81cca7228afa2da26f0469227871f3c7d130671bd9693db8cb9b6481e6c"
+    },
+    {
+      "file": "desktop/explainer.cjs",
+      "sha256": "ec271ab5e1e52063c1e94a540a21411102745d3feed342d3b5d172c71a156abd"
+    },
+    {
+      "file": "desktop/file-actions.cjs",
+      "sha256": "4c240a2d7d9cb331580e010a519e8d30591f499a1ec1bb62f7b2aa8f5e0f9006"
+    },
+    {
+      "file": "desktop/file-search-client.cjs",
+      "sha256": "0ca2982253565dc8e82a790f863edefa0cff9c8b1f3e6987901c4067e7cc0e93"
+    },
+    {
+      "file": "desktop/file-search-worker.cjs",
+      "sha256": "b80ac2337461c8b762c86749f8f3441a6cc5385d2ca87e847c65d6fcf5d1fa73"
+    },
+    {
+      "file": "desktop/file-search.cjs",
+      "sha256": "6a922d4fc6376f07969307a44c0d8d1a845490a1b2c53de2c8cfb7dacea5d994"
+    },
+    {
+      "file": "desktop/handlers/change-handlers.cjs",
+      "sha256": "77807e01ff7a1fede5e3cc42697ae1c79bdeb613749fc1fe5f868fedbeb6cfb1"
+    },
+    {
+      "file": "desktop/handlers/cleaner-handlers.cjs",
+      "sha256": "63cd3bbaeb8f939250c06151cf20e68cade846a0e2b407b81265abf2bd575f93"
+    },
+    {
+      "file": "desktop/handlers/inspect-handlers.cjs",
+      "sha256": "0061bdc40bfd616eda72ddd031fd19532bfb1d079b691fa67dce46d6769dc3e6"
+    },
+    {
+      "file": "desktop/main.cjs",
+      "sha256": "104c3361c5f2d64f3da73c2c0032a52c4579892c985d38a0fa0b8fcbc39d8fae"
+    },
+    {
+      "file": "desktop/native-enumerator.cjs",
+      "sha256": "3d3631a7791bff99ad2c99e8712ae0b508e81cfff9260fcb5893f271fdfc3152"
+    },
+    {
+      "file": "desktop/ntfs-client.cjs",
+      "sha256": "e3a1cc2d92eb619910bff78e6cd418dc8c2211085182186d305ca36add7c37d6"
+    },
+    {
+      "file": "desktop/ntfs-index.cjs",
+      "sha256": "0e28b229e36e41cb9ec4d17f9fb0c4e29203fef0bfb7b8a60257aad37c4bb762"
+    },
+    {
+      "file": "desktop/ntfs-indexer.cs",
+      "sha256": "a34f7c82e51faf7c8ce85ff36caf7e9802b6b8b16b8ad7f54dfd81a3de6446fc"
+    },
+    {
+      "file": "desktop/ntfs-service.cs",
+      "sha256": "60e0a0b3a3f55d21d8b60ff02322a81937775209be2efb1e693426a2aba89b42"
+    },
+    {
+      "file": "desktop/operation-coordinator.cjs",
+      "sha256": "22b6b4933b31934bcc00016ee983849955028b9a9b50b5fe111ae6a842defe41"
+    },
+    {
+      "file": "desktop/preload.cjs",
+      "sha256": "d6a818e532be2f15f92dd97b49d81112b81f8419f85e3985401d94f1c50b1ead"
+    },
+    {
+      "file": "desktop/relationship-engine.cjs",
+      "sha256": "6dd44ed0785fb1d9bcac556eb861c4cb0c1eb6b3403bdcf771f8c61969ed5fbe"
+    },
+    {
+      "file": "desktop/risk.cjs",
+      "sha256": "6e9b3b78fc84bb571fddf26cb24887eb51ac4e79deaccc0c7a27c55e191bd105"
+    },
+    {
+      "file": "desktop/search-candidate-session.cjs",
+      "sha256": "d12c89848f6ce99956ac7fe113f0e7ebc1f4314a292704009e762ef9a031e1ee"
+    },
+    {
+      "file": "desktop/search-engine.cjs",
+      "sha256": "d23c861916d8a685c09eee18d6f57a061f6d29cd007745e4490c8bdcf942ccbb"
+    },
+    {
+      "file": "desktop/search-enumerator.cs",
+      "sha256": "5b413f51ef9b3323f0f252e0ef0e2253d8d24dc08105caf28ef4057d84583536"
+    },
+    {
+      "file": "desktop/search-history.cjs",
+      "sha256": "dc79b7056799278d9a7d3b9478f5e550cd6dd960d5de8e43bf0f2c458b892607"
+    },
+    {
+      "file": "desktop/search-query.cjs",
+      "sha256": "a613840fca74f16313e25c55ddcaf6a47dff0cebd6873a4b1410ee4c8f215592"
+    },
+    {
+      "file": "desktop/search-result-view.cjs",
+      "sha256": "946bdb85bf842a3ff74ebad9c5811667f0a7f7d14ffd44bf6fdba1ac2ba180f9"
+    },
+    {
+      "file": "desktop/search-session-cache.cjs",
+      "sha256": "324c93a7fbcb0d614542fee5fedfc2a0ba8054316e0ff5b175e9bed29e55f388"
+    },
+    {
+      "file": "desktop/search-word-index.cjs",
+      "sha256": "2c917c942fbdce8e9b254f911ae692da070f37a689c83d6a63526fce82a0d224"
+    },
+    {
+      "file": "desktop/security.cjs",
+      "sha256": "89c0bf82e2eadf8b3fb4c6439c3374c49446c1a87f9e51f12144884e957fa4f5"
+    },
+    {
+      "file": "desktop/state.cjs",
+      "sha256": "996793fc3cdefe89fa9d912b324593d1281407e47abe98eaa7660db5c93fb60e"
+    },
+    {
+      "file": "desktop/system-info.cjs",
+      "sha256": "afb3e8118b08dada85247f9961a726163714770e24d3a87bd839f0341c38587f"
+    },
+    {
+      "file": "desktop/system-maintenance.cjs",
+      "sha256": "4a821f3b698ec15f3c3376558aa4c4c6e988d51a448f30969323fa03de604b90"
+    },
+    {
+      "file": "desktop/tool-cache-locations.cjs",
+      "sha256": "bd5c713bc9f8a970b0f9caa3ace0b56592a42a347070dfa7774ca1e75eceda77"
+    },
+    {
+      "file": "desktop/windows-app-inventory.cjs",
+      "sha256": "53bf8dce3a542e8ec8e37632803cd12a83e01de21367a5b7e4208054ae802f70"
+    },
+    {
+      "file": "src/application/ai-evidence.ts",
+      "sha256": "e0cec6163fd2298657784648d3c4080fcd49cc2f2b1057d83d476540ac436229"
+    },
+    {
+      "file": "src/application/ai-session.ts",
+      "sha256": "6d856112b19d9223821510277100e823e7cec005e0fc1144ca3e40b90514b035"
+    },
+    {
+      "file": "src/application/appearance.ts",
+      "sha256": "edef040759dde0a70bb90ded6d9b84858c8d5d9476b46e6532b4441eeaa193b7"
+    },
+    {
+      "file": "src/application/cleaner.ts",
+      "sha256": "7290fbed157badae9970eb9995e347da1814a322f82c8987b30f64e8b5595d02"
+    },
+    {
+      "file": "src/application/explorer.ts",
+      "sha256": "2250aee21c5bd5ddeb44c1837c318134a679cea84bfcf941d31217e238bf0dfe"
+    },
+    {
+      "file": "src/domain/desktop.ts",
+      "sha256": "5ae2d884d15b4647ad650d45c5733c6ef4a2deec35ab1f02047320581fb24a67"
+    },
+    {
+      "file": "src/domain/risk.ts",
+      "sha256": "e3efa306c012ee726531346039a41da25193d32b2b90d212f619b472c470670a"
+    },
+    {
+      "file": "src/main.ts",
+      "sha256": "84d837e00fac6dcb7297e72c7b3af43aeb669015587c60591a0047849fd3bd67"
+    },
+    {
+      "file": "src/platform/api.ts",
+      "sha256": "e2be7a75a0382612cdda28e8f9f25705384aa7b753a4f4ab03c593dd0df5c014"
+    },
+    {
+      "file": "src/shared/format.ts",
+      "sha256": "638ed7cbc045e2492e10fe89f3fffeff3b5b69b7a2f7ac06cedb5dd164e5e0e2"
+    },
+    {
+      "file": "src/types.d.ts",
+      "sha256": "ccfc86914e457fcf4348a14cb5d58aaf76bbd50ba136a3246df2e6de493037bb"
+    },
+    {
+      "file": "src/ui/ai-settings.css",
+      "sha256": "1aa221103edc2c1db3b67989a06200102aae212e47e3ce8c249d13890359ad81"
+    },
+    {
+      "file": "src/ui/AiSettingsModal.vue",
+      "sha256": "e301ddaaa117834db69d6a92783334847ee2faa3766f8edee1c05a8cb4467244"
+    },
+    {
+      "file": "src/ui/App.vue",
+      "sha256": "782b77784dbbea776629f5b4898d37fca7e9bb7d809e053a371e1b04cdcc9501"
+    },
+    {
+      "file": "src/ui/AppIcon.vue",
+      "sha256": "f2b0a6ae9c3b71f3f4895f689a50414869435b1fab9d333c94db265fd35a108f"
+    },
+    {
+      "file": "src/ui/cleaner.css",
+      "sha256": "49cccdee03d066973ceae400d2afd18e5ec81c131c61a41168f4a9d1edf65e0f"
+    },
+    {
+      "file": "src/ui/CleanerPanel.vue",
+      "sha256": "0637b772c5fe6a66c481da24325cb5f7f48dbef48349984c3366381a487e37cc"
+    },
+    {
+      "file": "src/ui/CleanupHistoryPanel.vue",
+      "sha256": "6ad7b3df1e34bfa4f9b57d44c1837a6c84914c0a5ef94004c5157b213def4d85"
+    },
+    {
+      "file": "src/ui/explorer.css",
+      "sha256": "d951424d232bf5628cc5dbcab02ca16c2af54a3d717934abfa306977500b9e86"
+    },
+    {
+      "file": "src/ui/ExplorerWorkspace.vue",
+      "sha256": "ae8c0da8900c46d9a7b3384f4364b27e6aeb4aaf786e02de31915c9c6ff66567"
+    },
+    {
+      "file": "src/ui/extra.css",
+      "sha256": "1cdc97427c362e459649939347eee921f1047e79eccfbcaa1ef5d82341a5a12b"
+    },
+    {
+      "file": "src/ui/foundation.css",
+      "sha256": "5b04438e7c4999db42a534f66e5cbaf973fb2d2e2220524338fb9cf5fc6d70bb"
+    },
+    {
+      "file": "src/ui/overview.css",
+      "sha256": "31d5cc3d51a45bc9ca18b6683d2d45b8929e122114a2e3572cf879271b5bb17d"
+    },
+    {
+      "file": "src/ui/OverviewWorkspace.vue",
+      "sha256": "87f4b348ededf8042f4f2aa439712a0d5e63c6d2e395b5372270c19c674d109d"
+    },
+    {
+      "file": "src/ui/settings.css",
+      "sha256": "2ba32ccb16d6f474ea5c63facf22d7db46b2e1086e9c57e7c6fcafd5fd27d57a"
+    },
+    {
+      "file": "src/ui/SettingsWorkspace.vue",
+      "sha256": "62fc08f7985b2eb95c06ce2e1a31045e509e658d263ed7ad316376180cd1d1e0"
+    },
+    {
+      "file": "src/ui/shell.css",
+      "sha256": "0b334e14bcb9a44acd2091872d98b86c3d90429478ebe6fc964660faee4b4813"
+    },
+    {
+      "file": "src/ui/theme.css",
+      "sha256": "f4eab890a47e7b1ade5fc1c833062a8b82d6be55e94df99d6d7a61a64dc472c5"
+    },
+    {
+      "file": "src/ui/workspace.css",
+      "sha256": "318ba828ff65ced5390de35e429bc566ce8230f76b45b4f85d2aa8006cf635b0"
+    },
+    {
+      "file": "src/window.d.ts",
+      "sha256": "9cbfa4112ea5a70a2f813b06688a6e243c22eed4524c5f5dabb55091b7d4c3e4"
+    },
+    {
+      "file": "package.json",
+      "sha256": "bd140df273ba09f6c0895d646f9ff41285ffd92095de8bc7ea89385668d43bdb"
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "sha256": "cd34f375c00ff168b7dfec194081c0ca530e2131d5f4452ff7b8b94f6ea0b2e1"
+    },
+    {
+      "file": "vite.config.ts",
+      "sha256": "8c1ed415cb2e4787a1c7f78b04cfc18678d8923ff67ec871968a906539f88a6a"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "sha256": "b2f264e1b5d5064ffda1f0a88dfae2e68d0f9cde667beadda4b05f60af0cd897"
+    }
+  ],
+  "followUp": {
+    "date": "2026-10-24",
+    "findingsResolved": [
+      "R1",
+      "R2",
+      "R3"
+    ],
+    "report": "known-issues-fix-validation.json",
+    "note": "Historical findings and measurements above are preserved as the pre-fix record"
+  }
+}

@@ -4,6 +4,7 @@ import process from 'node:process'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
+import { captureFrontend } from './frontend-audit.mjs'
 
 async function reservePort() {
   const server = net.createServer()
@@ -21,24 +22,23 @@ async function reservePort() {
 const port = await reservePort()
 const executable = path.resolve(process.argv[2] || 'release/win-unpacked/Disk Sense.exe')
 if (!fs.existsSync(executable)) throw new Error('Desktop executable is missing. For development, run node node_modules/electron/install.js; for a packaged check, build the Windows application first.')
+const electronRuntime = path.basename(executable).toLowerCase() === 'electron.exe'
 const developmentServerUrl = new URL(process.env.DISK_SENSE_DEV_SERVER_URL || 'http://127.0.0.1:5173/')
-const captureView = ['overview', 'inspect', 'cleaner', 'changes', 'settings'].includes(process.env.DISK_SENSE_SMOKE_VIEW)
+const captureView = ['overview', 'inspect', 'cleaner', 'settings'].includes(process.env.DISK_SENSE_SMOKE_VIEW)
   ? process.env.DISK_SENSE_SMOKE_VIEW
   : 'overview'
-const captureNavigationView = captureView === 'changes' ? 'overview' : captureView
 const captureLabel = {
   overview: '空间概览',
   inspect: '目录与文件',
   cleaner: '垃圾清理',
-  changes: '变化记录',
   settings: '设置与关于'
-}[captureNavigationView]
+}[captureView]
 const captureNavigationIndex = {
   overview: 0,
   inspect: 1,
   cleaner: 2,
   settings: 3
-}[captureNavigationView]
+}[captureView]
 const screenshotPath = path.resolve(
   process.env.DISK_SENSE_SMOKE_SCREENSHOT || `release/smoke-${captureView}.png`
 )
@@ -54,6 +54,11 @@ const smokeWordShortcut = path.join(smokeSearchRoot, 'ProgramData', 'Microsoft',
 const realWordShortcutAvailable = process.platform === 'win32' && fs.existsSync(systemWordShortcut)
 fs.writeFileSync(path.join(smokeSearchRoot, '$Recycle.Bin', 'discarded.tmp'), 'smoke fixture')
 fs.writeFileSync(path.join(smokeSearchRoot, 'Documents', 'search-smoke.txt'), 'smoke fixture')
+if (process.env.DISK_SENSE_SMOKE_SEARCH_ADVANCED === '1') {
+  fs.writeFileSync(path.join(smokeSearchRoot, 'Documents', '季度报告2026.txt'), 'pinyin fixture')
+  fs.writeFileSync(path.join(smokeSearchRoot, 'Documents', 'VisualStudioCode.txt'), 'abbreviation fixture')
+  for (let index = 0; index < 145; index++) fs.writeFileSync(path.join(smokeSearchRoot, 'Documents', `page-report-${String(index).padStart(3, '0')}.txt`), '')
+}
 fs.writeFileSync(path.join(smokeSearchRoot, 'package.json'), JSON.stringify({ name: 'Space Demo' }))
 if (realWordShortcutAvailable) fs.copyFileSync(systemWordShortcut, smokeWordShortcut)
 else fs.writeFileSync(smokeWordShortcut, 'shortcut fixture')
@@ -62,17 +67,65 @@ fs.writeFileSync(path.join(smokeSearchRoot, 'node_modules', 'word', 'lib', 'word
 const smokeSearchQuery = process.env.DISK_SENSE_SMOKE_SEARCH_QUERY || '*$Recycle*'
 const smokeSearchExpected = process.env.DISK_SENSE_SMOKE_SEARCH_EXPECTED || '$Recycle.Bin'
 const smokeRequiresOfficeShortcut = realWordShortcutAvailable && smokeSearchQuery.toLocaleLowerCase().includes('word')
+const frontendFixtures = process.env.DISK_SENSE_SMOKE_FRONTEND_FIXTURES === '1'
+const migrationFailureFixture = frontendFixtures && process.env.DISK_SENSE_SMOKE_MIGRATION_FAILURE === '1'
+const fixtureUserData = migrationFailureFixture ? path.join(isolatedUserData, 'original-data') : isolatedUserData
+const fixtureHome = path.join(isolatedUserData, 'fixture-home')
+const fixtureLocalData = path.join(fixtureHome, 'AppData', 'Local')
+const fixtureRoamingData = path.join(fixtureHome, 'AppData', 'Roaming')
+if (frontendFixtures) {
+  fs.mkdirSync(fixtureUserData, { recursive: true })
+  fs.mkdirSync(fixtureRoamingData, { recursive: true })
+  // These records exercise the real history UI; no cleanup has been executed.
+  const createdAt = new Date().toISOString()
+  const recorded = (name, success) => ({ candidateId: `frontend-${name}`, path: path.join(isolatedUserData, 'record-preview', name),
+    size: 4096, modifiedAt: 0, ruleId: 'crash-dumps', success, ...(success ? {} : { error: '界面验收样本：文件状态已变化，已跳过。' }) })
+  fs.writeFileSync(path.join(fixtureUserData, 'disk-sense-state.json'), JSON.stringify({ version: 7,
+    cleanupJobs: [{ id: 'frontend-record-preview', createdAt, executionMode: 'trash', requested: 2, processed: 2,
+      succeeded: 1, failed: 1, cancelled: false, rejectedOverflow: 0, movedToTrashBytes: 4096, reclaimedBytes: 0,
+      results: [recorded('preview-complete.tmp', true), recorded('preview-skipped.tmp', false)] }],
+    maintenanceJobs: [], cleanupExclusions: [], appearance: { theme: 'dark' }
+  }))
+  const dump = path.join(fixtureLocalData, 'CrashDumps', 'frontend-preview.dmp')
+  fs.mkdirSync(path.dirname(dump), { recursive: true })
+  fs.writeFileSync(dump, 'Owned frontend scan fixture; never execute cleanup.')
+  // An invalid directory type exercises an unavailable rule without changing
+  // ACLs or reading host caches. This is a disposable fixture file, not a cache.
+  fs.writeFileSync(path.join(fixtureLocalData, 'D3DSCache'), 'Owned invalid-root fixture.')
+  const old = new Date(Date.now() - 30 * 86_400_000)
+  fs.utimesSync(dump, old, old)
+  const discoveryCache = path.join(fixtureLocalData, 'DingTalk_108', 'Code Cache', 'discovery-preview.tmp')
+  fs.mkdirSync(path.dirname(discoveryCache), { recursive: true })
+  fs.writeFileSync(discoveryCache, 'Owned discovery fixture; never execute cleanup.')
+  fs.utimesSync(discoveryCache, old, old)
+  fs.mkdirSync(path.join(fixtureLocalData, 'DingTalk_108', 'ordinary', 'level1', 'level2', 'level3', 'level4', 'level5'), { recursive: true })
+  if (migrationFailureFixture) {
+    const target = path.join(isolatedUserData, 'migration-target')
+    const state = JSON.parse(fs.readFileSync(path.join(fixtureUserData, 'disk-sense-state.json'), 'utf8'))
+    fs.writeFileSync(path.join(fixtureUserData, 'disk-sense-state.json.operations.json'), JSON.stringify({ version: 1, cleanupJobs: state.cleanupJobs, maintenanceJobs: [] }))
+    // A directory at a metadata-file destination forces an actual rename
+    // failure without changing host ACLs or touching the user's data location.
+    fs.mkdirSync(path.join(target, 'disk-sense-state.json.operations.json'), { recursive: true })
+    fs.writeFileSync(path.join(target, 'migration.json'), JSON.stringify({ version: 1, source: fixtureUserData }))
+    const pointerDirectory = path.join(fixtureRoamingData, 'Disk Sense')
+    fs.mkdirSync(pointerDirectory, { recursive: true })
+    fs.writeFileSync(path.join(pointerDirectory, 'data-location.json'), JSON.stringify({ version: 1, path: target }))
+  }
+}
 const smokeArguments = process.env.DISK_SENSE_SMOKE_DEV === '1'
   ? ['--disable-gpu', `--remote-debugging-port=${port}`, path.resolve('desktop/main.cjs'), '--dev', '--smoke-test']
-  : [`--remote-debugging-port=${port}`, '--smoke-test']
+  : electronRuntime
+    ? [`--remote-debugging-port=${port}`, path.resolve('desktop/main.cjs'), '--smoke-test']
+    : [`--remote-debugging-port=${port}`, '--smoke-test']
 const child = spawn(executable, smokeArguments, {
   stdio: process.env.DISK_SENSE_SMOKE_DEV === '1' ? 'inherit' : 'ignore',
   windowsHide: true,
   env: {
     ...process.env,
-    DISK_SENSE_USER_DATA: isolatedUserData,
+    DISK_SENSE_USER_DATA: migrationFailureFixture ? '' : isolatedUserData,
     DISK_SENSE_SMOKE_SEARCH_ROOT: smokeSearchRoot,
-    DISK_SENSE_SMOKE_HEADLESS: '1'
+    DISK_SENSE_SMOKE_HEADLESS: '1',
+    ...(frontendFixtures ? { USERPROFILE: fixtureHome, LOCALAPPDATA: fixtureLocalData, APPDATA: fixtureRoamingData } : {})
   }
 })
 
@@ -130,6 +183,13 @@ async function evaluate(webSocketUrl) {
             api = window.diskSense
           }
           if (!api) throw new Error('preload-bridge-not-ready')
+          const waitForDom = async (condition, label) => {
+            for (let attempt = 0; attempt < 100; attempt++) {
+              if (condition()) return
+              await new Promise(resolve => setTimeout(resolve, 50))
+            }
+            throw new Error('dom-ready-timeout: ' + label)
+          }
           const [rules, root, slimming, slimmingStatus, maintenanceHistory, ai, changes, overview, appInfo, dataUsage, history, exclusions, appearance, deviceInfo, searchIndex] = await Promise.all([
             api.cleanerRules(),
             api.inspectList('C:\\\\'),
@@ -148,6 +208,14 @@ async function evaluate(webSocketUrl) {
             api.inspectIndexStatus()
           ])
           const scan = await api.cleanerScan('crash-dumps')
+          let migrationRecoveryVerified = null
+          if (${JSON.stringify(migrationFailureFixture)}) {
+            await waitForDom(() => document.querySelector('.startup-recovery-notice'), 'migration-recovery-notice')
+            migrationRecoveryVerified = appInfo.userDataPath === ${JSON.stringify(fixtureUserData)}
+              && appInfo.migrationRecovery?.source === appInfo.userDataPath
+              && history.some(job => job.id === 'frontend-record-preview')
+            if (!migrationRecoveryVerified) throw new Error('migration-recovery-used-incomplete-data')
+          }
           const explainTarget = root.items.find(item => item.name === 'Windows') || root.items.find(item => item.isDirectory && !item.isLink)
           const explanation = explainTarget ? await api.inspectExplain(explainTarget.path) : null
           await api.inspectExplain(${JSON.stringify(smokeSearchRoot)})
@@ -155,19 +223,20 @@ async function evaluate(webSocketUrl) {
           for (let attempt = 0; attempt < 100 && (await api.inspectIndexStatus()).building; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 50))
           }
-          const spaceLedger = await api.spaceSummary()
-          const ledgerPersisted = spaceLedger.entities.some(entity => entity.name === 'Space Demo' && entity.bytes > 0 && entity.locations.length > 0)
+          await waitForDom(() => document.querySelectorAll('.main-nav button').length === 4, 'initial-navigation')
           const settingsButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('设置与关于'))
           settingsButton?.click()
-          await new Promise(resolve => setTimeout(resolve, 80))
+          await waitForDom(() => document.querySelector('.settings-tabs'), 'settings-tabs')
           const generalSettingsButton = [...document.querySelectorAll('.settings-tabs button')]
             .find(button => button.textContent.includes('通用'))
           generalSettingsButton?.click()
-          await new Promise(resolve => setTimeout(resolve, 80))
+          await waitForDom(() => document.querySelector('.settings-page')?.innerText.includes('清理安全边界')
+            && document.querySelector('.settings-page')?.innerText.includes(appInfo.version), 'general-settings')
           const settingsRendered = document.body.innerText.includes('清理安全边界') && document.body.innerText.includes(appInfo.version)
-          const searchMaintenanceRendered = (
-            document.body.innerText.includes('文件搜索') &&
-            document.body.innerText.includes('重新建立搜索数据库')
+          const settingsSearchAbsent = (
+            !document.querySelector('.settings-page .search-maintenance-panel') &&
+            ![...document.querySelectorAll('.settings-page h2')].some(heading => heading.textContent.includes('文件搜索')) &&
+            !document.querySelector('.settings-page')?.innerText.includes('索引维护')
           )
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_THEME === 'light')}) {
             const lightThemeButton = [...document.querySelectorAll('.theme-options button')].find(button => button.textContent.includes('浅色'))
@@ -194,7 +263,7 @@ async function evaluate(webSocketUrl) {
           )
           const cleanerButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('垃圾清理'))
           cleanerButton?.click()
-          await new Promise(resolve => setTimeout(resolve, 80))
+          await waitForDom(() => document.querySelector('.cleaner-view-tabs'), 'cleaner-tabs')
           let historyRendered = true
           let historyWidthAligned = true
           const cleanerSafetyElement = document.querySelector('.cleaner-safety-state')
@@ -204,7 +273,8 @@ async function evaluate(webSocketUrl) {
           if (${JSON.stringify(captureView)} !== 'cleaner') {
             const historyButton = [...document.querySelectorAll('.cleanup-tabs button')].find(button => button.textContent.includes('操作记录'))
             historyButton?.click()
-            await new Promise(resolve => setTimeout(resolve, 80))
+            await waitForDom(() => document.querySelector('.history-panel')
+              && document.body.innerText.includes('每一次清理和系统维护都有结果可查'), 'cleaner-history')
             historyRendered = document.body.innerText.includes('每一次清理和系统维护都有结果可查')
             const historyPanel = document.querySelector('.history-panel')?.getBoundingClientRect()
             const tabBar = document.querySelector('.cleaner-view-tabs')?.getBoundingClientRect()
@@ -213,23 +283,22 @@ async function evaluate(webSocketUrl) {
           const overviewButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes('空间概览'))
           overviewButton?.click()
           await new Promise(resolve => setTimeout(resolve, 120))
-          const overviewChangesRendered = Boolean(document.querySelector('.overview-changes'))
-          const overviewRendered = Boolean(document.querySelector('.space-sources') && document.body.innerText.includes('空间归属'))
-          for (let attempt = 0; attempt < 30 && !document.querySelector('.source-entry'); attempt++) await new Promise(resolve => setTimeout(resolve, 50))
-          const ledgerRendered = Boolean(document.querySelector('.source-entry'))
-          document.querySelector('.source-entry')?.setAttribute('open', '')
-          document.querySelector('.source-path')?.click()
+          const overviewChangesAbsent = !document.querySelector('.overview-changes, .overview-changes-anchor, .baseline-card') &&
+            !document.body.innerText.includes('查看空间变化') && !document.body.innerText.includes('变化基线')
+          const overviewRendered = Boolean(document.querySelector('.live-overview') && document.body.innerText.includes('磁盘容量'))
+          const homepageCapacityFirst = document.querySelector('.overview-page > section')?.classList.contains('live-overview') === true
+          const overviewActivityCollapsed = !document.querySelector('.overview-activity')?.open
+          const overviewAttributionAbsent = !document.querySelector('.space-sources') &&
+            !document.querySelector('.overview-page')?.innerText.includes('空间归属') &&
+            ['spaceSummary', 'spaceDiscover', 'spaceForget'].every(name => !(name in api))
+          document.querySelector('.overview-page .hero-actions button')?.click()
           await new Promise(resolve => setTimeout(resolve, 200))
-          const ledgerNavigation = document.querySelector('.main-nav button.active')?.textContent.includes('目录与文件')
+          const overviewBrowseNavigation = document.querySelector('.main-nav button.active')?.textContent.includes('目录与文件')
           overviewButton?.click()
           await new Promise(resolve => setTimeout(resolve, 100))
           const captureButton = [...document.querySelectorAll('.main-nav button')].find(button => button.textContent.includes(${JSON.stringify(captureLabel)}))
           captureButton?.click()
           await new Promise(resolve => setTimeout(resolve, 180))
-          if (${JSON.stringify(captureView)} === 'changes') {
-            document.querySelector('.overview-changes-anchor')?.scrollIntoView({ block: 'start' })
-            await new Promise(resolve => setTimeout(resolve, 120))
-          }
           let inspectSearchRendered = null
           let inspectGlobalSearchConfigured = null
           let inspectSearchSettingsAbsent = null
@@ -239,14 +308,66 @@ async function evaluate(webSocketUrl) {
           let inspectNativeIconRendered = null
           let inspectAwaitingPanelHidden = null
           let inspectOfficeShortcutResolved = null
+          let inspectBrowseNavigation = null
+          let inspectBrowseFilter = null
+          let inspectQuickSearchShortcut = null
+          let inspectSearchSelectionIsLightweight = null
+          let inspectSearchAdvanced = null
+          let inspectSearchExamplesWorks = null
+          let inspectIndexDetailsWorks = null
+          if (${JSON.stringify(captureView)} === 'inspect') {
+            document.querySelectorAll('.explorer-mode-switch button')[0]?.click()
+            await new Promise(resolve => setTimeout(resolve, 80))
+            const address = document.querySelector('.path-input-wrap input')
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+            setter?.call(address, ${JSON.stringify(smokeSearchRoot)})
+            address?.dispatchEvent(new Event('input', { bubbles: true }))
+            address?.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+            for (let attempt = 0; attempt < 60 && document.querySelector('.path-input-wrap input')?.value !== ${JSON.stringify(smokeSearchRoot)}; attempt++) await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise(resolve => setTimeout(resolve, 200))
+            const filter = document.querySelector('.browse-controls input')
+            setter?.call(filter, 'Documents')
+            filter?.dispatchEvent(new Event('input', { bubbles: true }))
+            await new Promise(resolve => setTimeout(resolve, 80))
+            inspectBrowseFilter = document.querySelectorAll('.file-row').length === 1 && document.querySelector('.file-row')?.textContent.includes('Documents')
+            document.querySelector('.file-row')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+            for (let attempt = 0; attempt < 60 && !document.querySelector('.path-input-wrap input')?.value.endsWith('Documents'); attempt++) await new Promise(resolve => setTimeout(resolve, 50))
+            const enteredDirectory = document.querySelector('.path-input-wrap input')?.value.endsWith('Documents')
+            document.querySelector('.path-bar [aria-label="返回"]')?.click()
+            await new Promise(resolve => setTimeout(resolve, 200))
+            const backWorked = document.querySelector('.path-input-wrap input')?.value === ${JSON.stringify(smokeSearchRoot)}
+            document.querySelector('.path-bar [aria-label="前进"]')?.click()
+            await new Promise(resolve => setTimeout(resolve, 200))
+            const forwardWorked = document.querySelector('.path-input-wrap input')?.value.endsWith('Documents')
+            inspectBrowseNavigation = Boolean(enteredDirectory && backWorked && forwardWorked)
+            document.querySelector('.path-bar [aria-label="返回"]')?.click()
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_INSPECT_SEARCH === '1')} && ${JSON.stringify(captureView)} === 'inspect') {
-            const searchModeButton = document.querySelectorAll('.explorer-mode-switch button')[1]
-            searchModeButton?.click()
+            overviewButton?.click()
+            await new Promise(resolve => setTimeout(resolve, 80))
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))
             await new Promise(resolve => setTimeout(resolve, 120))
             const input = document.querySelector('.search-input-wrap input')
+            inspectQuickSearchShortcut = Boolean(input && document.activeElement === input)
             inspectGlobalSearchConfigured = !document.querySelector('.search-commandbar > select')
             inspectSearchSettingsAbsent = ![...document.querySelectorAll('.search-commandbar button')]
               .some(button => button.textContent.includes('AI 设置'))
+            const examples = [...document.querySelectorAll('.search-examples button')]
+            if (input && examples.length === 3) {
+              const emptyHasButtonSemantics = !document.querySelector('#explorer-items')?.hasAttribute('role')
+              examples[0].click()
+              await new Promise(resolve => setTimeout(resolve, 250))
+              inspectSearchExamplesWorks = emptyHasButtonSemantics && input.value === 'report'
+              document.querySelector('.search-clear')?.click()
+              await new Promise(resolve => setTimeout(resolve, 100))
+              inspectSearchExamplesWorks &&= !input.value && document.querySelectorAll('.search-examples button').length === 3
+            }
+            const indexDetails = document.querySelector('.search-index-details')
+            indexDetails?.querySelector('summary')?.click()
+            inspectIndexDetailsWorks = Boolean(indexDetails?.open && indexDetails.querySelector('.search-index-popover')?.getBoundingClientRect().width > 0)
+            indexDetails?.querySelector('summary')?.click()
+            inspectIndexDetailsWorks &&= !indexDetails?.open
             if (input) {
               const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
               setter?.call(input, ${JSON.stringify(smokeSearchQuery)})
@@ -270,6 +391,9 @@ async function evaluate(webSocketUrl) {
               awaitingLayout && awaitingPanel && getComputedStyle(awaitingPanel).display === 'none'
             )
             input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+            await new Promise(resolve => setTimeout(resolve, 80))
+            inspectSearchSelectionIsLightweight = Boolean(document.querySelector('.file-row.selected') && document.querySelector('.explorer-layout.search-awaiting-selection'))
+            input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', altKey: true, bubbles: true }))
             for (let attempt = 0; attempt < 30; attempt += 1) {
               const selectedRow = document.querySelector('.file-row.selected')
               const explanationTitle = document.querySelector('.explanation-content .object-heading h2')
@@ -300,8 +424,98 @@ async function evaluate(webSocketUrl) {
                 explanationText: explanationContent.textContent.trim().slice(0, 80)
               }
             }
-            inspectSearchAiAvailable = document.querySelectorAll('.ai-actions .ai-review').length === 2
+            inspectSearchAiAvailable = document.querySelectorAll('.ai-actions .ai-review').length === 1
             if ((await api.inspectIndexStatus()).building) await api.inspectIndexCancel()
+          }
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_SEARCH_ADVANCED === '1')} && ${JSON.stringify(captureView)} === 'inspect') {
+            const input = document.querySelector('.search-input-wrap input')
+            if (!input) throw new Error('advanced-search-input-missing: enable DISK_SENSE_SMOKE_INSPECT_SEARCH=1')
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+            const enterQuery = async query => {
+              setter?.call(input, query)
+              input?.dispatchEvent(new Event('input', { bubbles: true }))
+              await new Promise(resolve => setTimeout(resolve, 600))
+            }
+            await enterQuery('baogao')
+            const pinyinRow = [...document.querySelectorAll('.file-row')].find(row => row.textContent.includes('季度报告2026'))
+            const pinyinHighlighted = pinyinRow && [...pinyinRow.querySelectorAll('mark')].map(mark => mark.textContent).join('') === '报告'
+            let continuousInputComplete = true
+            for (const query of ['page-rep', 'page-repo', 'page-rep']) {
+              await enterQuery(query)
+              const status = document.querySelector('.index-status')?.textContent || ''
+              continuousInputComplete = continuousInputComplete && status.includes('145') && status.includes('100')
+                && [...document.querySelectorAll('.file-row')].some(row => row.textContent.includes('page-report-'))
+            }
+            await enterQuery('page-report-')
+            const moreButton = [...document.querySelectorAll('.search-actionbar button')].find(button => button.textContent.includes('加载更多'))
+            const before = document.querySelector('.index-status')?.textContent || ''
+            moreButton?.click()
+            await new Promise(resolve => setTimeout(resolve, 600))
+            const after = document.querySelector('.index-status')?.textContent || ''
+            const allPagesLoaded = Boolean(moreButton && before.includes('145') && before.includes('100') && after.includes('145') && ![...document.querySelectorAll('.search-actionbar button')].some(button => button.textContent.includes('加载更多')))
+            const waitForSearchView = async (condition, label) => {
+              for (let attempt = 0; attempt < 100; attempt++) {
+                if (condition()) return
+                await new Promise(resolve => setTimeout(resolve, 30))
+              }
+              throw new Error('search-view-timeout: ' + label)
+            }
+            const loadedSearchRows = () => {
+              const spacer = document.querySelector('.search-results .file-spacer')
+              const row = document.querySelector('.search-results .file-row')
+              const rowHeight = Number.parseFloat(row?.style.height || '')
+              return rowHeight > 0 ? Math.round(Number.parseFloat(spacer?.style.height || '0') / rowHeight) : 0
+            }
+            const loadMoreSearchButton = () => [...document.querySelectorAll('.search-actionbar button')]
+              .find(button => button.textContent.includes('加载更多'))
+            await waitForSearchView(() => loadedSearchRows() === 145 && !loadMoreSearchButton(), 'all-145-before-sort')
+            const sortControl = [...document.querySelectorAll('.search-filterbar select')]
+              .find(select => [...select.options].some(option => option.value === 'relevance'))
+            if (!sortControl) throw new Error('search-sort-control-missing')
+            sortControl.value = 'name'
+            sortControl.dispatchEvent(new Event('change', { bubbles: true }))
+            const hasOrderedNamePage = () => {
+              const names = [...document.querySelectorAll('.search-result-name')].map(row => row.textContent.trim())
+              return names.length > 1 && names.every((name, index) => name === 'page-report-' + String(index).padStart(3, '0') + '.txt')
+            }
+            await waitForSearchView(() => loadedSearchRows() === 100 && hasOrderedNamePage()
+              && (document.querySelector('#explorer-items')?.scrollTop || 0) === 0
+              && !loadMoreSearchButton()?.disabled
+              && (document.querySelector('.index-status')?.textContent || '').includes('已加载 100 项'), 'name-sort-first-100')
+            const sortResetToFirstPage = loadedSearchRows() === 100 && hasOrderedNamePage()
+            loadMoreSearchButton()?.click()
+            await waitForSearchView(() => loadedSearchRows() === 145 && !loadMoreSearchButton(), 'name-sort-all-145')
+            const sortResetsPage = sortResetToFirstPage && loadedSearchRows() === 145
+
+            const sessionQuery = { query: 'page-report-', scope: 'all', kind: 'all', modified: 'any', limit: 100 }
+            const candidateSession = await api.inspectSearch({ ...sessionQuery, sort: 'relevance' })
+            let sortedSessionViews = Boolean(candidateSession.sessionId && candidateSession.total === 145 && candidateSession.items.length === 100)
+            for (const sort of ['name', 'modified', 'size']) {
+              const firstPage = await api.inspectSearch({ ...sessionQuery, sort, sessionId: candidateSession.sessionId, offset: 0 })
+              const lastPage = await api.inspectSearch({ ...sessionQuery, sort, sessionId: candidateSession.sessionId, offset: 100 })
+              sortedSessionViews = sortedSessionViews && firstPage.sessionId === candidateSession.sessionId
+                && lastPage.sessionId === candidateSession.sessionId
+                && firstPage.total === 145 && lastPage.total === 145
+                && firstPage.items.length === 100 && lastPage.items.length === 45
+                && firstPage.nextOffset === 100 && lastPage.nextOffset == null
+                && new Set([...firstPage.items, ...lastPage.items].map(item => item.path)).size === 145
+            }
+            sortControl.value = 'relevance'
+            sortControl.dispatchEvent(new Event('change', { bubbles: true }))
+            await waitForSearchView(() => loadedSearchRows() === 100 && Boolean(loadMoreSearchButton()), 'restore-relevance-first-page')
+            const rebuilding = await api.inspectIndexStart({ scope: 'all' })
+            const during = await api.inspectSearch({ query: 'baogao', scope: 'all', kind: 'all', sort: 'relevance', modified: 'any', limit: 100 })
+            const searchableDuringBuild = Boolean(rebuilding.started && during.index.building && during.items.some(item => item.name === '季度报告2026.txt'))
+            if (during.index.building) await api.inspectIndexCancel()
+            await enterQuery('vsc')
+            const acronymRow = [...document.querySelectorAll('.file-row')].find(row => row.textContent.includes('VisualStudioCode.txt'))
+            const acronymRecall = Boolean(acronymRow)
+            await enterQuery('vsco')
+            const changedRow = [...document.querySelectorAll('.file-row')].find(row => row.textContent.includes('VisualStudioCode.txt'))
+            const highlightRefresh = [...(changedRow?.querySelectorAll('mark') || [])].map(mark => mark.textContent).join('') === 'VSCo'
+            if (!acronymRecall || !highlightRefresh) throw new Error('abbreviation-recall-or-highlight-refresh-failed')
+            inspectSearchAdvanced = { pinyinHighlighted: Boolean(pinyinHighlighted), continuousInputComplete, allPagesLoaded, sortResetsPage, sortedSessionViews, searchableDuringBuild, acronymRecall, highlightRefresh }
+            await enterQuery('baogao')
           }
           let slimmingRendered = null
           let cleanerHistorySubviewRendered = null
@@ -330,6 +544,11 @@ async function evaluate(webSocketUrl) {
             cleanerHistorySubviewRendered = document.body.innerText.includes('每一次清理和系统维护都有结果可查')
           }
           let cleanerDrawerRendered = null
+          const cleanerWorkspaceSimplified = ${JSON.stringify(captureView)} !== 'cleaner' || (
+            document.querySelectorAll('.cleanup-tabs button').length === 3 &&
+            !document.querySelector('option[value="quarantine"]') &&
+            ['cleanerGovernance', 'cleanerPackageDocs', 'cleanerQuarantineList', 'cleanerQuarantineTarget', 'cleanerQuarantineRestore'].every(name => !(name in api))
+          )
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_CLEANER_DRAWER === '1')} && ${JSON.stringify(captureView)} === 'cleaner') {
             document.querySelector('.cleanup-tabs button')?.click()
             await new Promise(resolve => setTimeout(resolve, 120))
@@ -377,6 +596,7 @@ async function evaluate(webSocketUrl) {
             }
           }
           let lightThemeSurfaces = null
+          let aiDialogKeyboardNavigation = null
           if (
             ${JSON.stringify(process.env.DISK_SENSE_SMOKE_THEME === 'light')} &&
             ${JSON.stringify(captureView)} === 'inspect' &&
@@ -404,11 +624,12 @@ async function evaluate(webSocketUrl) {
             iconProbe.remove()
             const searchModeWasActive = document.querySelector('.explorer-mode-switch button.active')
               ?.textContent.includes('文件搜索')
-            if (searchModeWasActive) {
-              document.querySelectorAll('.explorer-mode-switch button')[0]?.click()
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-            document.querySelector('.path-bar .icon-button.labelled')?.click()
+            settingsButton?.click()
+            await waitForDom(() => document.querySelector('.settings-tabs'), 'light-settings-tabs')
+            ;[...document.querySelectorAll('.settings-tabs button')].find(button => button.textContent.includes('通用'))?.click()
+            await waitForDom(() => document.querySelector('.settings-ai-entry'), 'light-ai-entry')
+            document.querySelector('.settings-ai-entry')?.click()
+            await waitForDom(() => document.querySelector('.ai-settings-card .model-picker'), 'light-ai-dialog')
             await new Promise(resolve => setTimeout(resolve, 120))
             const modalBackground = background('.modal-card')
             const modelButton = document.querySelector('.model-picker .quiet')
@@ -440,8 +661,21 @@ async function evaluate(webSocketUrl) {
             }
             const cancelButton = [...document.querySelectorAll('.modal-actions button')]
               .find(button => button.textContent.includes('取消'))
-            cancelButton?.click()
+            const aiDialog = document.querySelector('.ai-settings-card')
+            const closeButton = aiDialog?.querySelector('.modal-close')
+            const focusStartsInsideDialog = document.activeElement === closeButton && aiDialog?.getAttribute('role') === 'dialog'
+            // Restore the disabled state changed above for color probes before exercising Tab.
+            if (modelButton) modelButton.disabled = true
+            if (actionButton) actionButton.disabled = true
+            closeButton?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }))
+            const tabWrapsBackward = document.activeElement === cancelButton
+            cancelButton?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+            const tabWrapsForward = document.activeElement === closeButton
+            closeButton?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
             await new Promise(resolve => setTimeout(resolve, 80))
+            aiDialogKeyboardNavigation = Boolean(focusStartsInsideDialog && tabWrapsBackward && tabWrapsForward && !document.querySelector('.ai-settings-card'))
+            document.querySelectorAll('.main-nav button')[1]?.click()
+            await waitForDom(() => document.querySelector('.explorer-page'), 'restore-light-explorer')
             if (searchModeWasActive) {
               document.querySelectorAll('.explorer-mode-switch button')[1]?.click()
               await new Promise(resolve => setTimeout(resolve, 100))
@@ -450,36 +684,93 @@ async function evaluate(webSocketUrl) {
           const captureNavigation = document.querySelectorAll('.main-nav button')[${captureNavigationIndex}]
           captureNavigation?.click()
           await new Promise(resolve => setTimeout(resolve, 180))
-          if (${JSON.stringify(captureView)} === 'changes') {
-            document.querySelector('.overview-changes-anchor')?.scrollIntoView({ block: 'start' })
-            await new Promise(resolve => setTimeout(resolve, 100))
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_INSPECT_TARGET || '')}) {
+            const target = [...document.querySelectorAll('.file-row')].find(row => row.textContent.includes(${JSON.stringify(process.env.DISK_SENSE_SMOKE_INSPECT_TARGET || '')}))
+            target?.click()
+            for (let attempt = 0; attempt < 40 && !document.querySelector('.explanation-content .object-heading h2')?.textContent.includes(${JSON.stringify(process.env.DISK_SENSE_SMOKE_INSPECT_TARGET || '')}); attempt++) await new Promise(resolve => setTimeout(resolve, 50))
+          }
+          let aiSetupPresetWorks = null
+          let aiSetupManualModel = null
+          let aiSetupInvalidEndpointBlocked = null
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_AI_SETTINGS === '1')}) {
+            const entry = document.querySelector('.settings-ai-entry') || document.querySelector('.ai-config-link')
+            entry?.click()
+            await new Promise(resolve => setTimeout(resolve, 150))
+            document.querySelectorAll('.ai-service-presets button')[2]?.click()
+            await new Promise(resolve => setTimeout(resolve, 50))
+            const modal = document.querySelector('.ai-settings-card')
+            const endpoint = [...(modal?.querySelectorAll('input') || [])].find(input => input.placeholder.includes('127.0.0.1'))
+            const model = modal?.querySelector('.model-picker input')
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+            aiSetupPresetWorks = endpoint?.value === 'http://127.0.0.1:11434/v1'
+            setter?.call(model, 'example-model')
+            model?.dispatchEvent(new Event('input', { bubbles: true }))
+            await new Promise(resolve => setTimeout(resolve, 800))
+            const save = modal?.querySelector('.modal-actions .scan')
+            aiSetupManualModel = Boolean(save && !save.disabled && !modal.querySelector('.ai-connection-message'))
+            setter?.call(endpoint, 'http://public.example.test/v1')
+            endpoint?.dispatchEvent(new Event('input', { bubbles: true }))
+            await new Promise(resolve => setTimeout(resolve, 50))
+            aiSetupInvalidEndpointBlocked = Boolean(save?.disabled)
+            setter?.call(endpoint, 'http://127.0.0.1:11434/v1')
+            endpoint?.dispatchEvent(new Event('input', { bubbles: true }))
+            await new Promise(resolve => setTimeout(resolve, 50))
+          }
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_SEARCH_PANEL === '0')}) {
+            document.querySelector('[aria-label="收起文件分析"]')?.click()
+            await new Promise(resolve => setTimeout(resolve, 80))
+          }
+          const captureQuery = ${JSON.stringify(process.env.DISK_SENSE_SMOKE_CAPTURE_EMPTY === '1' ? '' : process.env.DISK_SENSE_SMOKE_CAPTURE_QUERY ?? null)}
+          if (captureQuery !== null && ${JSON.stringify(captureView)} === 'inspect') {
+            const input = document.querySelector('.search-input-wrap input')
+            if (!input) throw new Error('capture-search-input-missing')
+            if (captureQuery === '') document.querySelector('.search-clear')?.click()
+            else {
+              Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, captureQuery)
+              input.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+            await new Promise(resolve => setTimeout(resolve, 700))
+            if (input.value !== captureQuery) throw new Error('capture-query-not-applied')
           }
           // Public documentation uses fixture paths and synthetic capacity, never host data.
           // This runs only after the real interaction assertions have been collected.
           if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_PUBLIC_PREVIEW === '1')} && ${JSON.stringify(captureView)} === 'overview') {
-            const panel = document.querySelector('.space-sources')
-            panel?.querySelector('details')?.setAttribute('open', '')
-            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT)
-            while (walker.nextNode()) {
-              walker.currentNode.textContent = walker.currentNode.textContent.split(${JSON.stringify(smokeSearchRoot)}).join('D:\\\\Projects\\\\SpaceDemo')
+            const capacitySummary = document.querySelector('.capacity-summary')
+            if (capacitySummary) {
+              capacitySummary.querySelector('strong').textContent = '475 GB'
+              capacitySummary.querySelector('p').textContent = '共 1 TB 容量 · 已用 525 GB'
             }
-            panel?.querySelectorAll('[title]').forEach(element => element.removeAttribute('title'))
-            panel?.querySelectorAll('.source-locations small:last-of-type').forEach(element => { element.textContent = '最近核实：示例' })
             document.querySelectorAll('.volume-grid article').forEach((element, index) => {
               if (index > 1) { element.remove(); return }
               element.querySelector('.volume-title b').textContent = index ? 'D:\\\\' : 'C:\\\\'
-              element.querySelector('.volume-title strong').textContent = index ? '35%' : '70%'
+              element.querySelector('.volume-title strong').innerHTML = (index ? '35%' : '70%') + '<small>已使用</small>'
               element.querySelector('.volume-bar i').style.width = index ? '35%' : '70%'
               element.querySelector('.volume-numbers').textContent = index ? '325 GB 可用 · 175 GB / 500 GB' : '150 GB 可用 · 350 GB / 500 GB'
             })
-            const annotation = document.createElement('p')
-            annotation.className = 'source-note'
-            annotation.textContent = '界面示例：项目路径和磁盘容量为演示数据。'
-            panel?.append(annotation)
             const sensitiveText = document.querySelector('.overview-page')?.innerText || ''
             if (sensitiveText.includes(${JSON.stringify(isolatedUserData)}) || sensitiveText.includes(${JSON.stringify(os.homedir())})) throw new Error('public-preview-contains-host-path')
             await new Promise(resolve => setTimeout(resolve, 100))
           }
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_PUBLIC_PREVIEW === '1')} && ${JSON.stringify(captureView)} === 'inspect') {
+            const panel = document.querySelector('.explorer-page')
+            const sanitize = text => text.split(${JSON.stringify(smokeSearchRoot)}).join('D:\\\\Projects\\\\SpaceDemo')
+              .split(${JSON.stringify(isolatedUserData)}).join('D:\\\\DiskSenseDemo')
+              .split(${JSON.stringify(os.homedir())}).join('C:\\\\Users\\\\Demo')
+            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT)
+            while (walker.nextNode()) walker.currentNode.textContent = sanitize(walker.currentNode.textContent)
+            panel?.querySelectorAll('input').forEach(input => { input.value = sanitize(input.value) })
+            panel?.querySelectorAll('[title]').forEach(element => element.removeAttribute('title'))
+            if (document.querySelector('.path-bar')) {
+              const breadcrumbs = panel?.querySelector('.breadcrumbs')
+              if (breadcrumbs) breadcrumbs.innerHTML = '<button>D:</button><button>Projects</button><button>SpaceDemo</button>'
+            }
+            if (panel?.innerText.includes(${JSON.stringify(os.homedir())})) throw new Error('public-preview-contains-host-path')
+          }
+          const layoutFitsWindow = document.documentElement.scrollWidth <= window.innerWidth &&
+            [...document.querySelectorAll('.page-header, .live-overview, .cleaner-view-tabs, .cleaner-workspace, .cleaner-command-actions, .slimming-workspace, .history-panel, .settings-tabs, .path-bar, .search-commandbar, .search-filterbar, .file-list, .explain-panel')]
+              .filter(element => element.getBoundingClientRect().width > 0)
+              .every(element => element.getBoundingClientRect().left >= 0 && element.getBoundingClientRect().right <= window.innerWidth + 1)
+          const directoryAddressFitsRow = !document.querySelector('.path-bar') || document.querySelector('.path-bar').getBoundingClientRect().height <= 70
           const capturedPng = (
             ${JSON.stringify(process.env.DISK_SENSE_SMOKE_USE_BRIDGE_SCREENSHOT === '1')} &&
             ${JSON.stringify(process.env.DISK_SENSE_SMOKE_SKIP_SCREENSHOT !== '1')} &&
@@ -511,7 +802,7 @@ async function evaluate(webSocketUrl) {
                 }, { once: true })
               })
             : null
-          return {
+          const summary = {
             title: document.title,
             rendered: Boolean(document.querySelector('#app .page')),
             bridge: Boolean(api),
@@ -536,6 +827,7 @@ async function evaluate(webSocketUrl) {
             scanTruncated: scan.truncated,
             volumeCount: overview.volumes.length,
             appVersion: appInfo.version,
+            runtimeVersions: appInfo.runtimeVersions,
             stateVersion: appInfo.stateVersion,
             dataPath: appInfo.userDataPath,
             dataUsageFiles: dataUsage.files,
@@ -548,6 +840,13 @@ async function evaluate(webSocketUrl) {
             searchIndexAvailable: searchIndex.available,
             searchIndexBuilding: searchIndex.building,
             inspectSearchRendered,
+            inspectBrowseNavigation,
+            inspectBrowseFilter,
+            inspectQuickSearchShortcut,
+            inspectSearchSelectionIsLightweight,
+            inspectSearchAdvanced,
+            inspectSearchExamplesWorks,
+            inspectIndexDetailsWorks,
             inspectGlobalSearchConfigured,
             inspectSearchSettingsAbsent,
             inspectSearchAiAvailable,
@@ -558,6 +857,7 @@ async function evaluate(webSocketUrl) {
             inspectOfficeShortcutResolved,
             packaged: appInfo.packaged,
             security: appInfo.security,
+            migrationRecoveryVerified,
             explanation: explanation ? {
               classification: explanation.classification,
               what: explanation.what,
@@ -565,38 +865,68 @@ async function evaluate(webSocketUrl) {
               risk: explanation.risk
             } : null,
             settingsRendered,
-            searchMaintenanceRendered,
+            settingsSearchAbsent,
             settingsDetailRendered,
             historyRendered,
             historyWidthAligned,
             cleanerSafetyBackground,
             overviewRendered,
-            ledgerPersisted,
-            ledgerRendered,
-            ledgerNavigation,
-            overviewChangesRendered,
+            homepageCapacityFirst,
+            overviewActivityCollapsed,
+            layoutFitsWindow,
+            directoryAddressFitsRow,
+            overviewAttributionAbsent,
+            overviewBrowseNavigation,
+            overviewChangesAbsent,
             cleanerScanRendered,
             cleanerCategoryCount,
             cleanerRuleDetailCount,
             slimmingRendered,
             cleanerHistorySubviewRendered,
             cleanerDrawerRendered,
+            cleanerWorkspaceSimplified,
             lightThemeSurfaces,
+            aiDialogKeyboardNavigation,
+            aiSetupPresetWorks,
+            aiSetupManualModel,
+            aiSetupInvalidEndpointBlocked,
             historyCount: history.length,
             exclusionCount: exclusions.length,
-            finalActiveNavigation: document.querySelector('.main-nav button.active')?.innerText || '',
+            finalActiveNavigation: document.querySelector('.main-nav button.active')?.innerText || document.querySelector('.main-nav button.active')?.getAttribute('aria-label') || '',
             finalHeading: document.querySelector('.workspace h1')?.innerText || '',
             capturedPng
           }
+          if (${JSON.stringify(process.env.DISK_SENSE_SMOKE_FRONTEND_AUDIT === '1')}) {
+            summary.frontendAudit = await (${captureFrontend.toString()})(api, { searchRoot: ${JSON.stringify(smokeSearchRoot)}, fixtures: ${JSON.stringify(frontendFixtures)}, migrationRecovery: ${JSON.stringify(migrationFailureFixture)}, originalDataPath: ${JSON.stringify(fixtureUserData)}, dumpPath: ${JSON.stringify(path.join(fixtureLocalData, 'CrashDumps', 'frontend-preview.dmp'))}, discoveryCachePath: ${JSON.stringify(path.join(fixtureLocalData, 'DingTalk_108', 'Code Cache', 'discovery-preview.tmp'))} })
+          }
+          return summary
         })()`,
         awaitPromise: true,
         returnByValue: true
       }
     }))
   })
-  if (result.result?.exceptionDetails) throw new Error(result.result.exceptionDetails.text || 'renderer-evaluation-failed')
+  if (result.result?.exceptionDetails) {
+    const details = result.result.exceptionDetails
+    throw new Error(details.exception?.description || details.text || 'renderer-evaluation-failed')
+  }
   const value = result.result?.result?.value
   if (!value) throw new Error(`renderer-returned-no-smoke-result: ${JSON.stringify(result)}`)
+  if (value.frontendAudit) {
+    const tag = process.env.DISK_SENSE_SMOKE_CAPTURE_TAG || ''
+    if (tag && !/^[a-z0-9-]{1,64}$/u.test(tag)) throw new Error('invalid-smoke-capture-tag')
+    const folder = path.resolve('release', `frontend-full-${value.renderedTheme}-${Number.parseInt(process.env.DISK_SENSE_WINDOW_WIDTH || '1280', 10)}${frontendFixtures ? '-fixtures' : ''}${tag ? '-' + tag : ''}`)
+    fs.mkdirSync(folder, { recursive: true })
+    for (const capture of value.frontendAudit.captures) {
+      if (!/^[a-z0-9-]+$/u.test(capture.name)) throw new Error('invalid-frontend-capture-name')
+      const filename = path.join(folder, `${capture.name}.png`)
+      fs.writeFileSync(filename, Buffer.from(capture.png, 'base64'))
+      delete capture.png
+      capture.file = path.relative(process.cwd(), filename)
+    }
+    fs.writeFileSync(path.join(folder, 'validation.json'), JSON.stringify(value.frontendAudit, null, 2) + '\n')
+    if (value.frontendAudit.error) throw new Error(value.frontendAudit.error)
+  }
   let screenshot = value.capturedPng || null
   delete value.capturedPng
   if (!screenshot && process.env.DISK_SENSE_SMOKE_SKIP_SCREENSHOT !== '1') try {
@@ -674,7 +1004,7 @@ try {
     result?.title !== 'Disk Sense' ||
     !result?.rendered ||
     !result?.bridge ||
-    !result?.ledgerPersisted || !result?.ledgerRendered || !result?.ledgerNavigation ||
+    !result?.overviewAttributionAbsent || !result?.overviewBrowseNavigation ||
     (process.env.DISK_SENSE_SMOKE_DEV === '1' && !result?.hmrWebSocketConnected) ||
     result?.ruleCount < 8 ||
     result?.rootPath !== 'C:\\' ||
@@ -693,12 +1023,20 @@ try {
     !result?.deviceName ||
     !result?.processor ||
     result?.deviceHasVolumes ||
+    (process.env.DISK_SENSE_SMOKE_SEARCH_ADVANCED === '1' && (
+      !result?.inspectSearchAdvanced?.pinyinHighlighted || !result?.inspectSearchAdvanced?.continuousInputComplete || !result?.inspectSearchAdvanced?.allPagesLoaded ||
+      !result?.inspectSearchAdvanced?.sortResetsPage || !result?.inspectSearchAdvanced?.sortedSessionViews ||
+      !result?.inspectSearchAdvanced?.searchableDuringBuild
+    )) ||
     !result?.searchIndexAvailable ||
     result?.searchIndexBuilding ||
     (
       process.env.DISK_SENSE_SMOKE_INSPECT_SEARCH === '1' &&
       (
         !result?.inspectSearchRendered ||
+        !result?.inspectSearchExamplesWorks || !result?.inspectIndexDetailsWorks ||
+        !result?.inspectQuickSearchShortcut ||
+        !result?.inspectSearchSelectionIsLightweight ||
         !result?.inspectGlobalSearchConfigured ||
         !result?.inspectSearchSettingsAbsent ||
         !result?.inspectSearchAiAvailable ||
@@ -708,7 +1046,8 @@ try {
         !result?.inspectOfficeShortcutResolved
       )
     ) ||
-    (process.env.DISK_SENSE_SMOKE_DEV !== '1' && !result?.packaged) ||
+    (captureView === 'inspect' && (!result?.inspectBrowseNavigation || !result?.inspectBrowseFilter)) ||
+    (process.env.DISK_SENSE_SMOKE_DEV !== '1' && !electronRuntime && !result?.packaged) ||
     !result?.security?.rendererSandbox ||
     !result?.security?.contextIsolation ||
     !result?.security?.rendererPermissionsDenied ||
@@ -717,7 +1056,7 @@ try {
     !result?.explanation?.what ||
     !result?.explanation?.purpose ||
     !result?.settingsRendered ||
-    !result?.searchMaintenanceRendered ||
+    !result?.settingsSearchAbsent ||
     !result?.settingsDetailRendered ||
     !result?.historyRendered ||
     !result?.historyWidthAligned ||
@@ -725,10 +1064,13 @@ try {
       process.env.DISK_SENSE_SMOKE_THEME === 'light' &&
       !/^rgba?\(255, 255, 255(?:, 1)?\)$/u.test(String(result?.cleanerSafetyBackground || ''))
     ) ||
-    !result?.overviewRendered ||
-    !result?.overviewChangesRendered ||
+    !result?.overviewRendered || !result?.homepageCapacityFirst || !result?.overviewActivityCollapsed || !result?.layoutFitsWindow || !result?.directoryAddressFitsRow ||
+    (process.env.DISK_SENSE_SMOKE_AI_SETTINGS === '1' && (!result?.aiSetupPresetWorks || !result?.aiSetupManualModel || !result?.aiSetupInvalidEndpointBlocked)) ||
+    !result?.overviewChangesAbsent ||
+    !result?.finalActiveNavigation?.includes(captureLabel) ||
     (process.env.DISK_SENSE_SMOKE_CLEANER_TAB === 'slimming' && !result?.slimmingRendered) ||
     (process.env.DISK_SENSE_SMOKE_CLEANER_TAB === 'history' && !result?.cleanerHistorySubviewRendered) ||
+    !result?.cleanerWorkspaceSimplified ||
     (process.env.DISK_SENSE_SMOKE_CLEANER_DRAWER === '1' && !result?.cleanerDrawerRendered) ||
     (process.env.DISK_SENSE_SMOKE_SCAN_CLEANER === '1' && !result?.cleanerScanRendered) ||
     (
@@ -736,6 +1078,7 @@ try {
       captureView === 'inspect' &&
       process.env.DISK_SENSE_SMOKE_SKIP_LIGHT_SURFACES !== '1' &&
       (
+        !result?.aiDialogKeyboardNavigation ||
         !result?.lightThemeSurfaces?.fileIconIsLight ||
         !result?.lightThemeSurfaces?.folderIconIsLight ||
         !result?.lightThemeSurfaces?.modalIsLight ||
@@ -751,7 +1094,7 @@ try {
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
 } catch (error) {
-  const diagnosticPath = path.join(isolatedUserData, 'disk-sense.log')
+  const diagnosticPath = path.join(fixtureUserData, 'disk-sense.log')
   if (fs.existsSync(diagnosticPath)) {
     try {
       fs.mkdirSync(path.resolve('release'), { recursive: true })

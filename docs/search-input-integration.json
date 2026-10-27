@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-22T10:41:00.250Z",
+  "stage": "Complete ID recall with versioned candidate-column reuse and retained-byte session accounting",
+  "checks": {
+    "vitest": {
+      "files": 39,
+      "tests": 272,
+      "passed": 272,
+      "failed": 0,
+      "command": "node node_modules/vitest/vitest.mjs run --configLoader runner --maxWorkers=2 --testTimeout=15000 --reporter=json --outputFile=release-search-validation/input-vitest.json"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "command": "node node_modules/vue-tsc/bin/vue-tsc.js --noEmit"
+    },
+    "desktopSyntax": {
+      "exitCode": 0,
+      "modules": 40,
+      "command": "node scripts/check-desktop.cjs"
+    },
+    "productionBuild": {
+      "exitCode": 0,
+      "command": "node node_modules/vite/bin/vite.js build --configLoader runner"
+    },
+    "frozenIndex": {
+      "entries": 930372,
+      "inputs": 15,
+      "allPagesEqual": true,
+      "report": "docs/search-input-validation.json",
+      "sha256": "1a65d9e5bfc7f4fabce0589aaea41005d6e55392108b7e9f0d239609e8682181"
+    },
+    "electron": {
+      "command": "node scripts/smoke-development.mjs",
+      "exitCode": 0,
+      "title": "Disk Sense",
+      "packaged": false,
+      "rendered": true,
+      "bridge": true,
+      "hmrWebSocketConnected": true,
+      "renderedTheme": "dark",
+      "inspectSearchAdvanced": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "nativeIcon": true,
+      "layoutFitsWindow": true,
+      "screenshot": "release/smoke-inspect.png",
+      "screenshotSha256": "2880337a6e3f09ff906dc38f4b35e587074007311d5ae94c75c60c49cb563f23"
+    },
+    "normalWorkspaceWindow": {
+      "pid": 2460,
+      "title": "Disk Sense",
+      "responding": true,
+      "main": "desktop/main.cjs",
+      "launch": "node scripts/dev-desktop.cjs",
+      "verifiedProcessCommandFromWorkspace": true
+    }
+  },
+  "regressionCoverage": [
+    "all-page input-sequence equivalence with independent connections",
+    "LIKE-to-trigram Unicode admission",
+    "query-dependent application deduplication winner",
+    "scope/context/filter/version invalidation",
+    "external and own-connection writes",
+    "commit race before read snapshot",
+    "caller transaction rollback",
+    "shared whole-buffer accounting",
+    "LRU and growing view estimates",
+    "oversized active session pagination and sort switching"
+  ],
+  "sourceHashes": [
+    {
+      "file": "desktop/search-engine.cjs",
+      "sha256": "d23c861916d8a685c09eee18d6f57a061f6d29cd007745e4490c8bdcf942ccbb"
+    },
+    {
+      "file": "desktop/search-candidate-session.cjs",
+      "sha256": "d12c89848f6ce99956ac7fe113f0e7ebc1f4314a292704009e762ef9a031e1ee"
+    },
+    {
+      "file": "desktop/search-session-cache.cjs",
+      "sha256": "324c93a7fbcb0d614542fee5fedfc2a0ba8054316e0ff5b175e9bed29e55f388"
+    },
+    {
+      "file": "desktop/search-result-view.cjs",
+      "sha256": "946bdb85bf842a3ff74ebad9c5811667f0a7f7d14ffd44bf6fdba1ac2ba180f9"
+    },
+    {
+      "file": "scripts/smoke-desktop.mjs",
+      "sha256": "f2c4bfbd2d321f79f5d82e21876becbc416134f097d615f250a89ef0af879327"
+    },
+    {
+      "file": "scripts/verify-search-input.cjs",
+      "sha256": "209a75bb6fdb3c65605fd1beafe0f9b4d63deb160fde7b225a792c6cc8718122"
+    },
+    {
+      "file": "tests/search-input-reuse.test.ts",
+      "sha256": "46afbe9b5d8beb0d01f4541b2660d8b0f0339dabfe9e2c65cc9bd81e1a1347fb"
+    },
+    {
+      "file": "tests/search-input-version.test.ts",
+      "sha256": "0e1d30e330427790a3e4e1862bffefd487a8fdf23801e925f71ffa63a4d21c62"
+    },
+    {
+      "file": "tests/search-session-cache.test.ts",
+      "sha256": "a6e770f0265782a7e5451eb03bcd5203e851b9b06e51a50d2c72828747fe4fed"
+    }
+  ],
+  "limits": [
+    "New inputs still execute complete SQL/FTS recall, candidate-column copies, relevance evaluation and partition sorting",
+    "Metadata fetch counts exclude page presentation and matcher-internal name reads",
+    "64 MiB is a represented-retained-storage estimate; one oversized active session is allowed; it is not a process RSS ceiling",
+    "Input timing samples are diagnostic, not a GUI or Listary comparison",
+    "This stage does not change initial indexing, mass offline change recovery or verify an actual Windows reboot"
+  ]
+}

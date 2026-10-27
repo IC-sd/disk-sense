@@ -7,6 +7,7 @@ let roots = Array.isArray(workerData?.roots) ? workerData.roots : []
 let closing = false
 let queuedSearch = null
 let searchScheduled = false
+const searchVersion = workerData.searchCancellation ? new Int32Array(workerData.searchCancellation) : null
 
 function serializeError(error) {
   return {
@@ -32,6 +33,8 @@ function replaceRoots(values) {
 const service = createFileSearchService({
   databasePath: workerData.databasePath,
   maximumEntries: workerData.maximumEntries,
+  nativeEnumeration: workerData.nativeEnumeration,
+  searchCancellation: workerData.searchCancellation,
   changeDebounceMs: workerData.changeDebounceMs,
   reconcileIntervalMs: workerData.reconcileIntervalMs,
   getVolumeRoots: async () => roots,
@@ -46,6 +49,11 @@ async function execute(message) {
     case 'startAutomatic':
       replaceRoots(payload.roots)
       return service.startAutomatic()
+    case 'enableNtfs':
+      replaceRoots(payload.roots)
+      return service.enableNtfs()
+    case 'disableNtfs':
+      return service.disableNtfs()
     case 'stopAutomatic':
       return service.stopAutomatic(payload.options)
     case 'rebuild':
@@ -57,13 +65,9 @@ async function execute(message) {
     case 'cancel':
       return service.cancel()
     case 'search':
-      return service.search(payload.input)
-    case 'observeSpace':
-      return service.observeSpace(payload.relationship)
-    case 'spaceSummary':
-      return service.spaceSummary()
-    case 'forgetSpace':
-      return service.forgetSpace(payload.entityId)
+      return service.search({ ...payload.input, _searchVersion: payload.searchVersion })
+    case 'recordSelection':
+      return service.recordSelection(payload.input)
     case 'checkpoint':
       return service.checkpoint()
     case 'waitForIdle':
@@ -82,6 +86,7 @@ async function run(message) {
     respond(message.id, result)
     if (message.method === 'close') setImmediate(() => parentPort.close())
   } catch (error) {
+    if (message.method === 'search' && searchVersion && Atomics.load(searchVersion, 0) !== message.payload.searchVersion) error.code = 'SEARCH_SUPERSEDED'
     reject(message.id, error)
   }
 }

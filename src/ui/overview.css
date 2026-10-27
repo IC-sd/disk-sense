@@ -1,0 +1,254 @@
+/* Capacity is the overview's main content; records stay secondary. */
+#app .overview-page .overview-heading {
+  margin-bottom: 32px;
+}
+
+#app .overview-page .live-overview {
+  padding: 0;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+#app .overview-page .live-overview > header {
+  min-height: 66px;
+  padding: 16px 26px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+#app .overview-page .capacity-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#app .overview-page .capacity-heading h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#app .overview-page .capacity-heading > span {
+  padding-left: 12px;
+  color: var(--subtle);
+  border-left: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+#app .overview-page .capacity-summary {
+  padding: 26px 26px 22px;
+  background: var(--surface);
+}
+
+#app .overview-page .capacity-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+#app .overview-page .capacity-summary > div > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#app .overview-page .capacity-summary strong {
+  color: var(--text);
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 550;
+  line-height: 1.25;
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .overview-page .capacity-summary > p {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 0;
+  color: var(--subtle);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .overview-page .capacity-summary > p > span {
+  color: var(--line-bright);
+}
+
+#app .overview-page .volume-grid {
+  display: block;
+  padding: 0 26px 8px;
+}
+
+#app .overview-page .volume-grid > article {
+  display: grid;
+  grid-template-columns: minmax(240px, .9fr) minmax(0, 1.6fr);
+  align-items: center;
+  gap: 36px;
+  min-height: 114px;
+  padding: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#app .overview-page .volume-title {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+#app .overview-page .volume-title > span {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--control-bg);
+}
+
+#app .overview-page .volume-title > span > .app-icon {
+  width: 22px;
+  height: 22px;
+}
+
+#app .overview-page .volume-title b {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#app .overview-page .volume-title strong {
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -.025em;
+}
+
+#app .overview-page .volume-title small {
+  margin-top: 4px;
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+#app .overview-page .volume-title strong small {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+#app .overview-page .volume-storage {
+  min-width: 0;
+}
+
+#app .overview-page .volume-numbers {
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 12px;
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+#app .overview-page .volume-numbers b {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+#app .overview-page .volume-bar {
+  height: 7px;
+  margin: 0;
+  border-radius: 3px;
+  background: var(--surface-soft);
+}
+
+#app .overview-page .volume-bar i {
+  border-radius: inherit;
+  background: var(--blue-strong);
+}
+
+#app .overview-page .volume-warning .volume-title strong,
+#app .overview-page .volume-space-note {
+  color: var(--amber);
+}
+
+#app .overview-page .volume-warning .volume-bar i {
+  background: var(--amber);
+}
+
+#app .overview-page .volume-space-note {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+}
+
+#app .overview-page .volume-loading,
+#app .overview-page .live-overview > .inline-message {
+  margin: 24px;
+}
+
+#app .overview-page .overview-activity {
+  border-color: var(--line);
+  border-radius: 10px;
+  background: transparent;
+}
+
+#app .overview-page .overview-activity > summary {
+  min-height: 56px;
+  padding: 16px 20px;
+}
+
+#app .overview-page .principle-banner {
+  gap: 10px;
+  padding: 4px 2px;
+  color: var(--subtle);
+}
+
+#app .overview-page .principle-icon {
+  width: 24px;
+  height: 24px;
+}
+
+#app .overview-page .principle-banner b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+#app .overview-page .principle-banner p {
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+#app .overview-page .local-badge {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+#app .overview-page .volume-browse { display: flex; width: fit-content; min-height: 27px; align-items: center; gap: 7px; padding: 5px 0; margin: 9px 0 0 auto; color: var(--blue); border: 0; border-radius: 4px; background: transparent; font-size: 11px; cursor: pointer; }
+#app .overview-page .volume-browse:hover { color: var(--text); }
+#app .overview-page .volume-browse .app-icon { width: 13px; height: 13px; }
+#app .overview-page .volume-loading { display: grid; min-height: 260px; padding: 30px; justify-items: center; gap: 12px; border: 0; border-radius: 0; background: var(--surface); }
+#app .overview-page .volume-loading > .app-icon { width: 27px; height: 27px; color: var(--subtle); }
+#app .overview-page .volume-loading > span { color: var(--subtle); font-size: 12px; }
+#app .overview-page .capacity-skeleton { display: grid; width: min(440px, 100%); gap: 12px; }
+#app .overview-page .capacity-skeleton i { height: 7px; border-radius: 5px; background: linear-gradient(100deg, var(--surface-strong), var(--surface-soft), var(--surface-strong)); background-size: 200% 100%; animation: skeleton 1.7s linear infinite; }
+#app .overview-page .capacity-skeleton i:last-child { width: 70%; justify-self: center; }
+#app .overview-page .overview-unavailable { display: grid; min-height: 260px; place-content: center; justify-items: center; gap: 10px; padding: 32px; text-align: center; }
+#app .overview-page .overview-unavailable > .app-icon { width: 30px; height: 30px; margin-bottom: 7px; color: var(--subtle); }
+#app .overview-page .overview-unavailable b { color: var(--text); font-size: 15px; font-weight: 500; }
+#app .overview-page .overview-unavailable p { max-width: 520px; margin: 0; color: var(--subtle); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+#app .overview-page .overview-unavailable .secondary-button { margin-top: 6px; }
+
+@media (max-width: 1100px) {
+  #app .overview-page .volume-grid > article {
+    grid-template-columns: minmax(220px, .9fr) minmax(0, 1.3fr);
+    gap: 24px;
+  }
+}
+
+@media (max-height: 760px) {
+  #app .overview-page .overview-heading { margin-bottom: 22px; }
+  #app .overview-page .capacity-summary { padding-block: 20px; }
+  #app .overview-page .volume-grid > article { min-height: 102px; padding-block: 18px; }
+}

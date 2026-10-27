@@ -80,6 +80,15 @@ describe('optional AI explainer', () => {
     await expect(pending).rejects.toThrow('AI 分析已取消')
   })
 
+  it('explains authentication errors and redacts credentials echoed by a provider', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 401, text: async () => 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz; api_key=echoed-provider-secret' }))
+    const pending = review({ name: 'x.txt' }, { endpoint: 'https://example.test/v1', model: 'test' }, fetchMock as any)
+    await expect(pending).rejects.toThrow('API 密钥无效或未填写')
+    await expect(pending).rejects.not.toThrow('abcdefghijklmnopqrstuvwxyz')
+    await expect(pending).rejects.not.toThrow('echoed-provider-secret')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
   it('accepts array-form completion content but rejects vague pseudo-analysis', () => {
     expect(completionText([{ type: 'text', text: '{"what":"Edge 缓存","purpose":"加快网页加载"}' }])).toContain('Edge 缓存')
     expect(validateAnalysis({ what: '一个目录', purpose: '未知' }).ok).toBe(false)
@@ -133,17 +142,24 @@ describe('optional AI explainer', () => {
     expect(result.ok).toBe(true)
     expect(result.parsed.what).toBe('测试文件')
     expect(fetchMock).toHaveBeenCalledOnce()
-    expect(JSON.parse((fetchMock.mock.calls as any)[0][1].body).reasoning_effort).toBe('low')
+    expect(JSON.parse((fetchMock.mock.calls as any)[0][1].body)).not.toHaveProperty('reasoning_effort')
+    expect(result.thinkingLevel).toBe('default')
   })
 
-  it('uses maximum thinking and a larger token budget for deep analysis', async () => {
+  it('normalizes legacy deep requests to one analysis with provider-default thinking', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ usage: { total_tokens: 88 }, choices: [{ message: { content: '{"what":"系统目录","purpose":"系统功能"}' } }] }) }))
     const result = await review({ name: 'Windows', what: 'Windows 系统目录', classification: 'system-component', confidence: 0.95 }, { endpoint: 'https://example.test/v1', model: 'test', apiKey: 'secret', analysisMode: 'deep' }, fetchMock as any)
     const body = JSON.parse((fetchMock.mock.calls as any)[0][1].body)
-    expect(body.reasoning_effort).toBe('high')
+    expect(body).not.toHaveProperty('reasoning_effort')
     expect(body.max_tokens).toBeGreaterThan(1200)
-    expect(result.analysisMode).toBe('deep')
+    expect(result.analysisMode).toBe('normal')
     expect(result.usage.total_tokens).toBe(88)
+  })
+
+  it('does not override the Responses model default thinking', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ output_text: '{"what":"项目目录","purpose":"保存项目源代码"}' }) }))
+    await review({ name: 'project' }, { endpoint: 'https://example.test/v1', provider: 'openai-responses', model: 'test' }, fetchMock as any)
+    expect(JSON.parse((fetchMock.mock.calls as any)[0][1].body)).not.toHaveProperty('reasoning')
   })
 
   it('parses JSON even when a compatible model adds surrounding text', () => {

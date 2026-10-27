@@ -4,6 +4,8 @@ import { applyTheme, cachedTheme } from './application/appearance'
 import { desktopApi } from './platform/api'
 import './ui/theme.css'
 import './ui/extra.css'
+import './ui/workspace.css'
+import './ui/foundation.css'
 
 applyTheme(cachedTheme(), false)
 createApp(App).mount('#app')

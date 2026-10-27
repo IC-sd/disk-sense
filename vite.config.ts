@@ -19,12 +19,15 @@ function developmentCsp() {
 export default defineConfig({
   base: './',
   plugins: [vue(), developmentCsp()],
+  // This application has one HTML entry. Research checkouts and validation
+  // fixtures in .cache/release-* are not additional frontend applications.
+  optimizeDeps: { entries: ['index.html'] },
   server: {
     host: '127.0.0.1',
     port: 5173,
     strictPort: false,
     watch: {
-      ignored: ['**/release/**', '**/dist/**']
+      ignored: ['**/release/**', '**/release-*/**', '**/dist/**', '**/.cache/**']
     }
   },
   build: {

@@ -1,0 +1,314 @@
+/* The shell owns its width so all workspaces share the same content edge. */
+#app .app-shell {
+  --sidebar-width: 184px;
+  min-height: 100dvh;
+}
+
+#app .app-shell > .app-sidebar {
+  width: var(--sidebar-width);
+  padding: 25px 12px 18px;
+  border-right: 1px solid var(--line);
+  background: var(--sidebar);
+  box-shadow: none;
+}
+
+#app .app-shell > .workspace {
+  width: calc(100% - var(--sidebar-width));
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+}
+
+#app .app-shell .brand {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 8px;
+  margin-bottom: 34px;
+}
+
+#app .app-shell .brand-mark {
+  width: 32px;
+  height: 34px;
+  flex: none;
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blue) 9%, var(--sidebar));
+  box-shadow: none;
+}
+
+#app .app-shell .brand-mark .app-icon {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.65;
+}
+
+#app .app-shell .brand > div:last-child {
+  display: block;
+  min-width: 0;
+}
+
+#app .app-shell .brand b {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.025em;
+  white-space: nowrap;
+}
+
+#app .app-shell .brand small {
+  margin-top: 2px;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: .03em;
+}
+
+#app .app-shell .sidebar-section-label {
+  padding: 0 11px;
+  margin-bottom: 10px;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+#app .app-shell .main-nav {
+  gap: 5px;
+}
+
+#app .app-shell .main-nav button {
+  position: relative;
+  min-height: 57px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  justify-items: start;
+  padding: 10px 11px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: color .15s ease, background .15s ease;
+}
+
+#app .app-shell .main-nav button:hover {
+  color: var(--text);
+  background: var(--surface-strong);
+  transform: none;
+}
+
+#app .app-shell .main-nav button.active {
+  color: var(--text);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--blue) 10%, var(--sidebar));
+  box-shadow: none;
+}
+
+#app .app-shell .main-nav button > span:nth-child(2) {
+  display: block;
+  min-width: 0;
+}
+
+#app .app-shell .main-nav .nav-icon {
+  width: 20px;
+  height: 24px;
+  color: var(--subtle);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#app .app-shell .main-nav .nav-icon .app-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.6;
+}
+
+#app .app-shell .main-nav button.active .nav-icon {
+  color: var(--blue);
+  border: 0;
+  background: transparent;
+}
+
+#app .app-shell .main-nav button > i {
+  position: absolute;
+  top: 50%;
+  left: -1px;
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  transform: translateY(-50%);
+  box-shadow: none;
+}
+
+#app .app-shell .main-nav button.active > i {
+  height: 20px;
+  background: var(--blue);
+  box-shadow: none;
+}
+
+#app .app-shell .main-nav b {
+  font-size: 12px;
+  font-weight: 550;
+}
+
+#app .app-shell .main-nav small,
+#app .app-shell .main-nav button.active small {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+#app .app-shell .sidebar-bottom {
+  display: grid;
+  gap: 17px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+#app .app-shell .sidebar-search {
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+}
+
+#app .app-shell .sidebar-search:hover {
+  color: var(--text);
+  border-color: var(--line-bright);
+  background: var(--surface-strong);
+}
+
+#app .app-shell .sidebar-search .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+#app .app-shell .sidebar-search span {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+#app .app-shell .sidebar-search kbd {
+  padding: 1px 3px;
+  margin-left: auto;
+  color: var(--subtle);
+  font-family: inherit;
+  font-size: 9px;
+  line-height: 17px;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+}
+
+#app .app-shell .sidebar-footer {
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 16px 8px 0;
+  margin-top: 0;
+  border-top: 1px solid var(--line);
+}
+
+#app .app-shell .sidebar-footer > div {
+  display: block;
+  min-width: 0;
+}
+
+#app .app-shell .sidebar-footer .status-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  box-shadow: none;
+}
+
+#app .app-shell .sidebar-footer b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+#app .app-shell .sidebar-footer small {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  #app .app-shell {
+    --sidebar-width: 72px;
+  }
+
+  #app .app-shell > .app-sidebar {
+    padding-inline: 10px;
+  }
+
+  #app .app-shell .brand {
+    justify-content: center;
+    padding: 0;
+    margin-bottom: 24px;
+  }
+
+  #app .app-shell .brand > div:last-child,
+  #app .app-shell .sidebar-section-label,
+  #app .app-shell .main-nav button > span:nth-child(2),
+  #app .app-shell .sidebar-search span,
+  #app .app-shell .sidebar-search kbd,
+  #app .app-shell .sidebar-footer > div {
+    display: none;
+  }
+
+  #app .app-shell .main-nav button {
+    min-height: 46px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 9px;
+  }
+
+  #app .app-shell .sidebar-search,
+  #app .app-shell .sidebar-footer {
+    justify-content: center;
+  }
+
+  #app .app-shell .sidebar-search {
+    min-height: 36px;
+  }
+
+  #app .app-shell .sidebar-search .app-icon {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+@media (max-height: 700px) {
+  #app .app-shell > .app-sidebar {
+    padding-top: 18px;
+  }
+
+  #app .app-shell .brand {
+    margin-bottom: 24px;
+  }
+
+  #app .app-shell .main-nav button {
+    min-height: 50px;
+  }
+
+  #app .app-shell .sidebar-bottom {
+    gap: 12px;
+    padding-top: 18px;
+  }
+}
+#app .startup-recovery-notice { display: flex; align-items: start; gap: 12px; margin: 20px 24px 0; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); border-radius: 8px; color: var(--text); background: color-mix(in srgb, var(--amber) 8%, var(--surface)); }
+#app .startup-recovery-notice > .app-icon { flex: 0 0 18px; color: var(--amber); }
+#app .startup-recovery-notice > div { flex: 1; min-width: 0; }
+#app .startup-recovery-notice b { font-size: 13px; }
+#app .startup-recovery-notice p { margin: 5px 0; color: var(--muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+#app .startup-recovery-notice small { color: var(--muted); overflow-wrap: anywhere; }

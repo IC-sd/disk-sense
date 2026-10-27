@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-19",
+  "listaryVersion": "6.3.5.94",
+  "files": 10000,
+  "listaryIndexMs": 305.73920000000004,
+  "diskSenseBuildAndAuxiliaryIndexMs": 2278,
+  "scope": "Same owned files and machine; isolated custom-folder indexes; five samples; query result cache disabled; no GUI; Disk Sense page2 includes first-page construction",
+  "checks": [
+    "same-total-counts",
+    "same-page-lengths",
+    "same-exact-file",
+    "same-second-page-file-set"
+  ],
+  "comparisons": [
+    {
+      "query": "broad",
+      "total": 10000,
+      "listaryMedianMs": 2.26,
+      "diskSenseMedianMs": 119.99
+    },
+    {
+      "query": "exact",
+      "total": 1,
+      "listaryMedianMs": 1.85,
+      "diskSenseMedianMs": 4.33
+    },
+    {
+      "query": "extension",
+      "total": 2000,
+      "listaryMedianMs": 1.68,
+      "diskSenseMedianMs": 79.59
+    },
+    {
+      "query": "page2",
+      "total": 10000,
+      "listaryMedianMs": 12.03,
+      "diskSenseMedianMs": 122.97
+    }
+  ],
+  "limits": [
+    "A 10000-file custom index does not establish million-file or full-volume performance equivalence",
+    "General Listary Fuzzy and date-boundary cases are outside this comparison"
+  ]
+}

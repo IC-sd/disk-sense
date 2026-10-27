@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-17",
+  "timezone": "Asia/Shanghai",
+  "mode": "read-only existing-index engine; query-result cache disabled; 3 samples per query; not GUI latency",
+  "entries": 1048738,
+  "measurements": [
+    {
+      "query": "word",
+      "total": 2501,
+      "returned": 100,
+      "medianMs": 213.9,
+      "maximumMs": 227.1
+    },
+    {
+      "query": "listary",
+      "total": 3321,
+      "returned": 100,
+      "medianMs": 238.7,
+      "maximumMs": 238.8
+    },
+    {
+      "query": "vsc",
+      "total": 25146,
+      "returned": 100,
+      "medianMs": 563.5,
+      "maximumMs": 683.7
+    },
+    {
+      "query": "report",
+      "total": 2773,
+      "returned": 100,
+      "medianMs": 205.7,
+      "maximumMs": 309.9
+    },
+    {
+      "query": "baogao",
+      "total": 78,
+      "returned": 78,
+      "medianMs": 75,
+      "maximumMs": 165.3
+    },
+    {
+      "query": "Documents report",
+      "total": 17,
+      "returned": 17,
+      "medianMs": 127.3,
+      "maximumMs": 190.6
+    }
+  ],
+  "validation": {
+    "typecheck": "PASS",
+    "unitTestFiles": 30,
+    "unitTests": 195,
+    "build": "PASS",
+    "desktopSyntaxModules": 33,
+    "electronSearch": "PASS",
+    "pinyinHighlight": "PASS",
+    "all145ResultsLoaded": "PASS",
+    "searchDuringRebuild": "PASS"
+  },
+  "controlledIndexObservation": {
+    "files": 10000,
+    "indexedEntries": 10042,
+    "scanner": "windows-native",
+    "indexDurationMs": 2461,
+    "mainEventLoopMaximumDelayMs": 10.3
+  }
+}

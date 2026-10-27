@@ -1,0 +1,270 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "mode": "Real fixed NTFS C and D volumes; metadata only; isolated SQLite index and owned temporary fixtures",
+  "integration": {
+    "entries": 898683,
+    "roots": [
+      "D:\\",
+      "C:\\"
+    ],
+    "snapshotAndImportMs": 189646,
+    "firstCommittedNativeBatchMs": 2675,
+    "restartAndReplayAndQueryMs": 20401,
+    "scannerAfterRestart": "ntfs-usn",
+    "journal": [
+      {
+        "root": "D:\\",
+        "events": 19806,
+        "changedIdentities": 5150,
+        "nativeReadMs": 155
+      },
+      {
+        "root": "C:\\",
+        "events": 3264,
+        "changedIdentities": 714,
+        "nativeReadMs": 23
+      }
+    ],
+    "checks": [
+      "existing-index-searchable-during-rebuild",
+      "both-volume-snapshots-complete",
+      "no-recursive-native-volume-watchers",
+      "restart-without-another-snapshot",
+      "offline-create",
+      "offline-delete",
+      "offline-size-update",
+      "offline-parent-and-child-rename"
+    ],
+    "interpretation": "A small existing fixture index stayed searchable from the start. First native commit, complete SQLite build, and restart with all accumulated changes are separate measurements. These are not GUI keystroke latencies or fixed startup-time promises.",
+    "measuredBeforeLifecycleOptimization": true
+  },
+  "nativeMetadataExperiment": {
+    "volumes": [
+      {
+        "root": "D:\\",
+        "strategy": "mft-records",
+        "records": 274420,
+        "mftBytes": 1023148032,
+        "snapshotMs": 4198,
+        "damaged": 0,
+        "unresolved": 0
+      },
+      {
+        "root": "C:\\",
+        "strategy": "mft-records",
+        "records": 622155,
+        "mftBytes": 1086324736,
+        "snapshotMs": 40714,
+        "damaged": 0,
+        "unresolved": 0
+      }
+    ],
+    "checks": [
+      "resident-size",
+      "nonresident-size",
+      "standard-information-modified-time",
+      "full-width-reference",
+      "hardlinks",
+      "extension-records",
+      "nonresident-attribute-list",
+      "authenticated-broker-reconnect",
+      "persisted-journal-cursor",
+      "file-update",
+      "file-delete",
+      "parent-and-child-rename",
+      "file-create"
+    ]
+  },
+  "liveDesktopDuringMftBuild": {
+    "windowTitle": "Disk Sense",
+    "visibleAndResponding": true,
+    "existingEntries": 1057752,
+    "queryResultCache": "disabled",
+    "queryMeasurements": [
+      {
+        "query": "word",
+        "medianMs": 254.7,
+        "maximumMs": 526.6
+      },
+      {
+        "query": "listary",
+        "medianMs": 276.4,
+        "maximumMs": 412.2
+      },
+      {
+        "query": "vsc",
+        "medianMs": 847.4,
+        "maximumMs": 1030.8
+      }
+    ],
+    "interpretation": "Read-only engine measurements during the real desktop application's native rebuild; not GUI typing latency."
+  },
+  "validation": {
+    "unitTestFiles": 33,
+    "unitTests": 223,
+    "nativeParserSelfTests": 6,
+    "desktopSyntaxModules": 37,
+    "typecheck": "PASS",
+    "build": "PASS",
+    "electronAdvancedSearch": "PASS",
+    "cancelSnapshotAndReconnect": "PASS",
+    "directorySwapAndReplacement": "PASS",
+    "queryBetweenDeletionBatches": "PASS",
+    "resumeOnlyIncompleteNativeVolume": "PASS",
+    "serviceStartingAtLoginKeepsSnapshot": "PASS",
+    "unchangedJournalAvoidsIndexWrites": "PASS",
+    "offlineHardlinkAfterRestart": "PASS",
+    "lastVerified": "2026-10-19"
+  },
+  "limits": [
+    "Initial complete SQLite construction still takes minutes on this machine",
+    "SCM Auto startup and service restart were verified; Windows itself was not rebooted",
+    "Installation, binary updates and removal require UAC; routine reconnection does not",
+    "Non-NTFS and unauthorized volumes use directory enumeration",
+    "Replaced or overwritten journals, graph gaps and over 250000 changed identities can still require a snapshot",
+    "Broad-query ranking and large directory moves can still have substantial cost"
+  ],
+  "lifecycleOptimization": {
+    "date": "2026-10-18T10:23:43.944Z",
+    "mode": "Owned SQLite backup; deterministic metadata updates and deletions; native I/O excluded",
+    "entries": 897347,
+    "changes": 6000,
+    "constructorMs": 325,
+    "replayMs": 4311,
+    "topCosts": [
+      {
+        "sql": "COMMIT",
+        "calls": 26,
+        "ms": 2213
+      },
+      {
+        "sql": "SELECT * FROM search_ntfs_links WHERE root=? COLLATE NOCASE AND ref=?",
+        "calls": 11651,
+        "ms": 323
+      },
+      {
+        "sql": "DELETE FROM search_files WHERE path LIKE ? ESCAPE '\\'",
+        "calls": 2264,
+        "ms": 307
+      },
+      {
+        "sql": "DELETE FROM search_files WHERE path = ? COLLATE NOCASE",
+        "calls": 2264,
+        "ms": 300
+      },
+      {
+        "sql": "SELECT COUNT(*) AS count FROM search_fts",
+        "calls": 1,
+        "ms": 252
+      },
+      {
+        "sql": "SELECT rowid, path, name, root, kind, is_directory, is_link, size, modified_at, generation FROM search_files WHERE path = ? COLLATE NOCASE",
+        "calls": 4464,
+        "ms": 163
+      },
+      {
+        "sql": "SELECT COUNT(*) AS count FROM search_files",
+        "calls": 3,
+        "ms": 131
+      },
+      {
+        "sql": "DELETE FROM search_ntfs_links WHERE root=? COLLATE NOCASE AND path=? COLLATE NOCASE",
+        "calls": 2264,
+        "ms": 125
+      },
+      {
+        "sql": "INSERT INTO search_ntfs_links VALUES (?,?,?,?,?,?) ON CONFLICT(root,path) DO UPDATE SET ref=excluded.ref,parent=excluded.parent,name=exclude",
+        "calls": 4464,
+        "ms": 100
+      },
+      {
+        "sql": "DELETE FROM search_gaps WHERE path = ? COLLATE NOCASE OR path LIKE ? ESCAPE '\\'",
+        "calls": 2264,
+        "ms": 98
+      },
+      {
+        "sql": "DELETE FROM search_ntfs_links WHERE root=? COLLATE NOCASE AND path LIKE ? ESCAPE '\\'",
+        "calls": 2264,
+        "ms": 93
+      },
+      {
+        "sql": "UPDATE search_files SET size=?,modified_at=?,generation=? WHERE rowid=?",
+        "calls": 2228,
+        "ms": 35
+      },
+      {
+        "sql": "DELETE FROM search_gaps WHERE path = ? COLLATE NOCASE",
+        "calls": 4464,
+        "ms": 20
+      },
+      {
+        "sql": "RELEASE search_remove_target",
+        "calls": 2264,
+        "ms": 20
+      }
+    ]
+  },
+  "warmRestart": {
+    "date": "2026-10-18T10:21:27.027Z",
+    "entries": 899658,
+    "constructorMs": 466,
+    "cachedQueryMs": 817,
+    "replayMs": 92,
+    "snapshotCalls": 0,
+    "uacRequests": 0,
+    "persistent": true,
+    "checks": [
+      "cached-query-before-replay",
+      "offline-parent-and-child-rename",
+      "offline-size",
+      "offline-delete",
+      "offline-create",
+      "hardlinks"
+    ],
+    "journal": [
+      {
+        "root": "C:\\",
+        "changed": 145,
+        "events": 175,
+        "nativeMs": 6
+      },
+      {
+        "root": "D:\\",
+        "changed": 18,
+        "events": 52,
+        "nativeMs": 3
+      },
+      {
+        "root": "C:\\",
+        "changed": 22,
+        "events": 82,
+        "nativeMs": 2
+      },
+      {
+        "root": "D:\\",
+        "changed": 6,
+        "events": 12,
+        "nativeMs": 2
+      }
+    ]
+  },
+  "persistentService": {
+    "programDirectoryOwner": "BUILTIN\\Administrators",
+    "shutdownRpcRejected": true,
+    "serviceName": "DiskSenseSearch-ba65ed60c3b7a89a",
+    "state": "Running",
+    "tokenReaders": [
+      "SYSTEM",
+      "Administrators",
+      "requesting user"
+    ],
+    "ordinaryUserConnection": true,
+    "windowsRebootPerformed": false,
+    "account": "LocalSystem",
+    "programDirectoryUsers": "ReadAndExecute",
+    "serviceRestartAndReconnect": true,
+    "concurrentVolumes": 2,
+    "startMode": "Auto"
+  }
+}

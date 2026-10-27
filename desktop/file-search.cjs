@@ -1,14 +1,17 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { DatabaseSync } = require('node:sqlite')
-const { createSpaceLedger } = require('./space-ledger.cjs')
 const { pathSignals } = require('./explainer.cjs')
 const { normalizeRisk } = require('./risk.cjs')
+const { createNativeEnumerator } = require('./native-enumerator.cjs')
+const { createNtfsIndex } = require('./ntfs-index.cjs')
+const { createWordIndex } = require('./search-word-index.cjs')
+const { createSearchHistory } = require('./search-history.cjs')
 
 const fsp = fs.promises
-const MAX_RESULTS = 500
+const searchNameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
 const MAX_INDEX_ENTRIES = 3_000_000
-const STAT_CONCURRENCY = 32
+const STAT_CONCURRENCY = 64
 const PROGRESS_INTERVAL_MS = 180
 const CHANGE_DEBOUNCE_MS = 220
 const MAX_INCREMENTAL_SUBTREE_ENTRIES = 50_000
@@ -16,8 +19,7 @@ const AUTOMATIC_RECONCILE_MS = 12 * 60 * 60 * 1000
 // Keep the persisted index immediately searchable on launch. A full reconciliation is
 // deliberately deferred and only scheduled for meaningfully stale indexes so short,
 // repeated desktop sessions do not continuously rescan every drive.
-const STARTUP_RECONCILE_STALE_MS = 2 * 60 * 60 * 1000
-const STARTUP_RECONCILE_DELAY_MS = 45 * 1000
+const STARTUP_RECONCILE_STALE_MS = 12 * 60 * 60 * 1000
 const SEARCH_SCHEMA_VERSION = 3
 
 const DOCUMENT_EXTENSIONS = new Set([
@@ -95,6 +97,9 @@ const SEARCH_TRANSIENT_PATHS = [
   '\\logs\\', '\\crashdumps\\', '\\appdata\\local\\packages\\'
 ]
 
+const { fuzzyNameScore, phoneticAliases } = require('./search-query.cjs')
+const { createSearchEngine, nameMatchPositions } = require('./search-engine.cjs')
+
 function searchRanking(item, value, now = Date.now()) {
   const query = String(value || '').trim().toLowerCase()
   if (!query) return { score: 0, priority: 'standard', reason: '名称匹配' }
@@ -139,6 +144,8 @@ function searchRanking(item, value, now = Date.now()) {
 
   let priority = 'standard'
   let reason = '名称匹配'
+  const fuzzyScore = fuzzyNameScore(fileStem(item.name), query)
+  if (score === 400 && fuzzyScore !== null) { score = fuzzyScore; reason = '模糊匹配' }
 
   if (isApplication && exact) {
     score -= 34
@@ -201,7 +208,7 @@ function searchRanking(item, value, now = Date.now()) {
   if (!isInternal && !isTransient) {
     const recencyWeight = inUserContent ? 1 : .35
     score -= recencyBoost * recencyWeight
-    if (recencyBoost >= 10 && priority === 'standard') reason = '近期匹配'
+    if (recencyBoost >= 10 && priority === 'standard' && reason === '名称匹配') reason = '近期匹配'
   }
 
   const depth = fullPath.split(/[\\/]+/u).filter(Boolean).length
@@ -260,10 +267,7 @@ function rankAndOrganizeRows(rows, rankingTerm, { sortByRelevance = true } = {})
       if (modifiedDifference) return modifiedDifference
       const depthDifference = String(left.path).length - String(right.path).length
       if (depthDifference) return depthDifference
-      return String(left.name).localeCompare(String(right.name), undefined, {
-        numeric: true,
-        sensitivity: 'base'
-      })
+      return searchNameCollator.compare(String(left.name), String(right.name))
     })
   }
 
@@ -382,6 +386,10 @@ function createFileSearchService({
   getVolumeRoots = async () => [],
   onProgress = () => {},
   maximumEntries = MAX_INDEX_ENTRIES,
+  nativeEnumeration = process.platform === 'win32',
+  searchCancellation,
+  searchCacheMs,
+  ntfsClientFactory,
   watchFactory = fs.watch,
   changeDebounceMs = CHANGE_DEBOUNCE_MS,
   reconcileIntervalMs = AUTOMATIC_RECONCILE_MS
@@ -393,6 +401,7 @@ function createFileSearchService({
     PRAGMA synchronous = NORMAL;
     PRAGMA temp_store = MEMORY;
     PRAGMA busy_timeout = 1500;
+    PRAGMA cache_size = -65536;
     PRAGMA case_sensitive_like = OFF;
     CREATE TABLE IF NOT EXISTS search_files (
       path TEXT PRIMARY KEY COLLATE NOCASE,
@@ -409,6 +418,16 @@ function createFileSearchService({
     CREATE INDEX IF NOT EXISTS search_files_root ON search_files(root);
     CREATE INDEX IF NOT EXISTS search_files_kind ON search_files(kind);
     CREATE INDEX IF NOT EXISTS search_files_modified ON search_files(modified_at DESC);
+    CREATE INDEX IF NOT EXISTS search_directory_names ON search_files(name,path) WHERE is_directory=1;
+    CREATE TABLE IF NOT EXISTS search_phonetics (
+      path TEXT NOT NULL COLLATE NOCASE, alias TEXT NOT NULL COLLATE NOCASE,
+      initials TEXT NOT NULL COLLATE NOCASE, PRIMARY KEY(path,alias)
+    );
+    CREATE INDEX IF NOT EXISTS search_phonetic_alias ON search_phonetics(alias);
+    CREATE INDEX IF NOT EXISTS search_phonetic_initials ON search_phonetics(initials);
+    CREATE TRIGGER IF NOT EXISTS search_files_delete_phonetics AFTER DELETE ON search_files BEGIN
+      DELETE FROM search_phonetics WHERE path=old.path;
+    END;
     CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
       name,
       tokenize = 'trigram'
@@ -421,10 +440,23 @@ function createFileSearchService({
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS search_gaps (
+      path TEXT PRIMARY KEY COLLATE NOCASE,
+      reason TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS search_scan_queue (
+      generation INTEGER NOT NULL, path TEXT NOT NULL COLLATE NOCASE,
+      root TEXT NOT NULL, priority INTEGER NOT NULL,
+      PRIMARY KEY(generation, path)
+    );
+    CREATE INDEX IF NOT EXISTS search_scan_priority ON search_scan_queue(generation, priority);
+    CREATE TABLE IF NOT EXISTS search_scan_seen (
+      generation INTEGER NOT NULL, path TEXT NOT NULL COLLATE NOCASE,
+      PRIMARY KEY(generation, path)
+    );
     PRAGMA user_version = ${SEARCH_SCHEMA_VERSION};
   `)
 
-  const spaceLedger = createSpaceLedger(database)
   const statements = {
     upsert: database.prepare(`
       INSERT INTO search_files (
@@ -440,11 +472,12 @@ function createFileSearchService({
         size = excluded.size,
         modified_at = excluded.modified_at,
         generation = excluded.generation
-      RETURNING rowid
     `),
     ftsUpsert: database.prepare(
       'INSERT OR REPLACE INTO search_fts(rowid, name) VALUES (?, ?)'
     ),
+    touch: database.prepare('UPDATE search_files SET generation=? WHERE rowid=?'),
+    metadataUpdate: database.prepare('UPDATE search_files SET size=?,modified_at=?,generation=? WHERE rowid=?'),
     removeStale: database.prepare(`DELETE FROM search_files WHERE path LIKE ? ESCAPE '\\' AND generation <> ?
       AND NOT EXISTS (SELECT 1 FROM search_gaps gap WHERE search_files.path = gap.path COLLATE NOCASE
         OR lower(substr(search_files.path, 1, length(gap.path) + 1)) = lower(gap.path || ?))`),
@@ -453,7 +486,7 @@ function createFileSearchService({
     gapFind: database.prepare('SELECT reason FROM search_gaps WHERE path = ? COLLATE NOCASE'),
     gapsRemoveTree: database.prepare(`DELETE FROM search_gaps WHERE path = ? COLLATE NOCASE OR path LIKE ? ESCAPE '\\'`),
     findPath: database.prepare(
-      'SELECT path, is_directory FROM search_files WHERE path = ? COLLATE NOCASE'
+      'SELECT rowid, path, name, root, kind, is_directory, is_link, size, modified_at, generation FROM search_files WHERE path = ? COLLATE NOCASE'
     ),
     removePath: database.prepare(
       'DELETE FROM search_files WHERE path = ? COLLATE NOCASE'
@@ -470,6 +503,7 @@ function createFileSearchService({
   }
 
   const indexedRows = Number(database.prepare('SELECT COUNT(*) AS count FROM search_files').get()?.count || 0)
+  let indexedEntryCount = indexedRows
   const fullTextRows = Number(database.prepare('SELECT COUNT(*) AS count FROM search_fts').get()?.count || 0)
   if (indexedRows && fullTextRows !== indexedRows) {
     database.exec(`
@@ -481,9 +515,33 @@ function createFileSearchService({
 
   let active = null
   let indexRevision = 0
-  let generationSeed = Number(database.prepare('SELECT COALESCE(MAX(generation), 0) AS generation FROM search_files').get().generation)
-  const nextGeneration = () => (generationSeed = Math.max(Date.now(), generationSeed + 1))
+  const savedGeneration = readMetadata('generationSeed')
+  let generationSeed = Number.isSafeInteger(savedGeneration) && savedGeneration >= 0 ? savedGeneration
+    : Number(database.prepare('SELECT COALESCE(MAX(generation), 0) AS generation FROM search_files').get().generation)
+  writeMetadata('generationSeed', generationSeed)
+  const nextGeneration = () => {
+    generationSeed = Math.max(Date.now(), generationSeed + 1)
+    // Persist before use so a restart does not scan every file to allocate a generation.
+    writeMetadata('generationSeed', generationSeed)
+    return generationSeed
+  }
   let closed = false
+  let nativeScanner = null
+  let scannerAttempted = false
+  let scannerKind = 'portable'
+  let stopping = false
+  let enriching = false
+  let ntfsTimer = null, ntfsProcessing = null
+  const wordIndex = createWordIndex(database, { shouldStop: () => stopping || closed,
+    changed: () => { indexRevision++; onProgress(publicStatus()) } })
+  const searchHistory = createSearchHistory(database)
+  const searchEngine = createSearchEngine(database, { revision: () => indexRevision, cancellation: searchCancellation, wordIndexReady: wordIndex.ready, cacheMs: searchCacheMs })
+  const aliasRemove = database.prepare('DELETE FROM search_phonetics WHERE path=? COLLATE NOCASE')
+  const aliasInsert = database.prepare('INSERT OR IGNORE INTO search_phonetics VALUES (?,?,?)')
+  function indexPhonetics(target, name) {
+    aliasRemove.run(target)
+    for (const { alias, initials } of phoneticAliases(name)) aliasInsert.run(target, alias, initials)
+  }
   const automatic = {
     enabled: false,
     roots: [],
@@ -495,6 +553,26 @@ function createFileSearchService({
     lastChangedAt: null,
     lastError: ''
   }
+
+  const ntfs = createNtfsIndex({
+    database, cacheDirectory: path.join(path.dirname(databasePath), 'search-native-cache'),
+    maximumEntries, clientFactory: ntfsClientFactory,
+    upsertItem, removeTarget: target => removeIndexedTarget(target, { deferCount: true }), isDatabaseFile,
+    finalizeRoot(root, generation) {
+      statements.removeStale.run(`${escapeLike(root.replace(/[\\/]+$/, '') + path.sep)}%`, generation, path.sep)
+      recountEntries()
+      indexRevision++
+    },
+    progress: state => publish(state),
+    changed(changes = false) {
+      if (changes) {
+        indexRevision++
+        automatic.lastChangedAt = new Date().toISOString()
+        recountEntries()
+      }
+      onProgress(publicStatus())
+    }
+  })
 
   function readMetadata(key, fallback = null) {
     try {
@@ -510,7 +588,12 @@ function createFileSearchService({
   }
 
   function countEntries() {
-    return Number(statements.count.get()?.count || 0)
+    return indexedEntryCount
+  }
+
+  function recountEntries() {
+    indexedEntryCount = Number(statements.count.get()?.count || 0)
+    return indexedEntryCount
   }
 
   function publicStatus() {
@@ -521,12 +604,17 @@ function createFileSearchService({
       available: true,
       indexed: countEntries() > 0,
       building: Boolean(active),
-      synchronizing: Boolean(automatic.processing),
+      synchronizing: Boolean(automatic.processing || ntfsProcessing || ntfs.status().synchronizing),
       revision: indexRevision,
       coverageVersion: running?.coverageVersion || saved.coverageVersion || 0,
       phase: running?.phase || saved.phase || 'idle',
       roots: running?.roots || saved.roots || [],
-      entries: running?.entries ?? countEntries(),
+      entries: countEntries(),
+      scannedEntries: running?.entries || 0,
+      scanner: scannerKind,
+      ntfs: ntfs.status(),
+        nativeStage: running?.nativeStage || null,
+      enriching,
       directories: running?.directories ?? saved.directories ?? 0,
       inaccessible: running?.inaccessible ?? saved.inaccessible ?? 0,
       skippedLinks: running?.skippedLinks ?? saved.skippedLinks ?? 0,
@@ -549,6 +637,7 @@ function createFileSearchService({
     const now = Date.now()
     if (!force && now - state.lastProgressAt < PROGRESS_INTERVAL_MS) return
     state.lastProgressAt = now
+    if (active) writeMetadata('scan', { generation: active.generation, state: { ...state } })
     onProgress(publicStatus())
   }
 
@@ -558,6 +647,8 @@ function createFileSearchService({
       normalized === databasePath.toLowerCase()
       || normalized === `${databasePath}-wal`.toLowerCase()
       || normalized === `${databasePath}-shm`.toLowerCase()
+      || normalized === path.join(path.dirname(databasePath), 'search-native-cache').toLowerCase()
+      || normalized.startsWith(`${path.join(path.dirname(databasePath), 'search-native-cache').toLowerCase()}${path.sep}`)
     )
   }
 
@@ -598,8 +689,26 @@ function createFileSearchService({
   }
 
   function upsertItem(item) {
-    const indexed = statements.upsert.get(...item.row)
-    statements.ftsUpsert.run(indexed.rowid, item.row[1])
+    if (item.ntfs) item.row[3] = fileKind(item.row[1], Boolean(item.row[4]))
+    const previous = statements.findPath.get(item.target)
+    const sameIdentity = previous && previous.name === item.row[1] && previous.root === item.row[2] && previous.kind === item.row[3]
+      && previous.is_directory === item.row[4] && previous.is_link === item.row[5]
+    if (sameIdentity && previous.size === item.row[6] && previous.modified_at === item.row[7]) {
+      if (item.touchGeneration !== false) statements.touch.run(item.row[8], previous.rowid)
+      statements.gapRemove.run(item.target)
+      return
+    }
+    if (sameIdentity) {
+      statements.metadataUpdate.run(item.row[6], item.row[7], item.touchGeneration === false ? previous.generation : item.row[8], previous.rowid)
+      statements.gapRemove.run(item.target)
+      indexRevision++
+      return
+    }
+    const indexed = statements.upsert.run(...item.row)
+    if (!previous) indexedEntryCount++
+    if (!previous || previous.name !== item.row[1]) statements.ftsUpsert.run(previous?.rowid ?? indexed.lastInsertRowid, item.row[1])
+    if (!previous || previous.name !== item.row[1]) indexPhonetics(item.target, item.row[1])
+    if (!previous || previous.name !== item.row[1]) wordIndex.index(previous?.rowid ?? indexed.lastInsertRowid, item.row[1])
     statements.gapRemove.run(item.target)
     indexRevision++
   }
@@ -607,50 +716,115 @@ function createFileSearchService({
   async function indexRoot(root, generation, state, signal, options = {}) {
     const entryLimit = Math.max(0, Number(options.entryLimit ?? maximumEntries))
     const reportProgress = options.reportProgress !== false
-    const queue = [root]
-    let queueIndex = 0
     const volumeRoot = normalizeRoot(root)
-    while (queueIndex < queue.length && !signal.cancelled && state.entries < entryLimit) {
-      const current = queue[queueIndex]
-      queueIndex += 1
-      state.current = current
-      let entries
+    const enqueue = database.prepare(`INSERT OR IGNORE INTO search_scan_queue(generation,path,root,priority)
+      SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM search_scan_seen WHERE generation=? AND path=? COLLATE NOCASE)`)
+    const next = database.prepare('SELECT path FROM search_scan_queue WHERE generation=? AND root=? COLLATE NOCASE ORDER BY priority,rowid LIMIT 1')
+    const done = database.prepare('INSERT OR IGNORE INTO search_scan_seen VALUES (?,?)')
+    const remove = database.prepare('DELETE FROM search_scan_queue WHERE generation=? AND path=? COLLATE NOCASE')
+    const priority = target => /[\\/](?:node_modules|\.git|\.cache|\.npm|\.pnpm-store|codex-runtimes|appdata|windows|program files(?: \(x86\))?|\$recycle\.bin)(?:[\\/]|$)/iu.test(target) ? 10 : 0
+    const add = (target, preferred = false) => enqueue.run(generation, target, root, preferred ? -10 : priority(target), generation, target)
+    add(root)
+    // Seed user folders and application shortcuts before traversing system/package trees.
+    if (path.resolve(root).toLowerCase() === volumeRoot.toLowerCase()) {
+      for (const base of [process.env.USERPROFILE, process.env.PUBLIC, process.env.ProgramData]) {
+        if (!base || normalizeRoot(base).toLowerCase() !== volumeRoot.toLowerCase()) continue
+        const suffixes = base === process.env.ProgramData ? ['Microsoft/Windows/Start Menu/Programs']
+          : ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music', 'AppData/Roaming/Microsoft/Windows/Start Menu/Programs']
+        for (const suffix of suffixes) {
+          const target = path.join(base, suffix)
+          try {
+            // Do not reach a seeded directory through an ancestor junction.
+            let current = target, linked = false
+            while (current !== volumeRoot) {
+              if ((await fsp.lstat(current)).isSymbolicLink()) { linked = true; break }
+              const parent = path.dirname(current)
+              if (parent === current) break
+              current = parent
+            }
+            if (!linked) add(target, true)
+          } catch { /* optional known folder */ }
+        }
+      }
+    }
+    if (nativeEnumeration && !scannerAttempted) {
+      scannerAttempted = true
       try {
-        entries = await fsp.readdir(current, { withFileTypes: true })
-        state.directories += 1
+        nativeScanner = await createNativeEnumerator(path.join(path.dirname(databasePath), 'search-native-cache'))
+        if (nativeScanner) scannerKind = 'windows-native'
+      }
+      catch { /* portable enumeration also works without a .NET compiler */ }
+    }
+    if (!nativeScanner) scannerKind = 'portable'
+    async function *enumerate(current) {
+      if (nativeScanner) {
+        yield* nativeScanner.enumerate(current)
+        return
+      }
+      const entries = await fsp.readdir(current, { withFileTypes: true })
+      for (const chunk of chunksOf(entries, STAT_CONCURRENCY)) {
+        const inspected = (await Promise.all(chunk.map(entry => inspectEntry(current, entry, volumeRoot, generation)))).filter(Boolean)
+        yield { inspected, done: false }
+      }
+      yield { inspected: [], done: true }
+    }
+    while (!signal.cancelled && state.entries < entryLimit) {
+      const queued = next.get(generation, root)
+      if (!queued) break
+      const current = queued.path
+      state.current = current
+      try {
+        let directoryError = false
+        for await (const batch of enumerate(current)) {
+          if (signal.cancelled || state.entries >= entryLimit) break
+          const inspected = batch.inspected || batch.rows.map(([name, attributes, size, modified]) => {
+            const target = path.join(current, name)
+            if (isDatabaseFile(target)) return null
+            const isDirectory = Boolean(attributes & 16), isLink = Boolean(attributes & 1024)
+            return { target, row: [target, name, volumeRoot, fileKind(name, isDirectory), Number(isDirectory), Number(isLink), isDirectory ? 0 : size, modified, generation], traverse: isDirectory && !isLink, isLink }
+          }).filter(Boolean)
+          database.exec('BEGIN')
+          try {
+            for (const item of inspected) {
+              if (item.inaccessible) { state.inaccessible++; continue }
+              upsertItem(item)
+              state.entries++
+              if (item.traverse) add(item.target)
+              if (item.isLink) state.skippedLinks++
+              if (state.entries >= entryLimit) break
+            }
+            if (batch.error) {
+              statements.gapSet.run(current, `enumeration-${batch.error}`)
+              state.inaccessible++
+              directoryError = true
+            }
+            if (batch.done) {
+              if (!directoryError) statements.gapRemove.run(current)
+              done.run(generation, current)
+              remove.run(generation, current)
+              state.directories++
+            }
+            database.exec('COMMIT')
+          } catch (error) { database.exec('ROLLBACK'); throw error }
+          if (reportProgress) publish(state)
+          await immediate()
+        }
       } catch (error) {
+        if (error?.code === 'NATIVE_ENUMERATOR_FAILED') {
+          nativeScanner?.close()
+          nativeScanner = null
+          scannerKind = 'portable'
+          continue
+        }
         statements.gapSet.run(current, String(error?.code || 'read-failed'))
+        done.run(generation, current)
+        remove.run(generation, current)
         indexRevision++
         state.inaccessible += 1
         if (reportProgress) publish(state)
-        continue
-      }
-      statements.gapRemove.run(current)
-
-      for (const chunk of chunksOf(entries, STAT_CONCURRENCY)) {
-        if (signal.cancelled || state.entries >= entryLimit) break
-        const inspected = (await Promise.all(
-          chunk.map(entry => inspectEntry(current, entry, volumeRoot, generation))
-        )).filter(Boolean)
-        database.exec('BEGIN')
-        try {
-          for (const item of inspected) {
-            if (item.inaccessible) { state.inaccessible++; continue }
-            upsertItem(item)
-            state.entries += 1
-            if (item.traverse) queue.push(item.target)
-            if (item.isLink) state.skippedLinks += 1
-            if (state.entries >= entryLimit) break
-          }
-          database.exec('COMMIT')
-        } catch (error) {
-          database.exec('ROLLBACK')
-          throw error
-        }
-        if (reportProgress) publish(state)
-        await immediate()
       }
     }
+    if (signal.cancelled || state.entries >= entryLimit) { nativeScanner?.close(); nativeScanner = null; scannerAttempted = false }
     if (state.entries >= entryLimit) state.truncated = true
   }
 
@@ -667,18 +841,19 @@ function createFileSearchService({
     onProgress(publicStatus())
   }
 
-  function removeIndexedTarget(target) {
+  function removeIndexedTarget(target, { deferCount = false } = {}) {
     const clean = target.replace(/[\\/]+$/, '')
     const prefix = `${clean}${path.sep}`.toLowerCase()
-    database.exec('BEGIN')
+    database.exec('SAVEPOINT search_remove_target')
     try {
       statements.removePath.run(clean)
       statements.removeDescendants.run(`${escapeLike(prefix)}%`)
       statements.gapsRemoveTree.run(clean, `${escapeLike(prefix)}%`)
       indexRevision++
-      database.exec('COMMIT')
+      database.exec('RELEASE search_remove_target')
+      if (!deferCount) recountEntries()
     } catch (error) {
-      database.exec('ROLLBACK')
+      database.exec('ROLLBACK TO search_remove_target; RELEASE search_remove_target')
       throw error
     }
   }
@@ -721,7 +896,13 @@ function createFileSearchService({
       else {
         statements.removeStale.run(`${escapeLike(target.replace(/[\\/]+$/, '') + path.sep)}%`, generation, path.sep)
         indexRevision++
+        recountEntries()
       }
+      database.prepare('DELETE FROM search_scan_queue WHERE generation=?').run(generation)
+      database.prepare('DELETE FROM search_scan_seen WHERE generation=?').run(generation)
+      nativeScanner?.close()
+      nativeScanner = null
+      scannerAttempted = false
     }
   }
 
@@ -736,6 +917,7 @@ function createFileSearchService({
 
   function queueChangedPath(root, filename) {
     if (!automatic.enabled || closed || !filename) return
+    if (ntfs.usable(root)) return
     const relative = Buffer.isBuffer(filename) ? filename.toString('utf8') : String(filename)
     if (!relative.trim()) return
     const normalizedRoot = path.resolve(root)
@@ -797,10 +979,15 @@ function createFileSearchService({
             .map(root => path.resolve(root).toLowerCase()).sort().join('|')
         if (rootsChanged && currentRoots.length) {
           automatic.roots = currentRoots
+          await ntfs.prepare(currentRoots)
           installWatchers(currentRoots)
         }
-        const result = await rebuild({ roots: automatic.roots })
-        if (result.started) await waitForIdle()
+        if (ntfs.status().active) await synchronizeNtfs()
+        const fallback = automatic.roots.filter(root => !ntfs.usable(root) || !ntfs.hasSnapshot(root))
+        if (fallback.length) {
+          const result = await rebuild({ roots: fallback })
+          if (result.started) await waitForIdle()
+        }
       } catch (error) {
         automatic.lastError = error instanceof Error ? error.message : String(error)
         publishAutomatic()
@@ -814,6 +1001,7 @@ function createFileSearchService({
   function installWatchers(roots) {
     closeWatchers()
     for (const root of roots) {
+      if (ntfs.usable(root)) continue
       try {
         const watcher = watchFactory(root, { recursive: true, persistent: false }, (_eventType, filename) => {
           queueChangedPath(root, filename)
@@ -839,18 +1027,109 @@ function createFileSearchService({
     if (!roots.length) throw new Error('没有找到可建立索引的本地磁盘')
     automatic.enabled = true
     automatic.roots = roots
+    const nativeReady = await ntfs.prepare(roots)
     installWatchers(roots)
     const savedRoots = publicStatus().roots.map(root => path.resolve(root).toLowerCase()).sort()
     const currentRoots = roots.map(root => path.resolve(root).toLowerCase()).sort()
     const rootsChanged = savedRoots.join('|') !== currentRoots.join('|')
     const completedAt = Date.parse(publicStatus().completedAt || '')
     const stale = !Number.isFinite(completedAt) || Date.now() - completedAt >= STARTUP_RECONCILE_STALE_MS
-    if (!countEntries() || rootsChanged) await rebuild({ roots })
-    const nextReconcile = !countEntries() || rootsChanged || !stale
-      ? (automatic.watchers.size ? reconcileIntervalMs : Math.min(reconcileIntervalMs, 30 * 60 * 1000))
-      : STARTUP_RECONCILE_DELAY_MS
+    const interrupted = readMetadata('scan')
+    const allNativeComplete = nativeReady && roots.every(root => ntfs.usable(root) && ntfs.hasSnapshot(root))
+    if (allNativeComplete && interrupted) {
+      // A completed native snapshot supersedes an old directory-scan checkpoint.
+      writeMetadata('scan', null)
+      database.exec('DELETE FROM search_scan_queue; DELETE FROM search_scan_seen;')
+      writeMetadata('status', { ...readMetadata('status', {}), phase: 'ready', cancelled: false })
+    }
+    const needsNativeSnapshot = nativeReady && roots.some(root => ntfs.usable(root) && !ntfs.hasSnapshot(root))
+    if (!countEntries() || rootsChanged || (interrupted && !allNativeComplete) || needsNativeSnapshot) await rebuild({ roots, resume: true })
+    else if (nativeReady) await synchronizeNtfs()
+    // Reuse the persisted index immediately. Age alone never starts a full scan
+    // 45 seconds after every launch; watchers maintain it between scheduled audits.
+    const nextReconcile = automatic.watchers.size ? reconcileIntervalMs
+      : Math.min(reconcileIntervalMs, stale ? 5 * 60 * 1000 : 30 * 60 * 1000)
     scheduleReconcile(nextReconcile)
+    scheduleNtfs()
     return publicStatus()
+  }
+
+  function scheduleNtfs() {
+    if (!automatic.enabled || closed || ntfsTimer || !ntfs.status().active) return
+    ntfsTimer = setTimeout(() => {
+      ntfsTimer = null
+      void synchronizeNtfs().catch(error => { automatic.lastError = error.message; publishAutomatic() }).finally(scheduleNtfs)
+    }, 2000)
+    ntfsTimer.unref?.()
+  }
+
+  async function synchronizeNtfs() {
+    if (ntfsProcessing) return ntfsProcessing
+    if (active || automatic.processing || !ntfs.status().active || closed) return
+    ntfsProcessing = (async () => {
+      let reset = false
+      for (const root of automatic.roots) {
+        if (!ntfs.usable(root) || !ntfs.hasSnapshot(root)) continue
+        const result = await ntfs.replay(root, nextGeneration())
+        if (result.reset) reset = true
+      }
+      if (reset && !closed) return { reset: true }
+      scannerKind = 'ntfs-usn'
+      return { reset: false }
+    })()
+    let result
+    try { result = await ntfsProcessing } finally { ntfsProcessing = null }
+    if (result?.reset && !active && !stopping && automatic.enabled) {
+      // A changed/wrapped journal cannot be treated as a successfully applied delta.
+      await rebuild({ roots: automatic.roots, resume: true })
+    }
+  }
+
+  async function enableNtfs() {
+    if (active) { active.signal.cancelled = true; await active.promise }
+    if (ntfsProcessing) await ntfsProcessing
+    if (automatic.processing) await automatic.processing
+    const roots = uniqueRoots(await getVolumeRoots())
+    if (ntfsTimer) clearTimeout(ntfsTimer)
+    ntfsTimer = null
+    let ready
+    try { ready = await ntfs.prepare(roots, { elevate: true }) }
+    catch (error) {
+      // Cancelling a Windows prompt must not leave automatic synchronization paused.
+      await ntfs.prepare(roots)
+      installWatchers(roots)
+      scheduleNtfs()
+      throw error
+    }
+    if (!ready) throw new Error('当前磁盘无法启用 NTFS 加速')
+    automatic.enabled = true
+    automatic.roots = roots
+    automatic.pending.clear()
+    installWatchers(roots)
+    let result
+    if (roots.every(root => ntfs.usable(root) && ntfs.hasSnapshot(root))) {
+      // Reauthorizing an existing index only needs the saved journal cursor.
+      statements.metadataSet.run('scan', 'null')
+      database.exec('DELETE FROM search_scan_queue; DELETE FROM search_scan_seen;')
+      await synchronizeNtfs()
+      if (!active) writeMetadata('status', { ...readMetadata('status', {}), phase: 'ready', cancelled: false, roots })
+      result = { started: Boolean(active), status: publicStatus() }
+    } else result = await rebuild({ roots })
+    scheduleNtfs()
+    return result
+  }
+
+  async function disableNtfs() {
+    if (active) { active.signal.cancelled = true; await active.promise }
+    if (ntfsProcessing) await ntfsProcessing
+    if (automatic.processing) await automatic.processing
+    if (ntfsTimer) clearTimeout(ntfsTimer)
+    ntfsTimer = null
+    try {
+      await ntfs.uninstall()
+      await startAutomatic()
+      return { started: false, status: publicStatus() }
+    } finally { scheduleNtfs() }
   }
 
   function stopAutomatic({ discardPending = false } = {}) {
@@ -858,6 +1137,8 @@ function createFileSearchService({
     closeWatchers()
     if (automatic.changeTimer) clearTimeout(automatic.changeTimer)
     if (automatic.reconcileTimer) clearTimeout(automatic.reconcileTimer)
+    if (ntfsTimer) clearTimeout(ntfsTimer)
+    ntfsTimer = null
     automatic.changeTimer = null
     automatic.reconcileTimer = null
     if (discardPending) automatic.pending.clear()
@@ -871,6 +1152,7 @@ function createFileSearchService({
     }
     if (automatic.pending.size) await flushPendingChanges()
     if (automatic.processing) await automatic.processing
+    if (ntfsProcessing) await ntfsProcessing
     return publicStatus()
   }
 
@@ -885,15 +1167,24 @@ function createFileSearchService({
     const roots = uniqueRoots(requestedRoots)
     if (!roots.length) throw new Error('没有找到可建立索引的磁盘')
 
-    const generation = nextGeneration()
+    const checkpoint = input.resume ? readMetadata('scan') : null
+    const resumable = !roots.some(root => ntfs.usable(root))
+      && checkpoint?.state?.roots?.map(root => path.resolve(root).toLowerCase()).sort().join('|')
+      === roots.map(root => path.resolve(root).toLowerCase()).sort().join('|')
+      && database.prepare('SELECT 1 FROM search_scan_queue WHERE generation=? LIMIT 1').get(checkpoint?.generation || 0)
+    const generation = resumable ? checkpoint.generation : nextGeneration()
+    if (!resumable) {
+      database.exec('DELETE FROM search_scan_queue; DELETE FROM search_scan_seen;')
+    }
     const signal = { cancelled: false }
+    const reusedNativeRoots = new Set()
     const state = {
       phase: 'building',
       roots,
-      entries: 0,
-      directories: 0,
-      inaccessible: 0,
-      skippedLinks: 0,
+      entries: resumable ? checkpoint.state.entries : 0,
+      directories: resumable ? checkpoint.state.directories : 0,
+      inaccessible: resumable ? checkpoint.state.inaccessible : 0,
+      skippedLinks: resumable ? checkpoint.state.skippedLinks : 0,
       current: '',
       startedAt: new Date().toISOString(),
       startedAtMs: Date.now(),
@@ -905,17 +1196,35 @@ function createFileSearchService({
       try {
         for (const root of roots) {
           if (signal.cancelled || state.truncated) break
-          statements.gapsRemoveTree.run(root.replace(/[\\/]+$/, ''), `${escapeLike(root.replace(/[\\/]+$/, '') + path.sep)}%`)
-          await indexRoot(root, generation, state, signal)
+          if (!resumable) statements.gapsRemoveTree.run(root.replace(/[\\/]+$/, ''), `${escapeLike(root.replace(/[\\/]+$/, '') + path.sep)}%`)
+          let usedNative = false
+          if (ntfs.usable(root)) {
+            if (input.resume && ntfs.hasSnapshot(root)) {
+              const replayed = await ntfs.replay(root, generation)
+              if (replayed.used && !replayed.reset) {
+                reusedNativeRoots.add(root)
+                usedNative = true
+                const counts = database.prepare('SELECT COUNT(*) AS entries,COALESCE(SUM(is_directory),0) AS directories FROM search_files WHERE root=? COLLATE NOCASE').get(root)
+                state.entries += Number(counts.entries); state.directories += Number(counts.directories)
+              }
+            }
+            if (!usedNative) {
+              scannerKind = 'ntfs-mft'
+              usedNative = await ntfs.snapshot(root, generation, state, signal)
+            }
+          }
+          if (!usedNative && !signal.cancelled) await indexRoot(root, generation, state, signal)
         }
         if (!signal.cancelled && !state.truncated) {
           database.exec('BEGIN')
           try {
             for (const root of roots) {
+              if (reusedNativeRoots.has(root)) continue
               const prefix = `${root.replace(/[\\/]+$/, '')}${path.sep}`.toLowerCase()
               statements.removeStale.run(`${escapeLike(prefix)}%`, generation, path.sep)
             }
             database.exec('COMMIT')
+            recountEntries()
           } catch (error) {
             database.exec('ROLLBACK')
             throw error
@@ -933,6 +1242,10 @@ function createFileSearchService({
         delete finished.lastProgressAt
         delete finished.current
         writeMetadata('status', finished)
+        if (!signal.cancelled && !state.truncated) {
+          statements.metadataSet.run('scan', 'null')
+          database.exec('DELETE FROM search_scan_queue; DELETE FROM search_scan_seen;')
+        } else writeMetadata('scan', signal.explicit || state.truncated ? null : { generation, state })
         return finished
       } catch (error) {
         const failed = {
@@ -949,7 +1262,11 @@ function createFileSearchService({
         writeMetadata('status', failed)
         return failed
       } finally {
+        nativeScanner?.close()
+        nativeScanner = null
+        scannerAttempted = false
         active = null
+        scheduleNtfs()
         onProgress(publicStatus())
         if (automatic.pending.size) scheduleChangeFlush()
       }
@@ -972,189 +1289,106 @@ function createFileSearchService({
   function cancel() {
     if (!active) return { cancelled: false }
     active.signal.cancelled = true
+    active.signal.explicit = true
     return { cancelled: true, generation: active.generation }
   }
 
   function search(input = {}) {
     const started = Date.now()
-    const rawQuery = String(input.query || '').trim()
-    if (!rawQuery) return { items: [], truncated: false, tookMs: 0, index: publicStatus() }
-    const query = rawQuery.toLowerCase()
-    const scope = ['directory', 'drive', 'all'].includes(input.scope) ? input.scope : 'all'
-    const kind = [
-      'all', 'folder', 'file', 'application', 'document', 'image', 'video', 'audio', 'archive', 'installer', 'code'
-    ].includes(input.kind) ? input.kind : 'all'
-    const sort = ['relevance', 'name', 'modified', 'size'].includes(input.sort)
-      ? input.sort
-      : 'relevance'
-    const modified = ['any', 'day', 'week', 'month', 'year'].includes(input.modified)
-      ? input.modified
-      : 'any'
-    const limit = Math.max(1, Math.min(MAX_RESULTS, Number(input.limit || 200)))
-    const target = scope === 'all' ? '' : normalizeTarget(input.root || 'C:\\')
-    const wildcard = hasWildcard(query)
-    const useFullText = !wildcard && [...query].length >= 3
-    const source = useFullText
-      ? 'search_files AS file JOIN search_fts ON search_fts.rowid = file.rowid'
-      : 'search_files AS file'
-    let where
-    let parameters
-    if (useFullText) {
-      where = ['search_fts MATCH ?']
-      parameters = [`"${query.replaceAll('"', '""')}"`]
-    } else if (wildcard) {
-      const pattern = wildcardToLike(query)
-      if (wildcardSearchesPath(query)) {
-        where = ['file.path LIKE ? ESCAPE \'\\\'']
-        parameters = [pattern]
-      } else {
-        where = ['file.name LIKE ? ESCAPE \'\\\'']
-        parameters = [pattern]
-      }
-    } else {
-      const pattern = [...query].length <= 2
-        ? `${escapeLike(query)}%`
-        : `%${escapeLike(query)}%`
-      where = ['file.name LIKE ? ESCAPE \'\\\'']
-      parameters = [pattern]
-    }
-
-    if (scope === 'drive') {
-      where.push('file.root = ? COLLATE NOCASE')
-      parameters.push(normalizeRoot(target))
-    } else if (scope === 'directory') {
-      const prefix = `${target.replace(/[\\/]+$/, '')}${path.sep}`
-      where.push('(file.path = ? COLLATE NOCASE OR file.path LIKE ? ESCAPE \'\\\')')
-      parameters.push(target, `${escapeLike(prefix)}%`)
-    }
-
-    const inferredWildcardKind = wildcard && kind === 'all' ? wildcardKind(query) : null
-    const effectiveKind = inferredWildcardKind || kind
-    if (effectiveKind === 'file') where.push('file.is_directory = 0')
-    else if (effectiveKind !== 'all') {
-      where.push('file.kind = ?')
-      parameters.push(effectiveKind)
-    }
-
-    const age = { day: 1, week: 7, month: 30, year: 365 }[modified]
-    if (age) {
-      where.push('file.modified_at >= ?')
-      parameters.push(Date.now() - age * 24 * 60 * 60 * 1000)
-    }
-
-    const order = {
-      relevance: `
-        CASE
-          WHEN file.name = ? COLLATE NOCASE THEN 0
-          WHEN file.name LIKE ? ESCAPE '\\' THEN 1
-          WHEN file.name LIKE ? ESCAPE '\\' THEN 2
-          WHEN file.name LIKE ? ESCAPE '\\' THEN 3
-          ELSE 4
-        END,
-        CASE
-          WHEN file.kind = 'application' THEN 0
-          WHEN file.is_directory = 1 THEN 1
-          WHEN file.kind IN ('document', 'image', 'video', 'audio', 'archive') THEN 2
-          ELSE 3
-        END,
-        file.modified_at DESC, LENGTH(file.path) ASC, file.name ASC
-      `,
-      name: 'file.name ASC, file.path ASC',
-      modified: 'file.modified_at DESC, file.name ASC',
-      size: 'file.size DESC, file.name ASC'
-    }[sort]
-    const rankingTerm = query.replaceAll('*', '').replaceAll('?', '') || query
-    const orderParameters = sort === 'relevance'
-      ? [
-          rankingTerm,
-          `${escapeLike(rankingTerm)}.%`,
-          `${escapeLike(rankingTerm)}%`,
-          `%${escapeLike(rankingTerm)}%`
-        ]
-      : []
-    const sql = `
-      SELECT file.path, file.name, file.root, file.kind,
-        file.is_directory, file.is_link, file.size, file.modified_at
-      FROM ${source}
-      WHERE ${where.join(' AND ')}
-      ORDER BY ${order}
-      LIMIT ?
-    `
-    const candidateLimit = sort === 'relevance'
-      ? Math.min(MAX_RESULTS * 4, Math.max(limit + 1, Math.ceil(limit * 4)))
-      : limit + 1
-    const rows = database.prepare(sql).all(...parameters, ...orderParameters, candidateLimit)
-    const organizedRows = rankAndOrganizeRows(rows, rankingTerm, { sortByRelevance: sort === 'relevance' })
-    const uniqueRows = organizedRows.rows
-    const rankingFor = organizedRows.rankingFor
-    const truncated = uniqueRows.length > limit || rows.length >= candidateLimit
-    const items = uniqueRows.slice(0, limit).map(row => {
+    if (!String(input.query || '').trim()) return { items: [], truncated: false, tookMs: 0, index: publicStatus() }
+    const inferredKind = wildcardKind(String(input.query || '').trim())
+    const result = searchEngine.search({ ...input, inferredKind })
+    const presentationStarted = performance.now()
+    const items = result.rows.map(row => {
       const signal = pathSignals(row.path)
       const isDirectory = Boolean(row.is_directory)
-      const ranking = rankingFor(row)
+      const ranking = searchRanking(row, result.parsed.text)
       const extension = isDirectory ? '' : path.extname(row.name).toLowerCase()
+      const displayName = row.kind === 'application' && ['.lnk', '.url', '.appref-ms'].includes(extension) ? fileStem(row.name) : row.name
+      const match = nameMatchPositions(displayName, result.parsed, row.kind === 'application')
       return {
-        name: row.name,
-        displayName: row.kind === 'application' && ['.lnk', '.url', '.appref-ms'].includes(extension)
-          ? fileStem(row.name)
-          : row.name,
-        path: row.path,
-        parent: path.dirname(row.path),
-        isDirectory,
-        isLink: Boolean(row.is_link),
-        size: isDirectory ? null : Number(row.size),
-        fileCount: isDirectory ? null : 1,
-        sizeEstimated: false,
-        modifiedAt: Number(row.modified_at),
-        extension,
-        searchKind: row.kind,
-        searchPriority: ranking.priority,
-        relevanceReason: ranking.reason,
-        ...signal,
-        risk: normalizeRisk(signal.risk)
+        name: row.name, displayName, path: row.path, parent: path.dirname(row.path),
+        isDirectory, isLink: Boolean(row.is_link), size: isDirectory ? null : Number(row.size),
+        fileCount: isDirectory ? null : 1, sizeEstimated: false, modifiedAt: Number(row.modified_at), extension,
+        searchKind: row.kind, searchPriority: ranking.priority,
+        relevanceReason: row.selectionReason || (match.phonetic ? '拼音匹配' : match.fuzzy ? '模糊匹配' : ranking.reason),
+        matchPositions: match.positions, matchTitle: displayName,
+        ...signal, risk: normalizeRisk(signal.risk)
       }
     })
+    result.diagnostics.stages.presentation = performance.now() - presentationStarted
     return {
-      items,
-      truncated,
-      tookMs: Date.now() - started,
-      index: publicStatus()
+      items, sessionId: result.sessionId, total: result.total, offset: result.offset,
+      nextOffset: result.nextOffset, truncated: result.nextOffset !== null,
+      tookMs: Date.now() - started, index: publicStatus(), diagnostics: result.diagnostics
     }
   }
-
   async function close() {
     if (closed) return
+    stopping = true
     stopAutomatic()
     if (active) active.signal.cancelled = true
     await waitForIdle()
-    await spaceLedger.waitForIdle()
+    await enrichmentTask
+    await wordEnrichmentTask
+    ntfs.close()
     closed = true
     database.close()
   }
 
   async function checkpoint() {
+    stopping = true
     stopAutomatic()
     if (active) active.signal.cancelled = true
     await waitForIdle()
-    await spaceLedger.waitForIdle()
+    await enrichmentTask
+    await wordEnrichmentTask
     database.exec('PRAGMA wal_checkpoint(TRUNCATE)')
     return publicStatus()
   }
 
+  // Enrich an existing index in small resumable batches. This never turns a
+  // usable index into a blocking full rebuild just to add pinyin support.
+  const enrichmentTask = (async () => {
+    if (!indexedRows || readMetadata('phonetics')?.complete) return
+    enriching = true
+    let cursor = readMetadata('phonetics')?.cursor || 0
+    const batchQuery = database.prepare("SELECT rowid,path,name FROM search_files WHERE rowid>? AND name GLOB '*[㐀-鿿]*' ORDER BY rowid LIMIT 128")
+    while (!stopping) {
+      await immediate()
+      if (stopping) break
+      const batch = batchQuery.all(cursor)
+      if (!batch.length) { writeMetadata('phonetics', { cursor, complete: true }); break }
+      database.exec('BEGIN')
+      try {
+        for (const row of batch) indexPhonetics(row.path, row.name)
+        cursor = batch.at(-1).rowid
+        writeMetadata('phonetics', { cursor, complete: false })
+        database.exec('COMMIT')
+      } catch (error) { database.exec('ROLLBACK'); throw error }
+      indexRevision++
+      automatic.lastChangedAt = new Date().toISOString()
+      publishAutomatic()
+    }
+    enriching = false
+  })().catch(error => { enriching = false; automatic.lastError = String(error.message || error) })
+  const wordEnrichmentTask = wordIndex.start().catch(error => { automatic.lastError = String(error.message || error) })
+
   return {
     status: publicStatus,
-    observeSpace: relationship => spaceLedger.observe(relationship),
-    spaceSummary: () => spaceLedger.summary(publicStatus),
-    forgetSpace: entityId => spaceLedger.forget(entityId),
     startAutomatic,
+    enableNtfs,
+    disableNtfs,
     stopAutomatic,
     rebuild,
     rebuildScope,
     cancel,
     search,
+    recordSelection(input) { const recorded = searchHistory.record(input); if (recorded) indexRevision++; return { recorded } },
     checkpoint,
     close,
-    waitForIdle
+    waitForIdle,
+    waitForQueryIndex: () => wordEnrichmentTask
   }
 }
 

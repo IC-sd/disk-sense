@@ -4,10 +4,11 @@ const os = require('node:os')
 const { createHash } = require('node:crypto')
 const { attribute } = require('./app-attribution.cjs')
 const { matchInstalledApplication } = require('./windows-app-inventory.cjs')
+const { readProjectManifest } = require('./project-manifests.cjs')
 
 const MAX_ANCESTORS = 8
 const MAX_DIRECTORY_ENTRIES = 600
-const RELATIONSHIP_VERSION = 2
+const RELATIONSHIP_VERSION = 3
 const GENERIC_OWNERS = new Set(['appdata', 'local', 'locallow', 'roaming', 'programdata', 'program files', 'program files (x86)', 'packages', 'applications', 'apps', 'common files', 'microsoft', 'google', 'tencent', 'alibaba'])
 
 const PROJECT_CATALOGERS = [
@@ -94,22 +95,6 @@ function catalogDirectory(names) {
   return null
 }
 
-async function projectName(rootPath, catalog) {
-  if (catalog.id !== 'node') return path.basename(rootPath)
-  let handle
-  try {
-    handle = await fsp.open(path.join(rootPath, 'package.json'), 'r')
-    const buffer = Buffer.alloc(64 * 1024)
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
-    const body = JSON.parse(buffer.subarray(0, bytesRead).toString('utf8'))
-    return String(body?.productName || body?.name || path.basename(rootPath)).trim() || path.basename(rootPath)
-  } catch {
-    return path.basename(rootPath)
-  } finally {
-    try { await handle?.close() } catch { /* ignore close failures */ }
-  }
-}
-
 async function findProjectContext(filePath, isDirectory = false) {
   let current = isDirectory ? path.resolve(filePath) : path.dirname(path.resolve(filePath))
   const contexts = []
@@ -117,7 +102,8 @@ async function findProjectContext(filePath, isDirectory = false) {
     const names = await directoryNames(current)
     const catalog = catalogDirectory(names)
     if (catalog) {
-      const name = await projectName(current, catalog)
+      const manifest = await readProjectManifest(current, catalog, names)
+      const name = manifest.name || path.basename(current)
       const role = roleForPath(filePath, current)
       const markerState = await Promise.all(names.filter(name => catalog.primaryMatches.some(marker => name.toLowerCase() === marker || name.toLowerCase().endsWith(marker))).map(async name => {
         try {
@@ -134,10 +120,12 @@ async function findProjectContext(filePath, isDirectory = false) {
         role,
         confidence: catalog.confidence,
         basis: 'project-markers',
+        provenance: { provider: `project-${catalog.id}`, manifest },
         markerState,
         limited: names.length >= MAX_DIRECTORY_ENTRIES,
         evidence: [
           `项目根目录包含 ${catalog.primaryMatches.join('、')}`,
+          ...(manifest.status === 'parsed' && manifest.name ? [`${manifest.fileName} 声明名称“${manifest.name}”${manifest.version ? `，版本 ${manifest.version}` : ''}；只读取清单，未执行安装或构建脚本`] : [`清单状态：${manifest.status}；名称取自目录，不等于已验证的发布身份`]),
           ...(catalog.supportMatches.length ? [`同时发现 ${catalog.supportMatches.slice(0, 4).join('、')} 等结构标记`] : []),
           role.evidence
         ]
@@ -157,6 +145,43 @@ async function findProjectContext(filePath, isDirectory = false) {
     else break
   }
   return { ...owner, components: contexts.filter(candidate => candidate !== owner && candidate.rootPath.startsWith(owner.rootPath + path.sep)) }
+}
+
+async function portableApplicationContext(filePath, isDirectory = false) {
+  let current = isDirectory ? path.resolve(filePath) : path.dirname(path.resolve(filePath))
+  for (let depth = 0; depth <= MAX_ANCESTORS; depth++) {
+    const manifestPath = path.join(current, 'App', 'AppInfo', 'appinfo.ini')
+    let handle
+    try {
+      const stat = await fsp.lstat(manifestPath)
+      if (stat.isFile() && !stat.isSymbolicLink() && stat.size <= 16 * 1024) {
+        handle = await fsp.open(manifestPath, 'r')
+        const buffer = Buffer.alloc(16 * 1024)
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+        const text = buffer.subarray(0, bytesRead).toString('utf8')
+        const sections = Object.fromEntries(text.split(/(?=^\s*\[[^\]]+\]\s*$)/m).map(section => [section.match(/^\s*\[([^\]]+)\]/)?.[1]?.toLowerCase(), section]))
+        const field = (section, key) => (sections[section] || '').match(new RegExp(`^\\s*${key}\\s*=\\s*([^\\r\\n]+)`, 'im'))?.[1]?.trim().slice(0, 200) || ''
+        const name = field('details', 'Name')
+        const appId = field('details', 'AppID')
+        const launcher = field('control', 'Start')
+        if (name && appId && /^[^\\/:]+\.exe$/i.test(launcher)) {
+          const launcherStat = await fsp.lstat(path.join(current, launcher))
+          if (launcherStat.isFile() && !launcherStat.isSymbolicLink()) return {
+            entityType: 'application', entityId: `portable:${appId}:${current.toLowerCase()}`, entityName: name,
+            entityKind: 'PortableApps 便携应用（本地清单）', rootPath: current, installLocation: null,
+            publisher: field('details', 'Publisher') || null, role: roleForPath(filePath, current), confidence: .94,
+            basis: 'portable-manifest', provenance: { provider: 'portableapps-manifest', manifestDigest: createHash('sha256').update(buffer.subarray(0, bytesRead)).digest('hex') },
+            evidence: ['App/AppInfo/appinfo.ini 声明应用身份，并存在对应的本地启动程序；未运行程序', '便携清单是本地声明，未经发布者签名验证；数据目录和缓存资格需分别判断']
+          }
+        }
+      }
+    } catch { /* no supported portable manifest at this ancestor */ }
+    finally { try { await handle?.close() } catch { /* ignore close failures */ } }
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return null
 }
 
 function conventionalApplicationContext(filePath) {
@@ -204,6 +229,8 @@ async function explainRelationship(filePath, options = {}) {
     const role = roleForPath(filePath, footprintRoot)
     const evidence = matchType === 'install-path'
       ? `路径位于 Windows 登记的安装目录 ${root}`
+      : matchType === 'package-install-path' ? `路径位于当前用户 MSIX/Appx 包登记的安装目录 ${root}`
+        : matchType === 'package-data-path' ? `路径位于当前用户已登记包 ${application.packageFamilyName} 的独立应用数据目录`
       : matchType === 'icon-path' ? `路径位于应用图标所在目录 ${root}，并非独立的安装目录证明`
         : `目录名称与 Windows 已安装应用“${application.displayName}”一致；这是关联线索，不证明由它创建`
     return {
@@ -211,6 +238,7 @@ async function explainRelationship(filePath, options = {}) {
       entityId: `installed-application:${application.registryKey.toLowerCase()}`,
       entityName: application.displayName,
       entityKind: 'Windows 已安装应用',
+      provenance: { provider: application.source || 'uninstall-registry', packageFamilyName: application.packageFamilyName || null, version: application.version || null },
       rootPath: footprintRoot,
       installLocation: application.installLocation || null,
       publisher: application.publisher || null,
@@ -225,7 +253,11 @@ async function explainRelationship(filePath, options = {}) {
       ]
     }
   }
+  const portable = await portableApplicationContext(filePath, Boolean(options.isDirectory))
+  // An embedded portable tool is a more specific owner than the enclosing repository.
+  if (portable && (!project || normalizedSegments(portable.rootPath).length > normalizedSegments(project.rootPath).length)) return portable
   if (project) return project
+  if (portable) return portable
   if (knownOwner) {
     const role = roleForPath(filePath)
     return {
@@ -304,6 +336,7 @@ module.exports = {
   catalogDirectory,
   roleForPath,
   findProjectContext,
+  portableApplicationContext,
   conventionalApplicationContext,
   explainRelationship,
   relationshipNarrative,

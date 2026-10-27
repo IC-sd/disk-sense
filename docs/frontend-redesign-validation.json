@@ -1,0 +1,346 @@
+{
+  "date": "2026-10-23T10:42:26.842Z",
+  "scope": "Entire desktop frontend: all four primary workspaces, subpages, analysis, forms, drawers, and confirmation dialogs",
+  "implementation": {
+    "shared": "Unified layout rhythm, controls, states, focus, theme variables and modal scroll lock",
+    "overview": "Capacity and per-volume browse entry; loading, refresh and unavailable view",
+    "explorer": "Directory navigation, filtering, file identity, metadata and complete optional analysis panel",
+    "cleaner": "Initial workflow, category/rule preview, selection, file evidence, scan state, system maintenance and confirmations",
+    "history": "Empty and populated history, file-level results, failures and clear confirmation",
+    "settings": "General, storage/migration and about/device views",
+    "ai": "Service and protocol selection, connection form, model controls, loading/errors, dialog focus and actions"
+  },
+  "validation": {
+    "unit": {
+      "files": 39,
+      "tests": 272,
+      "passed": 272,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "node node_modules/vue-tsc/bin/vue-tsc.js --noEmit",
+      "exitCode": 0
+    },
+    "productionBuild": {
+      "command": "node node_modules/vite/bin/vite.js build --configLoader runner",
+      "exitCode": 0,
+      "modules": 42
+    },
+    "syntax": {
+      "files": [
+        "scripts/smoke-desktop.mjs",
+        "scripts/frontend-audit.mjs"
+      ],
+      "exitCode": 0
+    },
+    "normalWindow": {
+      "title": "Disk Sense",
+      "responding": true,
+      "main": "desktop/main.cjs",
+      "pid": 8304,
+      "launcherPid": 8136,
+      "verifiedWorkspaceCommand": true
+    },
+    "electron": [
+      {
+        "theme": "dark",
+        "size": [
+          1282,
+          823
+        ],
+        "fixtureRecords": false,
+        "captures": 15,
+        "checks": 77,
+        "allChecksPassed": true,
+        "files": [
+          {
+            "name": "overview",
+            "file": "release\\frontend-full-dark-1280\\overview.png",
+            "sha256": "994b937993b94a543c7d7de9a8444b3472b5a5e8b5eeace072748c09768495c4"
+          },
+          {
+            "name": "browse",
+            "file": "release\\frontend-full-dark-1280\\browse.png",
+            "sha256": "de4a4fead5746ede7c6fcf53ab91220f565ea5fc457c3a0a4df6f43ca90ca079"
+          },
+          {
+            "name": "browse-analysis",
+            "file": "release\\frontend-full-dark-1280\\browse-analysis.png",
+            "sha256": "dac9c22b2dc58c764c5d249d9cad5367bad0e2b3608c615dbdd0a1ae322bbfcd"
+          },
+          {
+            "name": "search-empty",
+            "file": "release\\frontend-full-dark-1280\\search-empty.png",
+            "sha256": "ca40af6567b053ee680402ce7a68f9be73e1a46d46d2b8fa16289d270002324b"
+          },
+          {
+            "name": "search-no-results",
+            "file": "release\\frontend-full-dark-1280\\search-no-results.png",
+            "sha256": "193ed49b5ae86a7ee92de2a8ea2744f76de9241f141a808be271baba930df11e"
+          },
+          {
+            "name": "search-results",
+            "file": "release\\frontend-full-dark-1280\\search-results.png",
+            "sha256": "36de7b12038faf66b7121bf664fe949293e1383d89116fbf1b2dd30f18a92177"
+          },
+          {
+            "name": "search-analysis",
+            "file": "release\\frontend-full-dark-1280\\search-analysis.png",
+            "sha256": "dc9f32a36881ff07ea623ffea94264b5c811df10d32a0b1f02711a7bd73d0f49"
+          },
+          {
+            "name": "cleaner",
+            "file": "release\\frontend-full-dark-1280\\cleaner.png",
+            "sha256": "4e349fd355449370808fbb6440e011f6c6c698b24e564513ad5d75fa7877be54"
+          },
+          {
+            "name": "cleaner-exclusions",
+            "file": "release\\frontend-full-dark-1280\\cleaner-exclusions.png",
+            "sha256": "1e1ee8d3e9f2062e940fde5f114659948e7e79e5f2347a31b1273016c940186c"
+          },
+          {
+            "name": "cleaner-slimming",
+            "file": "release\\frontend-full-dark-1280\\cleaner-slimming.png",
+            "sha256": "867088306b2f341d42be6446b476eaf3e9b7095c2f2c452f01ef7bbd05ebdbc4"
+          },
+          {
+            "name": "cleaner-history",
+            "file": "release\\frontend-full-dark-1280\\cleaner-history.png",
+            "sha256": "36077ad9a4f37995b0ec1147bdc1260ba28c1b59558acb1cfd0f18567b89a9fe"
+          },
+          {
+            "name": "settings-general",
+            "file": "release\\frontend-full-dark-1280\\settings-general.png",
+            "sha256": "5f91dc55b9327b6d8d0055f2ac766a9cc79c2aeec34e7deaeb9b243a82c76e8b"
+          },
+          {
+            "name": "settings-storage",
+            "file": "release\\frontend-full-dark-1280\\settings-storage.png",
+            "sha256": "7f84996957b7373e64c69c35a97bdb1c4e7715742da7265c0ad2b43dcbc53052"
+          },
+          {
+            "name": "settings-about",
+            "file": "release\\frontend-full-dark-1280\\settings-about.png",
+            "sha256": "add55543b370be1cb1d24cb83bfba38e4ee5813b52f1bbe8c022972814f7a450"
+          },
+          {
+            "name": "ai-settings",
+            "file": "release\\frontend-full-dark-1280\\ai-settings.png",
+            "sha256": "071de58f1c3a627104e46d2011d4c3bd45ba11239dea03be8b7c60b6c6881c26"
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "size": [
+          1002,
+          682
+        ],
+        "fixtureRecords": true,
+        "captures": 20,
+        "checks": 99,
+        "allChecksPassed": true,
+        "files": [
+          {
+            "name": "overview",
+            "file": "release\\frontend-full-light-1000-fixtures\\overview.png",
+            "sha256": "6c72f000c6d8182d17d3b4e17dbf63f315447463ac6eca48994992fb100cee6c"
+          },
+          {
+            "name": "browse",
+            "file": "release\\frontend-full-light-1000-fixtures\\browse.png",
+            "sha256": "db676611ff07db1a61d3a319d74b6cb661d7f670c32559c8b1543b03e867db99"
+          },
+          {
+            "name": "browse-analysis",
+            "file": "release\\frontend-full-light-1000-fixtures\\browse-analysis.png",
+            "sha256": "0796e9431421fa41238b08ed42ce6286c3db7caf9b54e33b011d0d982c53adbe"
+          },
+          {
+            "name": "search-empty",
+            "file": "release\\frontend-full-light-1000-fixtures\\search-empty.png",
+            "sha256": "3bf60a0113113d5dbcc703a58350565f9090e6d9c9c07fa97e0dfbac308d3b13"
+          },
+          {
+            "name": "search-no-results",
+            "file": "release\\frontend-full-light-1000-fixtures\\search-no-results.png",
+            "sha256": "401325c9f852cb8b8ac9f91cb2d06eb11d48ac5c8de087ec8750de65c3a2ab18"
+          },
+          {
+            "name": "search-results",
+            "file": "release\\frontend-full-light-1000-fixtures\\search-results.png",
+            "sha256": "2d2ddcf6de48119637692045186644695629653475b950197ae954844efaa9d0"
+          },
+          {
+            "name": "search-analysis",
+            "file": "release\\frontend-full-light-1000-fixtures\\search-analysis.png",
+            "sha256": "0842bc9c9c71202fbf7fcfdefd2f2008840db0d626fb222621acf06cc2aa1c63"
+          },
+          {
+            "name": "cleaner",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner.png",
+            "sha256": "63e86d31641c11333b32ed0ea0df02b18758dddbf4e400a14fe86cba968b468b"
+          },
+          {
+            "name": "cleaner-exclusions",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner-exclusions.png",
+            "sha256": "5766221fe6c1d15f00073080860c7e364fd297e94600bb0b41fd2065de308bf9"
+          },
+          {
+            "name": "cleaner-scan-results",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner-scan-results.png",
+            "sha256": "685d99b6c372b50843cbb2b11a08729c7875d925b77bf55d86446312deb2c174"
+          },
+          {
+            "name": "cleaner-rule-files",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner-rule-files.png",
+            "sha256": "7ba8f7316a74ddf7be6c0db1ddeac04e714480e96dacce1f2069f83ef074b46b"
+          },
+          {
+            "name": "cleanup-confirmation",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleanup-confirmation.png",
+            "sha256": "9107e578927b1282a6209b55e51d5e4ce531838739fc2cfd6e5df3a715a96b3f"
+          },
+          {
+            "name": "cleaner-slimming",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner-slimming.png",
+            "sha256": "b22c5471a50d002bf13e1148f8287e1340982b9e4f90c64229846e6f6e254def"
+          },
+          {
+            "name": "cleaner-history",
+            "file": "release\\frontend-full-light-1000-fixtures\\cleaner-history.png",
+            "sha256": "4c9e8a4ad3a3b41ab7c022a20e98e14861ccc5ea1ef4d57352712208817c1479"
+          },
+          {
+            "name": "history-detail",
+            "file": "release\\frontend-full-light-1000-fixtures\\history-detail.png",
+            "sha256": "b90a16c70f06706029419cbb8f99bf73b310d29a94e4e6958f467d7d596913e9"
+          },
+          {
+            "name": "history-clear-confirmation",
+            "file": "release\\frontend-full-light-1000-fixtures\\history-clear-confirmation.png",
+            "sha256": "1b12e101a3992545a1bdb4bd7810cc71c53ad2867def46307430bf3164dcdfbe"
+          },
+          {
+            "name": "settings-general",
+            "file": "release\\frontend-full-light-1000-fixtures\\settings-general.png",
+            "sha256": "e0595a56334052c23a902e7f24b8c555d2a26ad432e39b603342b94799f7cf5e"
+          },
+          {
+            "name": "settings-storage",
+            "file": "release\\frontend-full-light-1000-fixtures\\settings-storage.png",
+            "sha256": "4576e59aab590cbe006a166242be70d7533101164d568b851b5a811b5d162a6b"
+          },
+          {
+            "name": "settings-about",
+            "file": "release\\frontend-full-light-1000-fixtures\\settings-about.png",
+            "sha256": "739c715903835d4a9e23fae128e6af7b018f46c7571d1d6ae404ded5534c0529"
+          },
+          {
+            "name": "ai-settings",
+            "file": "release\\frontend-full-light-1000-fixtures\\ai-settings.png",
+            "sha256": "3fe1dbe7bba42dd00cb8833b5fafa1bcac23f3ef2f13fc783bb69aca5319a3c6"
+          }
+        ]
+      }
+    ],
+    "searchAdvanced": {
+      "pinyinHighlighted": true,
+      "continuousInputComplete": true,
+      "allPagesLoaded": true,
+      "sortResetsPage": true,
+      "sortedSessionViews": true,
+      "searchableDuringBuild": true,
+      "acronymRecall": true,
+      "highlightRefresh": true
+    },
+    "lightModalKeyboard": true,
+    "isolatedScanOnly": true,
+    "confirmationCancelledAndHistoryKept": true
+  },
+  "sourceHashes": [
+    {
+      "file": "src/main.ts",
+      "sha256": "84d837e00fac6dcb7297e72c7b3af43aeb669015587c60591a0047849fd3bd67"
+    },
+    {
+      "file": "src/ui/App.vue",
+      "sha256": "782b77784dbbea776629f5b4898d37fca7e9bb7d809e053a371e1b04cdcc9501"
+    },
+    {
+      "file": "src/ui/AppIcon.vue",
+      "sha256": "f2b0a6ae9c3b71f3f4895f689a50414869435b1fab9d333c94db265fd35a108f"
+    },
+    {
+      "file": "src/ui/OverviewWorkspace.vue",
+      "sha256": "87f4b348ededf8042f4f2aa439712a0d5e63c6d2e395b5372270c19c674d109d"
+    },
+    {
+      "file": "src/ui/ExplorerWorkspace.vue",
+      "sha256": "ae8c0da8900c46d9a7b3384f4364b27e6aeb4aaf786e02de31915c9c6ff66567"
+    },
+    {
+      "file": "src/ui/CleanerPanel.vue",
+      "sha256": "f58feec4706bd17f84ffe7fc0703ae540e23ad37ee0f10c78289066ed6ccaefd"
+    },
+    {
+      "file": "src/ui/CleanupHistoryPanel.vue",
+      "sha256": "6ad7b3df1e34bfa4f9b57d44c1837a6c84914c0a5ef94004c5157b213def4d85"
+    },
+    {
+      "file": "src/ui/SettingsWorkspace.vue",
+      "sha256": "62fc08f7985b2eb95c06ce2e1a31045e509e658d263ed7ad316376180cd1d1e0"
+    },
+    {
+      "file": "src/ui/AiSettingsModal.vue",
+      "sha256": "e301ddaaa117834db69d6a92783334847ee2faa3766f8edee1c05a8cb4467244"
+    },
+    {
+      "file": "src/ui/theme.css",
+      "sha256": "f4eab890a47e7b1ade5fc1c833062a8b82d6be55e94df99d6d7a61a64dc472c5"
+    },
+    {
+      "file": "src/ui/foundation.css",
+      "sha256": "5b04438e7c4999db42a534f66e5cbaf973fb2d2e2220524338fb9cf5fc6d70bb"
+    },
+    {
+      "file": "src/ui/shell.css",
+      "sha256": "0b334e14bcb9a44acd2091872d98b86c3d90429478ebe6fc964660faee4b4813"
+    },
+    {
+      "file": "src/ui/overview.css",
+      "sha256": "31d5cc3d51a45bc9ca18b6683d2d45b8929e122114a2e3572cf879271b5bb17d"
+    },
+    {
+      "file": "src/ui/explorer.css",
+      "sha256": "d951424d232bf5628cc5dbcab02ca16c2af54a3d717934abfa306977500b9e86"
+    },
+    {
+      "file": "src/ui/cleaner.css",
+      "sha256": "bb3b5f035fa715950d4162bf35cd44284796c412e23aa4510a346589a3e6dc82"
+    },
+    {
+      "file": "src/ui/settings.css",
+      "sha256": "2ba32ccb16d6f474ea5c63facf22d7db46b2e1086e9c57e7c6fcafd5fd27d57a"
+    },
+    {
+      "file": "src/ui/ai-settings.css",
+      "sha256": "1aa221103edc2c1db3b67989a06200102aae212e47e3ce8c249d13890359ad81"
+    },
+    {
+      "file": "scripts/smoke-desktop.mjs",
+      "sha256": "e15abb1c91ebb2746e667235d2a6f4d25f052f2b1385b65ba640e8486206a0e2"
+    },
+    {
+      "file": "scripts/frontend-audit.mjs",
+      "sha256": "338c8644b3bf8b498842c9d1830fa291455bff677a58d1931bac807ec22183e3"
+    }
+  ],
+  "limits": [
+    "The nonempty history is seeded test data in an isolated application profile; it is not evidence that cleanup was executed",
+    "The preview scan reads one owned old dump; cleanup and history-clear confirmations are cancelled",
+    "External AI requests, system maintenance execution and data migration are outside this frontend visual acceptance",
+    "Loading/error/disabled states are implemented, but not every external failure combination is artificially injected",
+    "Screenshots are real Electron captures; engine performance and Listary equivalence are separate work"
+  ]
+}

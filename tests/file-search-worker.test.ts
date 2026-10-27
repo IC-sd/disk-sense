@@ -42,9 +42,14 @@ describe('file search worker service', () => {
     })
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({ name: 'worker-report.docx', searchKind: 'document' })
-    await service.observeSpace({ entityId: 'test-project', entityName: 'Test project', rootPath: path.join(root, 'Documents'), basis: 'project-markers' })
-    expect((await service.spaceSummary()).entities[0]).toMatchObject({ bytes: 7, files: 1, deltaBytes: 0 })
-    await service.forgetSpace('test-project')
-    expect((await service.spaceSummary()).entities).toEqual([])
+    const overlapping = await Promise.allSettled([
+      service.search({ query: 'worker' }),
+      service.search({ query: 'report' }),
+      service.search({ query: 'worker-report' })
+    ])
+    expect(overlapping[2].status).toBe('fulfilled')
+    for (const previous of overlapping.slice(0, 2)) {
+      if (previous.status === 'rejected') expect(previous.reason.code).toBe('SEARCH_SUPERSEDED')
+    }
   })
 })

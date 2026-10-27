@@ -1,0 +1,1362 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "scope": "Original research baseline plus 2026-10-27 implementation results; current/gap/design fields retain the research snapshot. See implementation report for actual scope and limits.",
+  "method": {
+    "searchProvider": "Exa",
+    "searches": 13,
+    "requestedResultRecords": 65,
+    "returnedResultRecords": 65,
+    "uniqueSearchUrls": 65,
+    "reviewedRepositories": 25,
+    "pinnedRepositories": 22,
+    "readSourceManifestFiles": 34,
+    "notes": [
+      "Only primary project sources used for technical claims",
+      "Three GitHub API lookups were rate-limited; branch files were read and content-hashed, not assigned fabricated commit IDs",
+      "Repository metadata is not a substitute for target-file license review",
+      "Project performance claims were not re-benchmarked here"
+    ]
+  },
+  "features": [
+    {
+      "id": "F01",
+      "name": "空间概览与容量计量",
+      "priority": "P2",
+      "code": [
+        "desktop/system-info.cjs",
+        "src/ui/OverviewWorkspace.vue"
+      ],
+      "current": "已显示卷容量、剩余空间、使用率和浏览入口；处理记录默认折叠。",
+      "gap": "卷总量和目录文件大小使用不同口径；用户定位占用时还缺统一的逻辑/实际分配说明。",
+      "design": "在目录详情提供按需的占用钻取；建立逻辑大小、实际分配大小与估算状态字段，按文件身份处理硬链接、稀疏/压缩和云占位；首页继续聚焦容量与入口。",
+      "references": [
+        "windirstat/windirstat"
+      ],
+      "acceptance": "硬链接、稀疏、压缩、云占位和回收站样本分别校验；估算结果有明确状态，避免将移入回收站计为已释放。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "按需物理占用、身份去重、部分状态及界面入口",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F02",
+      "name": "目录浏览、收藏与导航",
+      "priority": "P1",
+      "code": [
+        "desktop/explainer.cjs",
+        "src/application/explorer.ts",
+        "src/ui/ExplorerWorkspace.vue"
+      ],
+      "current": "已有导航历史、收藏、筛选排序、懒元数据、目录大小估算与虚拟展示。",
+      "gap": "MAX_ITEMS 为 5000，listDirectory 返回截断标志；虚拟渲染不能补回尚未枚举的条目。",
+      "design": "引入目录会话与可取消的分批枚举，明确部分/完成状态；完整名称快照与按页元数据分离，排序和筛选基于同一目录会话；返回目录保留滚动与选择。",
+      "references": [
+        "files-community/Files",
+        "TanStack/virtual"
+      ],
+      "acceptance": "5 万项目录可继续加载到完整；排序、过滤与返回导航不遗漏已存在对象；快速切换和目录变更不会把旧批次接入新目录。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "渲染进程绑定的目录续读、取消、空闲回收和过期响应隔离",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F03",
+      "name": "全盘索引、NTFS 服务与增量维护",
+      "priority": "P0",
+      "code": [
+        "desktop/file-search.cjs",
+        "desktop/ntfs-index.cjs",
+        "desktop/ntfs-client.cjs",
+        "desktop/ntfs-indexer.cs",
+        "desktop/ntfs-service.cs"
+      ],
+      "current": "已有 MFT 快照、USN 回放、卷/日志身份、持久服务和普通枚举回退；更新分批提交，游标在回放末尾保存。",
+      "gap": "快照直接分批更新现有表，USN 回放跨多个事务；中途退出后的重放幂等性与查询视图一致性需要专项验证。首次与非 NTFS 收录仍有成本。",
+      "design": "评估按卷构建影子索引代际，校验完成再发布；为 USN 批次建立可恢复检查点和幂等回放证明，游标只在对应更新提交后推进；保留现有服务和普通枚举回退。",
+      "references": [
+        "skyllc-ai/UltraFastFileSearch",
+        "files-community/Files"
+      ],
+      "acceptance": "虚拟机中覆盖重启、服务重启、USN JournalID 变化、卷拔插、目录移动、硬链接和百万级变更；对照目录枚举校验集合完整性，不仅测耗时。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "影子快照事务发布与可恢复 USN 批次回放",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F04",
+      "name": "查询语义、拼音、召回与排序",
+      "priority": "P1",
+      "code": [
+        "desktop/search-query.cjs",
+        "desktop/search-engine.cjs",
+        "desktop/search-word-index.cjs",
+        "desktop/search-session-cache.cjs"
+      ],
+      "current": "已有多词、扩展名、路径、拼音和缩写；完整 ID 召回后的排名列复用、同快照读取、分区归并与会话预算已实现。",
+      "gap": "宽查询仍涉及大量候选评分和排序；现有排名列复用不减少完整召回，既有阶段诊断也未覆盖全部 GUI 等待。",
+      "design": "保留现有完整召回、排名列复用与按页归并；扩充真实常用词和困难词样本，关联召回/评分/排序/物化/IPC/首屏耗时；按实测瓶颈评估选择率估计、共享评分或原生紧凑原型。",
+      "references": [
+        "helix-editor/nucleo",
+        "junegunn/fzf"
+      ],
+      "acceptance": "所有排序与全分页的集合和稳定次序通过对照；新旧索引、中文高亮、输入删除/否定与缩写均覆盖；报告冷/热 P50/P95、内存和 GUI 首屏。",
+      "dependencies": [
+        "F03"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "搜索分阶段诊断及有界 SQL 语句复用",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F05",
+      "name": "搜索结果、图标与键盘操作",
+      "priority": "P1",
+      "code": [
+        "desktop/search-candidate-session.cjs",
+        "desktop/search-result-view.cjs",
+        "desktop/file-actions.cjs",
+        "src/ui/ExplorerWorkspace.vue"
+      ],
+      "current": "选择与分析已分开；支持打开/定位/复制、分页、图标懒取和快捷键。",
+      "gap": "快速输入、排序、分页和图标到达时，需要持续保持选择身份、滚动位置及当前查询的一致性。",
+      "design": "统一结果视图快照与 item identity；批次只更新可见窗口，排序切换使用稳定会话；有界缓存图标，错误和未完成结果给出可理解状态。",
+      "references": [
+        "TanStack/virtual",
+        "Flow-Launcher/Flow.Launcher"
+      ],
+      "acceptance": "10 万候选下连续输入、上下键/PageUp/PageDown、排序与翻页不误开文件；图标与旧响应不覆盖新查询，真实 Electron 验证。",
+      "dependencies": [
+        "F04"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "IPC、状态发布和后续渲染帧计时",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F06",
+      "name": "本地文件类型与用途解释",
+      "priority": "P1",
+      "code": [
+        "desktop/explainer.cjs",
+        "desktop/risk.cjs"
+      ],
+      "current": "已有路径、名称、父/同级结构、文件头和有限文本预览，内容读取上限 32 KiB。",
+      "gap": "扩展名、签名与目录角色是不同证据；现有手工签名集合覆盖面有限。",
+      "design": "为各类证据标注来源、置信与冲突；以有界 buffer 增强二进制识别，文本与目录结构保持独立；解释与可清理资格继续分别判断。",
+      "references": [
+        "sindresorhus/file-type",
+        "anchore/syft"
+      ],
+      "acceptance": "伪扩展名、损坏文件、SQLite、PE、Office 容器和超大文件均不触发无界读取；格式识别不能降低已知数据风险。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "有界文件头探测与扩展名冲突证据",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F07",
+      "name": "应用归属与项目关系",
+      "priority": "P1",
+      "code": [
+        "desktop/windows-app-inventory.cjs",
+        "desktop/app-attribution.cjs",
+        "desktop/relationship-engine.cjs"
+      ],
+      "current": "读取 HKLM/HKCU 卸载登记，结合安装路径、常见应用位置和多生态项目标记。",
+      "gap": "Store/MSIX、便携应用、自定义资料目录与多版本安装的归属覆盖仍需补充。",
+      "design": "拆出可缓存的应用来源提供器；区分安装身份、项目根、组件和数据角色；参照 cataloger 分生态解析清单，保留冲突和缺失来源。",
+      "references": [
+        "BCUninstaller/Bulk-Crap-Uninstaller",
+        "anchore/syft"
+      ],
+      "acceptance": "同名产品、共享父目录、跨盘数据、便携版、多用户登记与嵌套项目样本均可解释来源；读取项目清单不执行安装脚本。",
+      "dependencies": [
+        "F06"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "Appx、便携应用及多生态项目清单证据",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F08",
+      "name": "AI 接入、协议与取消",
+      "priority": "P2",
+      "code": [
+        "desktop/ai-provider.cjs",
+        "desktop/ai-explainer.cjs",
+        "desktop/handlers/inspect-handlers.cjs"
+      ],
+      "current": "已支持多协议、HTTPS 约束、超时取消、手动模型列表和本地凭据加密。",
+      "gap": "不同提供器的能力和错误格式会变化，兼容修补若散落于业务逻辑会增加维护成本。",
+      "design": "按能力声明请求/解析适配器，集中处理结构化输出、错误、取消与可重试条件；保留手动请求与成本边界，按真实兼容性结果决定是否引 SDK。",
+      "references": [
+        "vercel/ai",
+        "promptfoo/promptfoo"
+      ],
+      "acceptance": "每种协议通过本地响应夹具；超时、限流、认证失败、畸形 JSON 与取消不产生重复请求；真实端点验收单独记录。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "提供器能力、结构化错误和取消",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F09",
+      "name": "AI 证据、结果缓存与质量评估",
+      "priority": "P1",
+      "code": [
+        "src/application/ai-evidence.ts",
+        "src/application/ai-session.ts",
+        "desktop/ai-analysis-store.cjs",
+        "desktop/ai-explainer.cjs"
+      ],
+      "current": "证据脱敏裁剪，分析按路径和指纹保存，重用前复核；本地风险优先。",
+      "gap": "协议测试不等于用途解释质量；需要可重复比较的事实、风险、注入与过期样本。",
+      "design": "建立人工夹具和预期事实；输出字段关联证据编号，缺证据时表达不确定；增加模型/提示版本及证据版本，单独评估事实质量和确定性安全不变量。",
+      "references": [
+        "promptfoo/promptfoo",
+        "vercel/ai"
+      ],
+      "acceptance": "文件内容中的指令按数据处理；秘密不进入请求或日志，AI 不改变删除资格；变更后的证据不重用旧分析，评分结果可复现。",
+      "dependencies": [
+        "F06",
+        "F07",
+        "F08"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "证据引用及分析/提示/证据版本化缓存",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F10",
+      "name": "垃圾清理规则设计与版本管理",
+      "priority": "P1",
+      "code": [
+        "desktop/cleaner.cjs",
+        "desktop/cleanup-discovery.cjs",
+        "src/application/cleaner.ts"
+      ],
+      "current": "28 条内置规则，具备风险、保留期、进程保护、只检测状态与排除项。",
+      "gap": "规则主要位于代码对象中；扩充应用时需要一致的 schema、来源和正反样本管理。",
+      "design": "将识别条件、位置提供器、保留期、保护条件、来源及版本声明化；动作限定为主进程已注册能力；规则先通过校验和预览夹具再启用。",
+      "references": [
+        "bleachbit/bleachbit",
+        "bleachbit/cleanerml"
+      ],
+      "acceptance": "无效规则拒绝加载；每条新增规则有应用版本、可重建依据和保护样本；目录重命名、资料目录和配置文件不被宽匹配纳入。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "28 条受能力约束的版本化清理规则",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F11",
+      "name": "垃圾扫描、应用发现与覆盖报告",
+      "priority": "P1",
+      "code": [
+        "desktop/cleaner.cjs",
+        "desktop/cleanup-discovery.cjs",
+        "desktop/operation-coordinator.cjs"
+      ],
+      "current": "有预算、取消、单规则根目录去重、覆盖状态和跨规则执行去重。",
+      "gap": "跨规则共享父目录仍会重复遍历；包管理器配置发现的警告尚未完全汇入统一覆盖说明。",
+      "design": "建立共享扫描会话与占用账本，读取一次后按 matcher 分发；每条规则保留自身保护条件、来源与覆盖状态；用背压控制并发和进度更新。",
+      "references": [
+        "qarmin/czkawka",
+        "bleachbit/bleachbit"
+      ],
+      "acceptance": "共享目录不重复计量，不丢失较严格保护条件；权限错误、预算耗尽和未安装能区分；取消后保留已确认结果与覆盖问题。",
+      "dependencies": [
+        "F10"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "同轮共享有界枚举及配置问题覆盖报告",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F12",
+      "name": "安全清理执行与中断恢复",
+      "priority": "P0",
+      "code": [
+        "desktop/cleanup-executor.cjs",
+        "desktop/handlers/cleaner-handlers.cjs",
+        "desktop/file-actions.cjs"
+      ],
+      "current": "短期候选 ID、执行前身份/路径/进程复核、回收站处理与逐文件进度已实现。",
+      "gap": "任务结果在 executeCleanupPlan 完成后保存；中途进程崩溃的持久化审计与未确认结果需要专门处理。",
+      "design": "执行前持久化计划；逐项记录 prepared/attempted/confirmed/failed/uncertain；恢复时重新核验文件身份，向用户展示未确认项；评估原生批处理时保留逐文件保护。",
+      "references": [
+        "files-community/Files",
+        "sqlite/sqlite"
+      ],
+      "acceptance": "在回收站调用前后及记录提交前后注入中断；不会自动重试 uncertain 删除；同路径新文件、跨卷、长路径、占用和取消均有记录。",
+      "dependencies": [
+        "F15"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "持久化计划、尝试、确认、失败、未确认状态和失败关闭",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F13",
+      "name": "开发工具与包管理器缓存",
+      "priority": "P1",
+      "code": [
+        "desktop/tool-cache-locations.cjs",
+        "desktop/cleanup-discovery.cjs"
+      ],
+      "current": "发现 npm/pip/uv/pnpm/NuGet 的配置、默认和历史位置，提供工具原生管理建议。",
+      "gap": "配置解析警告、工具版本、实际 store 归属与路径确认还可更统一。",
+      "design": "定义工具提供器：检测可执行文件/版本、查询实际位置、解释容量、预览原生命令；按安装版本选能力，明确共享存储和重新下载成本。",
+      "references": [
+        "pnpm/pnpm",
+        "astral-sh/uv"
+      ],
+      "acceptance": "多版本、自定义 store、无效配置、环境变量和无工具安装均覆盖；发现位置只作为证据；任何原生清理保留用户确认。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "工具只读版本和位置核实及原生维护预览",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F14",
+      "name": "系统瘦身与 Windows 官方维护",
+      "priority": "P1",
+      "code": [
+        "desktop/system-maintenance.cjs",
+        "src/ui/CleanerPanel.vue"
+      ],
+      "current": "检测休眠、WinSxS、虚拟内存和 Windows.old，固定白名单与专用确认词。",
+      "gap": "重启需求、维护退出状态、检测结果时效与不同 Windows 版本需要统一反馈。",
+      "design": "按作业建模检查/执行/退出/待重启，规范管理员权限、进度和日志；检测占用与实际可释放估计分开，保留官方设置跳转。",
+      "references": [
+        "CodingWonders/DISMTools"
+      ],
+      "acceptance": "非管理员、维护互斥、取消边界、失败与需重启状态均验证；实际执行测试使用虚拟机；维持固定可执行路径和参数。",
+      "dependencies": [
+        "F15"
+      ],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "维护完成、需重启、中断和空间观察值区分",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F15",
+      "name": "任务历史、结果审计与恢复入口",
+      "priority": "P0",
+      "code": [
+        "desktop/handlers/cleaner-handlers.cjs",
+        "desktop/operation-coordinator.cjs",
+        "desktop/state.cjs",
+        "src/ui/CleanupHistoryPanel.vue"
+      ],
+      "current": "已有任务汇总、有限明细、失败优先保留和跨模块任务互斥。",
+      "gap": "历史主要是任务完成后的结果快照；运行态、异常退出与未确认副作用尚缺持久任务模型。",
+      "design": "在现有 SQLite 技术栈上评估独立作业表和追加事件表；进度与持久状态分离，历史按需分页，保留任务/候选/证据版本关联 ID。",
+      "references": [
+        "sqlite/sqlite",
+        "megahertz/electron-log"
+      ],
+      "acceptance": "任务状态转换和事件落盘可恢复；清空显示历史不能抹掉恢复所需事件；旧状态可迁移，长历史分页且保留失败详情。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "完整明细分页和保留所有待核对记录",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F16",
+      "name": "设置、凭据、本地状态与数据迁移",
+      "priority": "P1",
+      "code": [
+        "desktop/app-settings.cjs",
+        "desktop/state.cjs",
+        "desktop/security.cjs",
+        "src/ui/SettingsWorkspace.vue"
+      ],
+      "current": "已有持久主题、safeStorage、实际位置/占用与迁移失败原目录回退。",
+      "gap": "单文件原子替换不等于多文件交接；掉电、磁盘写满和备份恢复仍需明确提交语义。",
+      "design": "采用唯一临时文件、受控写入队列和同步策略；迁移使用代际清单、校验和、明确完成标记与原目录保留；数据增长按类型限额和分页。",
+      "references": [
+        "npm/write-file-atomic",
+        "sqlite/sqlite"
+      ],
+      "acceptance": "注入 ENOSPC、EACCES、标记写入失败和启动中断；完成前读原目录；损坏备份与旧版本迁移有可恢复结果；凭据不进入迁移诊断明文。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "可靠原子写入、备份和数据交接",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F17",
+      "name": "整体交互、主题与无障碍",
+      "priority": "P1",
+      "code": [
+        "src/ui/App.vue",
+        "src/ui/AiSettingsModal.vue",
+        "src/ui/ExplorerWorkspace.vue",
+        "src/ui/CleanerPanel.vue",
+        "src/ui/SettingsWorkspace.vue",
+        "src/ui/foundation.css"
+      ],
+      "current": "四个工作区，深色首帧、浅色持久化、键盘快捷键、对话框焦点与响应式布局。",
+      "gap": "各模块仍有各自弹窗、加载/取消/失败状态和选择行为，持续修改容易产生交互差异。",
+      "design": "统一任务状态呈现、对话框/抽屉、快捷键及选择反馈；评估无样式可访问组件，保持当前信息架构；复杂技术细节按需展开。",
+      "references": [
+        "unovue/reka-ui",
+        "TanStack/virtual"
+      ],
+      "acceptance": "键盘与读屏语义、焦点恢复、中文输入法、减少动画、深浅主题、小窗口和高 DPI 均纳入真实桌面验收。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "共用焦点约束、页签键盘导航及深浅主题适配",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    },
+    {
+      "id": "F18",
+      "name": "诊断、回归测试与安装交付",
+      "priority": "P0",
+      "code": [
+        "desktop/diagnostics.cjs",
+        "desktop/security.cjs",
+        "scripts/smoke-desktop.mjs",
+        "scripts/frontend-audit.mjs",
+        ".github/workflows/ci.yml",
+        "package.json"
+      ],
+      "current": "已有轮转日志、单元与故障测试、CDP 桌面验收、依赖审计和 Windows 解包验证。",
+      "gap": "长期/重启/安装升级覆盖与复现资料尚需标准化；生产运行能力也可按实际用途收紧。",
+      "design": "按操作关联各阶段日志，脱敏导出最小复现资料；将真实 Electron、性能集合对照、安装升级和 VM 故障场景分层；评估生产 fuses 并验证所有辅助进程。",
+      "references": [
+        "megahertz/electron-log",
+        "microsoft/playwright",
+        "electron/fuses",
+        "electron-userland/electron-builder"
+      ],
+      "acceptance": "CI 既校验功能集合与安全门槛，也产出实际程序回归结果；安装/更新/卸载保留用户数据；产物版本与构建依赖一致，复现导出隐藏密钥及个人路径。",
+      "dependencies": [],
+      "implementation": {
+        "status": "implemented-with-stated-limits",
+        "summary": "脱敏诊断、全模块桌面验收和生产包 fuses 核验",
+        "report": "functional-implementation-2026-10-27.md"
+      }
+    }
+  ],
+  "repositories": [
+    {
+      "repository": "windirstat/windirstat",
+      "license": "GPL-3.0-or-later",
+      "use": "逻辑/物理大小、硬链接计量、按占用钻取",
+      "limitation": "以设计和计量方法为参考；GPL 源码复用需另行核对。",
+      "url": "https://github.com/windirstat/windirstat",
+      "commit": "4c24e70a033241072cb40a1f3d41c81df90e0a83",
+      "commitDate": "2026-10-23T19:16:23Z",
+      "archived": false,
+      "metadataLicense": "GPL-3.0",
+      "licenseEvidence": "Official README copyright/licensing section and GitHub repository metadata",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "windirstat/Item.cpp",
+          "url": "https://raw.githubusercontent.com/windirstat/windirstat/4c24e70a033241072cb40a1f3d41c81df90e0a83/windirstat/Item.cpp",
+          "ref": "4c24e70a033241072cb40a1f3d41c81df90e0a83",
+          "pinned": true,
+          "sha256": "f73f925d22725e8a9de3e0db4b0918cd846ca6ce4df0351b19d3c6e6b1796861"
+        }
+      ]
+    },
+    {
+      "repository": "files-community/Files",
+      "license": "MIT",
+      "use": "可取消的批量目录枚举、渐进展示、Windows 文件操作",
+      "limitation": "C#/WinUI 实现，适合参考协议与原生辅助层；保留当前 Vue 页面结构。",
+      "url": "https://github.com/files-community/Files",
+      "commit": "ee399b0d3e09084aa24d7261c9342d92bc89a5da",
+      "commitDate": "2026-10-21T21:52:18Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "src/Files.App/Utils/Storage/Enumerators/Win32StorageEnumerator.cs",
+          "url": "https://raw.githubusercontent.com/files-community/Files/ee399b0d3e09084aa24d7261c9342d92bc89a5da/src/Files.App/Utils/Storage/Enumerators/Win32StorageEnumerator.cs",
+          "ref": "ee399b0d3e09084aa24d7261c9342d92bc89a5da",
+          "pinned": true,
+          "sha256": "045105799d51b19728bbb9ecc4cec52aeb4b0ebf8d4759c72f4fbdc3687e9127"
+        }
+      ]
+    },
+    {
+      "repository": "skyllc-ai/UltraFastFileSearch",
+      "license": "MPL-2.0",
+      "use": "MFT 紧凑布局、USN 游标与增量循环",
+      "limitation": "Windows 原生引擎参考；项目自述性能、未激活分支及 PR 不等于本机验证。",
+      "url": "https://github.com/skyllc-ai/UltraFastFileSearch",
+      "commit": "7a8a6ee0c2c3dbe50d5d61a9a36c03041895e95a",
+      "commitDate": "2026-10-14T03:26:58Z",
+      "archived": false,
+      "metadataLicense": "NOASSERTION",
+      "licenseEvidence": "LICENSE at fixed commit",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/skyllc-ai/UltraFastFileSearch/7a8a6ee0c2c3dbe50d5d61a9a36c03041895e95a/LICENSE",
+          "ref": "7a8a6ee0c2c3dbe50d5d61a9a36c03041895e95a",
+          "pinned": true,
+          "sha256": "5bc4e3ecbc1e19257e8788cb983f1f2dd982a836288d2e839c971453d4ea1936"
+        },
+        {
+          "file": "crates/uffs-daemon/src/cache/journal_loop.rs",
+          "url": "https://raw.githubusercontent.com/skyllc-ai/UltraFastFileSearch/7a8a6ee0c2c3dbe50d5d61a9a36c03041895e95a/crates/uffs-daemon/src/cache/journal_loop.rs",
+          "ref": "7a8a6ee0c2c3dbe50d5d61a9a36c03041895e95a",
+          "pinned": true,
+          "sha256": "d311f1cac7edaca29be3923f35b32d5f7bdf0c8b9a659097e7e5f436932b166c"
+        }
+      ]
+    },
+    {
+      "repository": "helix-editor/nucleo",
+      "license": "MPL-2.0",
+      "use": "查询快照、输入细化复用、后台匹配",
+      "limitation": "Rust matcher，不提供全盘采集；当前 LICENSE 与 Cargo.toml 均为 MPL-2.0。",
+      "url": "https://github.com/helix-editor/nucleo",
+      "commit": "8c16d47cdfa9607d3e44df5f81c635c6f43c65ee",
+      "commitDate": "2026-06-22T15:06:35Z",
+      "archived": false,
+      "metadataLicense": "MPL-2.0",
+      "licenseEvidence": "LICENSE and Cargo.toml at fixed commit",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/helix-editor/nucleo/8c16d47cdfa9607d3e44df5f81c635c6f43c65ee/LICENSE",
+          "ref": "8c16d47cdfa9607d3e44df5f81c635c6f43c65ee",
+          "pinned": true,
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+        },
+        {
+          "file": "Cargo.toml",
+          "url": "https://raw.githubusercontent.com/helix-editor/nucleo/8c16d47cdfa9607d3e44df5f81c635c6f43c65ee/Cargo.toml",
+          "ref": "8c16d47cdfa9607d3e44df5f81c635c6f43c65ee",
+          "pinned": true,
+          "sha256": "8d9ecdf6f400d02ce84e8d4557fdef711e99d080e6a256cd6a3cc178fad3133f"
+        }
+      ]
+    },
+    {
+      "repository": "junegunn/fzf",
+      "license": "MIT",
+      "use": "分块匹配、候选缓存、排序结果按需归并",
+      "limitation": "匹配/交互参考；拼音与路径召回需保留本项目语义。",
+      "url": "https://github.com/junegunn/fzf",
+      "commit": "b412a450538e5f4a1d7057732e75d945dafa18a6",
+      "commitDate": "2026-10-21T23:24:40Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": []
+    },
+    {
+      "repository": "TanStack/virtual",
+      "license": "MIT",
+      "use": "Vue 虚拟列表适配、测量、滚动定位",
+      "limitation": "先用超大目录和快速切换进行组件对照，再决定是否替换现有实现。",
+      "url": "https://github.com/TanStack/virtual",
+      "commit": "c462c6141ea434fdbc52b5dd866bb8db7e4fd07e",
+      "commitDate": "2026-10-22T11:59:17Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "packages/vue-virtual/src/index.ts",
+          "url": "https://raw.githubusercontent.com/TanStack/virtual/c462c6141ea434fdbc52b5dd866bb8db7e4fd07e/packages/vue-virtual/src/index.ts",
+          "ref": "c462c6141ea434fdbc52b5dd866bb8db7e4fd07e",
+          "pinned": true,
+          "sha256": "7621fc4982d0bb0743fede4f8aa1f141433bfdb5dccc84b26beee848e9400420"
+        }
+      ]
+    },
+    {
+      "repository": "sindresorhus/file-type",
+      "license": "MIT",
+      "use": "二进制 magic number 识别",
+      "limitation": "ESM 包；CJS 主进程需要适配。格式提示无法证明文件可信或可删，文本格式仍需独立识别。",
+      "url": "https://github.com/sindresorhus/file-type",
+      "commit": "11e0d6473a37972e4d39d8d6c1c9d1b85b9ace25",
+      "commitDate": "2026-10-14T16:43:58Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "package.json",
+          "url": "https://raw.githubusercontent.com/sindresorhus/file-type/11e0d6473a37972e4d39d8d6c1c9d1b85b9ace25/package.json",
+          "ref": "11e0d6473a37972e4d39d8d6c1c9d1b85b9ace25",
+          "pinned": true,
+          "sha256": "33079df2d7700f8009e126f9c1cd672ca9c4b85aff1c9c60560ccb0bd4b73fc4"
+        }
+      ]
+    },
+    {
+      "repository": "BCUninstaller/Bulk-Crap-Uninstaller",
+      "license": "Apache-2.0",
+      "use": "安装应用多来源识别、Windows Store/Steam 等来源覆盖",
+      "limitation": "参考检测能力；其卸载与残留删除策略不进入本项目通用清理。README 有招募维护者提示。",
+      "url": "https://github.com/BCUninstaller/Bulk-Crap-Uninstaller",
+      "commit": "30da609384c98ba6e35c6530129541ea4ff3970a",
+      "commitDate": "2026-09-07T23:26:20Z",
+      "archived": false,
+      "metadataLicense": "Apache-2.0",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "README.md",
+          "url": "https://raw.githubusercontent.com/BCUninstaller/Bulk-Crap-Uninstaller/30da609384c98ba6e35c6530129541ea4ff3970a/README.md",
+          "ref": "30da609384c98ba6e35c6530129541ea4ff3970a",
+          "pinned": true,
+          "sha256": "8c346a6f2424d28ac8314abab664be0cfd8790667658403ddacd6a934d1e2b7f"
+        }
+      ]
+    },
+    {
+      "repository": "anchore/syft",
+      "license": "Apache-2.0",
+      "use": "按生态拆分的包清单 cataloger 与关系模型",
+      "limitation": "Go/SBOM 项目；只借鉴有界清单解析和证据关系，服务于当前文件解释。",
+      "url": "https://github.com/anchore/syft",
+      "commit": "eec916df6c668733d3f2d1994b27c69bcd7d58a4",
+      "commitDate": "2026-10-24T03:15:47Z",
+      "archived": false,
+      "metadataLicense": "Apache-2.0",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "syft/pkg/cataloger/javascript/parse_package_json.go",
+          "url": "https://raw.githubusercontent.com/anchore/syft/eec916df6c668733d3f2d1994b27c69bcd7d58a4/syft/pkg/cataloger/javascript/parse_package_json.go",
+          "ref": "eec916df6c668733d3f2d1994b27c69bcd7d58a4",
+          "pinned": true,
+          "sha256": "2d2ff626849959c43027737e55cc2e85e539d3fcc5164185ac217c4dd2904840"
+        }
+      ]
+    },
+    {
+      "repository": "vercel/ai",
+      "license": "Apache-2.0",
+      "use": "模型提供器接口、结构化结果、取消与重试边界",
+      "limitation": "先评估主进程适配成本；仅解释用途的产品无需启用工具执行。",
+      "url": "https://github.com/vercel/ai",
+      "commit": "e729d588b3291e22cfcd6cba32b6dcf7778ef21c",
+      "commitDate": "2026-10-23T22:28:50Z",
+      "archived": false,
+      "metadataLicense": "NOASSERTION",
+      "licenseEvidence": "LICENSE and packages/ai/package.json at fixed commit",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/vercel/ai/e729d588b3291e22cfcd6cba32b6dcf7778ef21c/LICENSE",
+          "ref": "e729d588b3291e22cfcd6cba32b6dcf7778ef21c",
+          "pinned": true,
+          "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529"
+        },
+        {
+          "file": "packages/ai/package.json",
+          "url": "https://raw.githubusercontent.com/vercel/ai/e729d588b3291e22cfcd6cba32b6dcf7778ef21c/packages/ai/package.json",
+          "ref": "e729d588b3291e22cfcd6cba32b6dcf7778ef21c",
+          "pinned": true,
+          "sha256": "25f12a1571f9e632d306a618f273c96d98ed4665c35586718facc4420d920338"
+        },
+        {
+          "file": "packages/ai/src/generate-text/generate-text.ts",
+          "url": "https://raw.githubusercontent.com/vercel/ai/e729d588b3291e22cfcd6cba32b6dcf7778ef21c/packages/ai/src/generate-text/generate-text.ts",
+          "ref": "e729d588b3291e22cfcd6cba32b6dcf7778ef21c",
+          "pinned": true,
+          "sha256": "73c7c8875a6a560531ae8c714ebd102ca8b1bea0a557690345b58ea8d3caa032"
+        }
+      ]
+    },
+    {
+      "repository": "promptfoo/promptfoo",
+      "license": "MIT",
+      "use": "固定证据样本、断言与协议/模型回归评估",
+      "limitation": "作为开发评估工具；测试数据采用人工夹具，模型评分与确定性安全断言分开。",
+      "url": "https://github.com/promptfoo/promptfoo",
+      "commit": "c0b88a324175c60019cc80de1b2e32b4c849d4c3",
+      "commitDate": "2026-10-23T15:31:42Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "src/assertions/index.ts",
+          "url": "https://raw.githubusercontent.com/promptfoo/promptfoo/c0b88a324175c60019cc80de1b2e32b4c849d4c3/src/assertions/index.ts",
+          "ref": "c0b88a324175c60019cc80de1b2e32b4c849d4c3",
+          "pinned": true,
+          "sha256": "4ca41190729c1ff01f016c139bd5fa2d9e785520e26f99d4e8202f842fbc6c3f"
+        }
+      ]
+    },
+    {
+      "repository": "bleachbit/bleachbit",
+      "license": "GPL-3.0",
+      "use": "CleanerML 解析、遍历与规则执行分层",
+      "limitation": "作为架构参考；引入源码或规则前单独核对许可和发行方式。",
+      "url": "https://github.com/bleachbit/bleachbit",
+      "commit": "82488833f72dcd8a9cf54b18ae7dc37048a14150",
+      "commitDate": "2026-10-24T05:37:07Z",
+      "archived": false,
+      "metadataLicense": "GPL-3.0",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "bleachbit/FileUtilities.py",
+          "url": "https://raw.githubusercontent.com/bleachbit/bleachbit/82488833f72dcd8a9cf54b18ae7dc37048a14150/bleachbit/FileUtilities.py",
+          "ref": "82488833f72dcd8a9cf54b18ae7dc37048a14150",
+          "pinned": true,
+          "sha256": "50196bcce56cbd63530155895753c3dddd98edd2e32069670de3d860bbb65b39"
+        },
+        {
+          "file": "bleachbit/CleanerML.py",
+          "url": "https://raw.githubusercontent.com/bleachbit/bleachbit/82488833f72dcd8a9cf54b18ae7dc37048a14150/bleachbit/CleanerML.py",
+          "ref": "82488833f72dcd8a9cf54b18ae7dc37048a14150",
+          "pinned": true,
+          "sha256": "ef909ab4c9b53e4de51444902ad19d73e09fcb653da8b7eccdaf241e029c4ae8"
+        }
+      ]
+    },
+    {
+      "repository": "bleachbit/cleanerml",
+      "license": "GPL-3.0",
+      "use": "应用清理定义与独立规则目录",
+      "limitation": "公开规则仍有许可证和版本/平台差异，应逐条建立本项目证据与样本。",
+      "url": "https://github.com/bleachbit/cleanerml",
+      "commit": "f28fbdaec0e8264c38e00c6c6463d39c081cadf6",
+      "commitDate": "2025-10-25T21:14:07Z",
+      "archived": false,
+      "metadataLicense": "GPL-3.0",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": []
+    },
+    {
+      "repository": "qarmin/czkawka",
+      "license": "MIT core/CLI; GPL-3.0-only Krokiet/Cedinia",
+      "use": "分阶段扫描、停止标记、warnings 与有效结果同时返回",
+      "limitation": "本轮参考 czkawka_core；仓库不同前端与媒体资产的许可证需区分。重复文件功能可作为后续可选能力。",
+      "url": "https://github.com/qarmin/czkawka",
+      "commit": "eb8b91dbb4d25dff416202674ee0de84ee4b5e5c",
+      "commitDate": "2026-09-16T17:34:08Z",
+      "archived": false,
+      "metadataLicense": "NOASSERTION",
+      "licenseEvidence": "README License section and czkawka_core/Cargo.toml at fixed commit",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "README.md",
+          "url": "https://raw.githubusercontent.com/qarmin/czkawka/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "ref": "eb8b91dbb4d25dff416202674ee0de84ee4b5e5c",
+          "pinned": true,
+          "sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7"
+        },
+        {
+          "file": "czkawka_core/Cargo.toml",
+          "url": "https://raw.githubusercontent.com/qarmin/czkawka/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/czkawka_core/Cargo.toml",
+          "ref": "eb8b91dbb4d25dff416202674ee0de84ee4b5e5c",
+          "pinned": true,
+          "sha256": "87fd6b6e39a3127eedba5b421f64d340fe995075f80f365c31a7e55ff84ea3ec"
+        },
+        {
+          "file": "czkawka_core/src/common/dir_traversal.rs",
+          "url": "https://raw.githubusercontent.com/qarmin/czkawka/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/czkawka_core/src/common/dir_traversal.rs",
+          "ref": "eb8b91dbb4d25dff416202674ee0de84ee4b5e5c",
+          "pinned": true,
+          "sha256": "5f6c8bca600ae66f95e3efbb23c2e9a408cc153361b2abc98d55073cf5588816"
+        }
+      ]
+    },
+    {
+      "repository": "pnpm/pnpm",
+      "license": "MIT",
+      "use": "store 定位与 prune 的原生生命周期",
+      "limitation": "项目实际使用 pnpm 11；当前网站可能描述更高版本，运行时必须按已安装版本探测。",
+      "url": "https://github.com/pnpm/pnpm",
+      "commit": "bf878a9b9d805cfb79cfaee93dcc6100baea1b69",
+      "commitDate": "2026-10-24T13:43:18Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": []
+    },
+    {
+      "repository": "astral-sh/uv",
+      "license": "MIT OR Apache-2.0",
+      "use": "工具自身管理共享缓存和并发状态",
+      "limitation": "参考原生工具协议；发现缓存目录不产生通用删除权限。",
+      "url": "https://github.com/astral-sh/uv",
+      "commit": "6fe4f0f5cfa8322e97af4479cbfb3d53a3ce9596",
+      "commitDate": "2026-10-24T04:00:52Z",
+      "archived": false,
+      "metadataLicense": "Apache-2.0",
+      "licenseEvidence": "LICENSE-MIT and root Cargo.toml at fixed commit",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/astral-sh/uv/6fe4f0f5cfa8322e97af4479cbfb3d53a3ce9596/LICENSE-MIT",
+          "ref": "6fe4f0f5cfa8322e97af4479cbfb3d53a3ce9596",
+          "pinned": true,
+          "sha256": "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c"
+        },
+        {
+          "file": "Cargo.toml",
+          "url": "https://raw.githubusercontent.com/astral-sh/uv/6fe4f0f5cfa8322e97af4479cbfb3d53a3ce9596/Cargo.toml",
+          "ref": "6fe4f0f5cfa8322e97af4479cbfb3d53a3ce9596",
+          "pinned": true,
+          "sha256": "c05816b0899fdde8da3cec95a45a3a1e9a35b77b7ea70f34c9dbe6f06524d522"
+        }
+      ]
+    },
+    {
+      "repository": "CodingWonders/DISMTools",
+      "license": "GPL-3.0",
+      "use": "DISM 作业状态、online/offline 模式与日志反馈",
+      "limitation": "Windows 维护交互参考；仅采用本项目已白名单允许的在线维护子集。",
+      "url": "https://github.com/CodingWonders/DISMTools",
+      "commit": "93f3fa2a22df7bf64d0a75e64513343fb8253d45",
+      "commitDate": "2026-08-28T06:23:08Z",
+      "archived": false,
+      "metadataLicense": "GPL-3.0",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/CodingWonders/DISMTools/93f3fa2a22df7bf64d0a75e64513343fb8253d45/LICENSE",
+          "ref": "93f3fa2a22df7bf64d0a75e64513343fb8253d45",
+          "pinned": true,
+          "sha256": "605e9047a563c5c8396ffb18232aa4304ec56586aee537c45064c6fb425e44ad"
+        }
+      ]
+    },
+    {
+      "repository": "sqlite/sqlite",
+      "license": "Public Domain",
+      "use": "事务、任务日志、状态迁移与分页查询",
+      "limitation": "可评估复用现有 node:sqlite；数据库事务无法与 Windows 回收站组成同一原子事务。",
+      "url": "https://github.com/sqlite/sqlite",
+      "commit": "598d9cf77609a299bb149f201d179c1582af6b26",
+      "commitDate": "2026-10-24T01:23:56Z",
+      "archived": false,
+      "metadataLicense": "NOASSERTION",
+      "licenseEvidence": "https://sqlite.org/copyright.html",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "README.md",
+          "url": "https://raw.githubusercontent.com/sqlite/sqlite/598d9cf77609a299bb149f201d179c1582af6b26/README.md",
+          "ref": "598d9cf77609a299bb149f201d179c1582af6b26",
+          "pinned": true,
+          "sha256": "5168bcc8023d7f4c99200b9264c39199577c5db5a180c0c147876bdd7aa576ea"
+        },
+        {
+          "file": "src/wal.c",
+          "url": "https://raw.githubusercontent.com/sqlite/sqlite/598d9cf77609a299bb149f201d179c1582af6b26/src/wal.c",
+          "ref": "598d9cf77609a299bb149f201d179c1582af6b26",
+          "pinned": true,
+          "sha256": "0be881c2ab9f2ff8edc1d450b271a2680af9544f9ab7b57fda231359fa1d5683"
+        }
+      ]
+    },
+    {
+      "repository": "npm/write-file-atomic",
+      "license": "ISC",
+      "use": "唯一临时文件、同文件写入队列、fsync 与失败清理",
+      "limitation": "解决单文件写入问题；跨文件交接仍需清单、提交点和原目录回退。",
+      "url": "https://github.com/npm/write-file-atomic",
+      "commit": "23e111d95367e1d987c1b4d7823791eaaf6b21df",
+      "commitDate": "2026-06-18T15:50:20Z",
+      "archived": false,
+      "metadataLicense": "ISC",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "lib/index.js",
+          "url": "https://raw.githubusercontent.com/npm/write-file-atomic/23e111d95367e1d987c1b4d7823791eaaf6b21df/lib/index.js",
+          "ref": "23e111d95367e1d987c1b4d7823791eaaf6b21df",
+          "pinned": true,
+          "sha256": "d288d2bd4c3465e0f8723768c0f1f5b54075504c798c489a641d054eb3e22da2"
+        }
+      ]
+    },
+    {
+      "repository": "unovue/reka-ui",
+      "license": "MIT",
+      "use": "对话框焦点约束、关闭后焦点恢复、键盘语义",
+      "limitation": "以当前主题与信息结构为基础，先对单个复杂弹窗进行验证。",
+      "url": "https://github.com/unovue/reka-ui",
+      "commit": "78fb7748aa4f87cdaad60d0282002ab685d6bf58",
+      "commitDate": "2026-10-24T10:11:36Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "packages/core/src/Dialog/DialogContentModal.vue",
+          "url": "https://raw.githubusercontent.com/unovue/reka-ui/78fb7748aa4f87cdaad60d0282002ab685d6bf58/packages/core/src/Dialog/DialogContentModal.vue",
+          "ref": "78fb7748aa4f87cdaad60d0282002ab685d6bf58",
+          "pinned": true,
+          "sha256": "dff01f18aeeb88e213e59b1e70175b77d23127eb2567ec798ee20c2e7a0e73c3"
+        }
+      ]
+    },
+    {
+      "repository": "megahertz/electron-log",
+      "license": "MIT",
+      "use": "Electron 日志输送与文件轮转",
+      "limitation": "当前自有诊断已经具备轮转；优先补关联 ID 和脱敏导出，再评估是否引库。",
+      "url": "https://github.com/megahertz/electron-log",
+      "commit": null,
+      "commitDate": null,
+      "archived": null,
+      "metadataLicense": null,
+      "licenseEvidence": "LICENSE on master plus official repository page",
+      "metadataNote": "403: https://api.github.com/repos/megahertz/electron-log/commits/master",
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/megahertz/electron-log/master/LICENSE",
+          "ref": "master",
+          "pinned": false,
+          "sha256": "8a7030a9df0eac3ba1948991278d847d3e4c8dc4908a777b5868692c975ccfa8"
+        },
+        {
+          "file": "README.md",
+          "url": "https://raw.githubusercontent.com/megahertz/electron-log/master/README.md",
+          "ref": "master",
+          "pinned": false,
+          "sha256": "b8ece2110abd5b7130ea3ec906888d8b459e13e647fcdd79635640a941d9d5a6"
+        }
+      ]
+    },
+    {
+      "repository": "microsoft/playwright",
+      "license": "Apache-2.0",
+      "use": "真实 Electron 应用自动化、窗口与交互验证",
+      "limitation": "官方 Electron 支持仍标为 experimental；现有 CDP 冒烟继续作为基线。",
+      "url": "https://github.com/microsoft/playwright",
+      "commit": null,
+      "commitDate": null,
+      "archived": null,
+      "metadataLicense": null,
+      "licenseEvidence": "LICENSE on main plus official repository page",
+      "metadataNote": "403: https://api.github.com/repos/microsoft/playwright/commits/main",
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/microsoft/playwright/main/LICENSE",
+          "ref": "main",
+          "pinned": false,
+          "sha256": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb"
+        },
+        {
+          "file": "packages/playwright-core/src/server/electron/electron.ts",
+          "url": "https://raw.githubusercontent.com/microsoft/playwright/main/packages/playwright-core/src/server/electron/electron.ts",
+          "ref": "main",
+          "pinned": false,
+          "sha256": "fffa60b4d7710e891e7274cfc933277cf7b9256fbb656b558e6f467c684c5979"
+        }
+      ]
+    },
+    {
+      "repository": "electron/fuses",
+      "license": "MIT",
+      "use": "打包时限定 RunAsNode、NODE_OPTIONS 等运行能力",
+      "limitation": "先确认辅助进程和测试入口依赖，再配置生产包并测试；读取版本的方法也需适配。",
+      "url": "https://github.com/electron/fuses",
+      "commit": "6e2d7a7e777f0943aacb7b3d7dc2660a09349c35",
+      "commitDate": "2026-10-22T21:54:01Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "README.md",
+          "url": "https://raw.githubusercontent.com/electron/fuses/6e2d7a7e777f0943aacb7b3d7dc2660a09349c35/README.md",
+          "ref": "6e2d7a7e777f0943aacb7b3d7dc2660a09349c35",
+          "pinned": true,
+          "sha256": "92f80f1558abb5189f5694d54f380a565dc2f67c73d217adac6d2c11ac373809"
+        }
+      ]
+    },
+    {
+      "repository": "electron-userland/electron-builder",
+      "license": "MIT",
+      "use": "Windows 解包、安装/卸载、升级产物和构建配置",
+      "limitation": "已是项目开发依赖；后续重点验证安装升级与数据迁移路径。",
+      "url": "https://github.com/electron-userland/electron-builder",
+      "commit": "71679266197a8b74c04f9b96a423e595750aab0b",
+      "commitDate": "2026-10-24T05:35:59Z",
+      "archived": false,
+      "metadataLicense": "MIT",
+      "licenseEvidence": "GitHub SPDX repository metadata; check target-file license again before reuse",
+      "metadataNote": null,
+      "sourceReferences": [
+        {
+          "file": "packages/app-builder-lib/src/winPackager.ts",
+          "url": "https://raw.githubusercontent.com/electron-userland/electron-builder/71679266197a8b74c04f9b96a423e595750aab0b/packages/app-builder-lib/src/winPackager.ts",
+          "ref": "71679266197a8b74c04f9b96a423e595750aab0b",
+          "pinned": true,
+          "sha256": "007c532d8df0807db56241c57bb66c1ef844268ef9c5d2787ca2cb0c8b8784f4"
+        }
+      ]
+    },
+    {
+      "repository": "Flow-Launcher/Flow.Launcher",
+      "license": "MIT",
+      "use": "搜索提供器边界、异步取消和应用入口呈现",
+      "limitation": "Everything 插件调用外部 Everything API；Flow 的开源不代表其依赖的索引核心开源。",
+      "url": "https://github.com/Flow-Launcher/Flow.Launcher",
+      "commit": null,
+      "commitDate": null,
+      "archived": null,
+      "metadataLicense": null,
+      "licenseEvidence": "LICENSE on dev",
+      "metadataNote": "403: https://api.github.com/repos/Flow-Launcher/Flow.Launcher",
+      "sourceReferences": [
+        {
+          "file": "LICENSE",
+          "url": "https://raw.githubusercontent.com/Flow-Launcher/Flow.Launcher/dev/LICENSE",
+          "ref": "dev",
+          "pinned": false,
+          "sha256": "bf98c8f4d21a3d87cadf807aca4f977df76c191916ebc6aee0e3e62af9cc1a23"
+        },
+        {
+          "file": "Plugins/Flow.Launcher.Plugin.Explorer/Search/Everything/EverythingAPI.cs",
+          "url": "https://raw.githubusercontent.com/Flow-Launcher/Flow.Launcher/dev/Plugins/Flow.Launcher.Plugin.Explorer/Search/Everything/EverythingAPI.cs",
+          "ref": "dev",
+          "pinned": false,
+          "sha256": "03a6f493e4718cb429075227f4749b6a76a040ea1111bbba8d3303d365355608"
+        }
+      ]
+    }
+  ],
+  "searches": [
+    {
+      "key": "functional_research_seed",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/windirstat/windirstat",
+        "https://github.com/files-community/Files/",
+        "https://github.com/windirstat/windirstat-docs/blob/main/index.html",
+        "https://windirstat.net/",
+        "https://github.com/skyflyt/treelens"
+      ]
+    },
+    {
+      "key": "research_index",
+      "requestedResults": 5,
+      "urls": [
+        "https://raw.githubusercontent.com/skyllc-ai/UltraFastFileSearch/main/docs/architecture/engine/01-overview.md",
+        "https://github.com/skyllc-ai/UltraFastFileSearch/blob/main/crates/uffs-mft/README.md",
+        "https://github.com/skyllc-ai/UltraFastFileSearch/blob/main/README.md",
+        "https://github.com/skyllc-ai/UltraFastFileSearch/pull/408",
+        "https://github.com/skyllc-ai/UltraFastFileSearch/"
+      ]
+    },
+    {
+      "key": "research_matching",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/helix-editor/nucleo",
+        "https://docs.rs/nucleo/latest/src/nucleo/lib.rs.html",
+        "https://github.com/junegunn/fzf/blob/master/src/matcher.go",
+        "https://docs.rs/nucleo-ui/latest/src/nucleo_ui/model.rs.html",
+        "https://github.com/helix-editor/nucleo/blob/master/README.md"
+      ]
+    },
+    {
+      "key": "research_cleanup",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/bleachbit/bleachbit/issues/668",
+        "https://github.com/qarmin/czkawka/blob/8bd6fb84/czkawka_core/src/common/mod.rs",
+        "https://github.com/bleachbit/bleachbit/compare/v6.0.2...v6.0.3",
+        "https://github.com/bleachbit/cleanerml",
+        "https://docs.bleachbit.org/cml/cleanerml/"
+      ]
+    },
+    {
+      "key": "research_attribution",
+      "requestedResults": 5,
+      "urls": [
+        "https://www.mintlify.com/Klocman/Bulk-Crap-Uninstaller/features/application-detection",
+        "https://www.mintlify.com/Klocman/Bulk-Crap-Uninstaller/developer/detection-methods",
+        "https://github.com/BCUninstaller/Bulk-Crap-Uninstaller",
+        "https://github.com/BCUninstaller/Bulk-Crap-Uninstaller/blob/master/source/UninstallTools/UninstallTools.csproj",
+        "https://www.mintlify.com/Klocman/Bulk-Crap-Uninstaller/developer/architecture"
+      ]
+    },
+    {
+      "key": "research_ai",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/promptfoo/promptfoo/blob/3ac2b330/src/providers/vercel.ts",
+        "https://github.com/vercel/ai",
+        "https://www.promptfoo.dev/docs/providers/vercel/",
+        "https://github.com/vercel/ai/blob/08cdf6ae/packages/ai/src/generate-object/structured-output-events.ts",
+        "https://github.com/conorluddy/Persuader/blob/29d0bcc3/src/adapters/vercel-ai-sdk.ts"
+      ]
+    },
+    {
+      "key": "research_maintenance",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/CodingWonders/DISMTools",
+        "https://github.com/gglemas/DISMTools",
+        "https://github.com/CodingWonders/DISMTools/commit/5479bd454a5967c06a6da9cb08e767afa246dbd8",
+        "https://github.com/CodingWonders/DISMTools/releases/tag/v0.7.1_stable",
+        "https://github.com/CodingWonders/DISMTools/releases/tag/v0.7.3_upd1"
+      ]
+    },
+    {
+      "key": "research_ui",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/unovue/reka-ui/blob/49d1d32b/packages/core/src/Listbox/ListboxVirtualizer.vue",
+        "https://reka-ui.com/llms-full.txt",
+        "https://github.com/unovue/reka-ui/issues/1170",
+        "https://www.reka-ui.com/docs/guides/virtualization.md",
+        "https://github.com/TanStack/virtual/issues/158"
+      ]
+    },
+    {
+      "key": "research_persistence",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/CharlieHess/crash-safe-write-file",
+        "https://github.com/npm/write-file-atomic/issues/16",
+        "https://github.com/megahertz/electron-log",
+        "https://sqlite.org/atomiccommit.html",
+        "https://github.com/electron-userland/electron-json-storage/issues/45"
+      ]
+    },
+    {
+      "key": "research_cache",
+      "requestedResults": 5,
+      "urls": [
+        "https://pnpm.io/cli/store",
+        "https://github.com/pnpm/pnpm/blob/e1e29c15/store/commands/src/store/storePrune.ts",
+        "https://www.mintlify.com/astral-sh/uv/cli/cache-clean",
+        "https://docs.astral.sh/uv/concepts/cache/",
+        "https://github.com/orgs/pnpm/discussions/4413"
+      ]
+    },
+    {
+      "key": "research_manifests",
+      "requestedResults": 5,
+      "urls": [
+        "https://oss.anchore.com/docs/guides/sbom/catalogers/",
+        "https://github.com/anchore/syft/blob/c4a0b6f6/internal/relationship/by_file_ownership.go",
+        "https://github.com/anchore/syft/blob/main/internal/task/package_tasks.go",
+        "https://github.com/anchore/syft/blob/c4a0b6f6/syft/pkg/cataloger/javascript/parse_package_json.go",
+        "https://github.com/anchore/syft/pull/4127"
+      ]
+    },
+    {
+      "key": "research_browse-code",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/files-community/Files/blob/cdb263b1/src/Files.App/ViewModels/ShellViewModel.cs",
+        "https://github.com/files-community/Files/blob/cdb263b1/src/Files.App/Utils/Storage/Enumerators/Win32StorageEnumerator.cs",
+        "https://github.com/files-community/Files/blob/cdb263b1/src/Files.App/Data/Items/ListedItem.cs",
+        "https://github.com/files-community/Files/blob/cdb263b1/src/Files.App/Data/Models/DrivesViewModel.cs",
+        "https://github.com/files-community/Files/commit/d3b400fcb0802d1502073701804bf9ea7a2fdcb0"
+      ]
+    },
+    {
+      "key": "research_disk-code",
+      "requestedResults": 5,
+      "urls": [
+        "https://github.com/windirstat/windirstat/tree/master/windirstat",
+        "https://github.com/windirstat/windirstat/",
+        "https://github-wiki-see.page/m/windirstat/windirstat/wiki/Advanced-Topics",
+        "https://github-wiki-see.page/m/windirstat/windirstat/wiki/Reading-Results",
+        "https://github.com/windirstat/windirstat/discussions/217"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Preserve the four workspaces and the main flow: capacity, find object, understand evidence, preview and decide",
+    "Existing MFT/USN, safety guards, input sessions and theme support are implemented capabilities, not newly missing features",
+    "UI-only virtualization does not solve the 5000-entry enumeration cap",
+    "A database journal cannot atomically commit an external recycle-bin operation; ambiguous attempts need uncertain state and revalidation",
+    "Whole-project optimization is phased against per-feature acceptance criteria; listed libraries are candidates, not 25 added dependencies",
+    "No user files were cleaned, no system maintenance or external AI calls were performed during research"
+  ],
+  "implementationDate": "2026-10-27",
+  "implementationReport": "functional-implementation-2026-10-27.md",
+  "researchSourceHashes": {
+    "desktop/system-info.cjs": "afb3e8118b08dada85247f9961a726163714770e24d3a87bd839f0341c38587f",
+    "src/ui/OverviewWorkspace.vue": "87f4b348ededf8042f4f2aa439712a0d5e63c6d2e395b5372270c19c674d109d",
+    "desktop/explainer.cjs": "ec271ab5e1e52063c1e94a540a21411102745d3feed342d3b5d172c71a156abd",
+    "src/application/explorer.ts": "2250aee21c5bd5ddeb44c1837c318134a679cea84bfcf941d31217e238bf0dfe",
+    "src/ui/ExplorerWorkspace.vue": "f20379cf08736bb59bba351ea45cf1ac53644663e7dd15e6614c8869c898d8ee",
+    "desktop/file-search.cjs": "6a922d4fc6376f07969307a44c0d8d1a845490a1b2c53de2c8cfb7dacea5d994",
+    "desktop/ntfs-index.cjs": "0e28b229e36e41cb9ec4d17f9fb0c4e29203fef0bfb7b8a60257aad37c4bb762",
+    "desktop/ntfs-client.cjs": "e3a1cc2d92eb619910bff78e6cd418dc8c2211085182186d305ca36add7c37d6",
+    "desktop/ntfs-indexer.cs": "a34f7c82e51faf7c8ce85ff36caf7e9802b6b8b16b8ad7f54dfd81a3de6446fc",
+    "desktop/ntfs-service.cs": "60e0a0b3a3f55d21d8b60ff02322a81937775209be2efb1e693426a2aba89b42",
+    "desktop/search-query.cjs": "a613840fca74f16313e25c55ddcaf6a47dff0cebd6873a4b1410ee4c8f215592",
+    "desktop/search-engine.cjs": "d23c861916d8a685c09eee18d6f57a061f6d29cd007745e4490c8bdcf942ccbb",
+    "desktop/search-word-index.cjs": "2c917c942fbdce8e9b254f911ae692da070f37a689c83d6a63526fce82a0d224",
+    "desktop/search-session-cache.cjs": "324c93a7fbcb0d614542fee5fedfc2a0ba8054316e0ff5b175e9bed29e55f388",
+    "desktop/search-candidate-session.cjs": "d12c89848f6ce99956ac7fe113f0e7ebc1f4314a292704009e762ef9a031e1ee",
+    "desktop/search-result-view.cjs": "946bdb85bf842a3ff74ebad9c5811667f0a7f7d14ffd44bf6fdba1ac2ba180f9",
+    "desktop/file-actions.cjs": "4c240a2d7d9cb331580e010a519e8d30591f499a1ec1bb62f7b2aa8f5e0f9006",
+    "desktop/risk.cjs": "6e9b3b78fc84bb571fddf26cb24887eb51ac4e79deaccc0c7a27c55e191bd105",
+    "desktop/windows-app-inventory.cjs": "53bf8dce3a542e8ec8e37632803cd12a83e01de21367a5b7e4208054ae802f70",
+    "desktop/app-attribution.cjs": "023a61a943922ddf404c3d571fc528b81ffc71b362c6b753c1b1a81427d3a93d",
+    "desktop/relationship-engine.cjs": "6dd44ed0785fb1d9bcac556eb861c4cb0c1eb6b3403bdcf771f8c61969ed5fbe",
+    "desktop/ai-provider.cjs": "0820ccc8f68ec1c58d3e7435cc10b187df99f755faaf90822505eb978dd01afd",
+    "desktop/ai-explainer.cjs": "a049cb017fcd23b5f601c3f914de636dc95ef07e5a91cd510a944c856c7fd533",
+    "desktop/handlers/inspect-handlers.cjs": "0061bdc40bfd616eda72ddd031fd19532bfb1d079b691fa67dce46d6769dc3e6",
+    "src/application/ai-evidence.ts": "e0cec6163fd2298657784648d3c4080fcd49cc2f2b1057d83d476540ac436229",
+    "src/application/ai-session.ts": "6d856112b19d9223821510277100e823e7cec005e0fc1144ca3e40b90514b035",
+    "desktop/ai-analysis-store.cjs": "5cfef4d1aeef355c2cff9d105247907aae99412179ada850ef9192805e21fc24",
+    "desktop/cleaner.cjs": "2516071bb360dad18787a8a1420d6a7c51585de6830ddb8adb5eb10ee9261734",
+    "desktop/cleanup-discovery.cjs": "3c5f47a8730e5f8a8347202a778e65472018d17ae4e901ee5a1832be4c4129ca",
+    "src/application/cleaner.ts": "7290fbed157badae9970eb9995e347da1814a322f82c8987b30f64e8b5595d02",
+    "desktop/operation-coordinator.cjs": "22b6b4933b31934bcc00016ee983849955028b9a9b50b5fe111ae6a842defe41",
+    "desktop/cleanup-executor.cjs": "60933792477db80f220bef11b400780f8a2f87d3f0febf9a915967081b1e9305",
+    "desktop/handlers/cleaner-handlers.cjs": "63cd3bbaeb8f939250c06151cf20e68cade846a0e2b407b81265abf2bd575f93",
+    "desktop/tool-cache-locations.cjs": "bd5c713bc9f8a970b0f9caa3ace0b56592a42a347070dfa7774ca1e75eceda77",
+    "desktop/system-maintenance.cjs": "4a821f3b698ec15f3c3376558aa4c4c6e988d51a448f30969323fa03de604b90",
+    "src/ui/CleanerPanel.vue": "0637b772c5fe6a66c481da24325cb5f7f48dbef48349984c3366381a487e37cc",
+    "desktop/state.cjs": "996793fc3cdefe89fa9d912b324593d1281407e47abe98eaa7660db5c93fb60e",
+    "src/ui/CleanupHistoryPanel.vue": "6ad7b3df1e34bfa4f9b57d44c1837a6c84914c0a5ef94004c5157b213def4d85",
+    "desktop/app-settings.cjs": "cd25ac95b1323bf94eda3635c808fcdeab901b6d9915112650709fd9dbf746e0",
+    "desktop/security.cjs": "89c0bf82e2eadf8b3fb4c6439c3374c49446c1a87f9e51f12144884e957fa4f5",
+    "src/ui/SettingsWorkspace.vue": "62fc08f7985b2eb95c06ce2e1a31045e509e658d263ed7ad316376180cd1d1e0",
+    "src/ui/App.vue": "1be32cdff44476e234dd96369399f626516d4d6001eb4224b1412a650a60aaee",
+    "src/ui/AiSettingsModal.vue": "e301ddaaa117834db69d6a92783334847ee2faa3766f8edee1c05a8cb4467244",
+    "src/ui/foundation.css": "5b04438e7c4999db42a534f66e5cbaf973fb2d2e2220524338fb9cf5fc6d70bb",
+    "desktop/diagnostics.cjs": "798bc81cca7228afa2da26f0469227871f3c7d130671bd9693db8cb9b6481e6c",
+    "scripts/smoke-desktop.mjs": "0670566d3d89b7a115c1ee9179d19c67e9d6b7735a5ea8f9b2be469eb0920c4b",
+    "scripts/frontend-audit.mjs": "157dceada2c0ff330b3e42ce195fa6d7ba14548536a95173ba3aab83599d1f04",
+    ".github/workflows/ci.yml": "b2f264e1b5d5064ffda1f0a88dfae2e68d0f9cde667beadda4b05f60af0cd897",
+    "package.json": "b5def06cafd709dc4b97fd8fc0a2837c4d9e1270172356491f538c6205efb98d"
+  },
+  "implementationSourceHashes": {
+    "desktop/system-info.cjs": "940e4b173ce877231c239f5ed80ffd4407f1547ea7a4b7d1ac9626f3a7d2ad3e",
+    "src/ui/OverviewWorkspace.vue": "87f4b348ededf8042f4f2aa439712a0d5e63c6d2e395b5372270c19c674d109d",
+    "desktop/explainer.cjs": "79a01f9c9f40ae26ff5dc99f735b75f7c4dc62a35b8cce44733e10906aaab42a",
+    "src/application/explorer.ts": "2250aee21c5bd5ddeb44c1837c318134a679cea84bfcf941d31217e238bf0dfe",
+    "src/ui/ExplorerWorkspace.vue": "0e4ea11a947f30be37050fc72739ae2202fe7f144b30abaca81e2c7d26bca9b4",
+    "desktop/file-search.cjs": "874990b820df653a55371f30f87b3f65f66e67e2bd3e32322dfc0a81f61eefc9",
+    "desktop/ntfs-index.cjs": "eefbddde846fc721fcb47c2cd40e51e6892a0d028159ee0c6bc58c5cf601fc26",
+    "desktop/ntfs-client.cjs": "e3a1cc2d92eb619910bff78e6cd418dc8c2211085182186d305ca36add7c37d6",
+    "desktop/ntfs-indexer.cs": "a34f7c82e51faf7c8ce85ff36caf7e9802b6b8b16b8ad7f54dfd81a3de6446fc",
+    "desktop/ntfs-service.cs": "60e0a0b3a3f55d21d8b60ff02322a81937775209be2efb1e693426a2aba89b42",
+    "desktop/search-query.cjs": "a613840fca74f16313e25c55ddcaf6a47dff0cebd6873a4b1410ee4c8f215592",
+    "desktop/search-engine.cjs": "591c0f075014f90bf547ac6e53a082b1f5232ab682a855ff959946576638d50f",
+    "desktop/search-word-index.cjs": "2c917c942fbdce8e9b254f911ae692da070f37a689c83d6a63526fce82a0d224",
+    "desktop/search-session-cache.cjs": "324c93a7fbcb0d614542fee5fedfc2a0ba8054316e0ff5b175e9bed29e55f388",
+    "desktop/search-candidate-session.cjs": "39932c6f6465e5177a183bb89b92e0136dfd714deb64bba68ab166dbf28ed00e",
+    "desktop/search-result-view.cjs": "946bdb85bf842a3ff74ebad9c5811667f0a7f7d14ffd44bf6fdba1ac2ba180f9",
+    "desktop/file-actions.cjs": "4c240a2d7d9cb331580e010a519e8d30591f499a1ec1bb62f7b2aa8f5e0f9006",
+    "desktop/risk.cjs": "6e9b3b78fc84bb571fddf26cb24887eb51ac4e79deaccc0c7a27c55e191bd105",
+    "desktop/windows-app-inventory.cjs": "f7b236c0a5f62d738437f4ad77a3a5d30dfd8bab4824a02a67b21a2033f86325",
+    "desktop/app-attribution.cjs": "023a61a943922ddf404c3d571fc528b81ffc71b362c6b753c1b1a81427d3a93d",
+    "desktop/relationship-engine.cjs": "5508ce6f1bb72a4019c142f10869b9fdd81c32971dcc591d000ae18ffddbefe6",
+    "desktop/ai-provider.cjs": "934e8187f83cf11f02ad8f46575e32e1df66458eb960d17aa69e5987984fda0f",
+    "desktop/ai-explainer.cjs": "4759ecf1c2d5d8c0d2a314bd317eb3ccb5da25b582d7076379a0270400cf7e19",
+    "desktop/handlers/inspect-handlers.cjs": "c97b4fa79a53ed862af5f1db8d0cdb8130ed10261dba131c3090cd6c923289db",
+    "src/application/ai-evidence.ts": "fba8f5d1e4cac57e9bc46f36d7da04aaac4cd98e1a74ef2ffc8ddae190e0e0da",
+    "src/application/ai-session.ts": "bf7d545ace365d654adc0d64f08815f43520da829c8c823cec3c591e3948daf0",
+    "desktop/ai-analysis-store.cjs": "c32270b63b65262e728dc44af17df824b717d90b65e0190cbfb3ccce36e67430",
+    "desktop/cleaner.cjs": "7c8e38f1d6d3a96e2ed540666b0fa0d42f574aae649dd409fee9ed90fce446af",
+    "desktop/cleanup-discovery.cjs": "3c5f47a8730e5f8a8347202a778e65472018d17ae4e901ee5a1832be4c4129ca",
+    "src/application/cleaner.ts": "1394d1700d6074be80414efa2ba7faa8f88c9c5d29f1b4ceac34c3a336b70c02",
+    "desktop/operation-coordinator.cjs": "22b6b4933b31934bcc00016ee983849955028b9a9b50b5fe111ae6a842defe41",
+    "desktop/cleanup-executor.cjs": "74380663f63f9901d0cc6c913c31efd775cc0dba9d26a1aeef2cc6534f0f2b3f",
+    "desktop/handlers/cleaner-handlers.cjs": "2e4ec240c95072b337b6990e6d00bc90bf8c38affdeb00287facb91dc9994fcf",
+    "desktop/tool-cache-locations.cjs": "3e1dca8266dcd22332990b4a38398c80e69364221785d5af29610e64d21c3e4c",
+    "desktop/system-maintenance.cjs": "2dd52a292ca896d8d7db03b2a2936824c94f989ea6ecc32a92e064c027786512",
+    "src/ui/CleanerPanel.vue": "d755bf44a2e50c914653195f7129b6ed90918ab300b074e10da2bb2dd5f13117",
+    "desktop/state.cjs": "5e585cbaf0a8a35072fd0d24d6965cd1f22eb91053d5a6ef24cecc9133bf1bf0",
+    "src/ui/CleanupHistoryPanel.vue": "78ed5dd0b0711db84e20060a2c2e0e3890c427deb22a099a33cd61e17cabc2ca",
+    "desktop/app-settings.cjs": "2f9233d997205cb7fb7ddef80fdf55c1d292e085e5a3cf90a46dcf569a6b90a8",
+    "desktop/security.cjs": "89c0bf82e2eadf8b3fb4c6439c3374c49446c1a87f9e51f12144884e957fa4f5",
+    "src/ui/SettingsWorkspace.vue": "f3cbd9e9ab0264397602d8e33a13132981f28e9b6fd829ef47b42cfcbd4860e9",
+    "src/ui/App.vue": "1be32cdff44476e234dd96369399f626516d4d6001eb4224b1412a650a60aaee",
+    "src/ui/AiSettingsModal.vue": "53b3ce2a98268d8374341146213e3e875e1b9cc3657c9ef2728226c4c0219e02",
+    "src/ui/foundation.css": "5b04438e7c4999db42a534f66e5cbaf973fb2d2e2220524338fb9cf5fc6d70bb",
+    "desktop/diagnostics.cjs": "e43008e2554077e5ac3dafc79472eef5bfb00d6e4e57508a421faa79ad3cee3b",
+    "scripts/smoke-desktop.mjs": "69ff0f3a258d6e30bdc06b57ac4271e7887dac1e0c8477e0883f0a34a32d526a",
+    "scripts/frontend-audit.mjs": "fed60d97542f409c4b8b139ef2cbaeb799e2dbd86dad569eb40d05cbbbe4db3a",
+    ".github/workflows/ci.yml": "d8ce23be4b4015bac61fb7b067372cf7b8f73492fb9a1938055a18f74b401820",
+    "package.json": "ffaaf4cc67c2a942f089216b82abdade430a0e93a022b270606f939c53d8cd51",
+    "desktop/directory-sessions.cjs": "a3bc35af9dc968d3572c65c16394affb7a1d2919751aae3751c33f2a528c76f4",
+    "desktop/operation-journal.cjs": "ed7e7ce91c5ca2c1cb548d9cd4d91d673ef1be1f23055fc4d4b1e47d3c59ff3a",
+    "desktop/atomic-file.cjs": "c9a4e49cba57e9fb2a38351802ad3d85c75a96c796fa590b44e55b2ba05989be",
+    "desktop/cleanup-rule-catalog.cjs": "9d9bd0dceb70c7fcf922c15e4985a1cd59babd6d2ed31e06c8ec1f458d59c77c",
+    "desktop/cleanup-rules.json": "1f0998507aaf86f7b01201649169089029d51b52d3c2e8166a5fc58201917312",
+    "desktop/cleanup-scan-session.cjs": "7932d780f5ef86c5541425fc24e50e2d41e149d9c53088855fd6bb0c10c0caf5",
+    "desktop/file-space.cjs": "f902ba55865bf127870a1cf96b82f1814c971f40b61a21f987bee31ccd33294e",
+    "desktop/file-evidence.cjs": "9781b08a1f30739c0789013d4131fe799de3106693b6f3056bae86370942a9dd",
+    "desktop/project-manifests.cjs": "ec221f693dcc4eb66bca18e51fbd00c2954ea8a27cd6e534ddc1060b73880d03",
+    "desktop/ai-contract.cjs": "0de35dc35ea6020d76e32f8a02ed887f47be83178350e429c9ce2028b9900d2d",
+    "src/ui/PathSpacePanel.vue": "e59cfb8d0194188203e54539a6edccee83e165dc5bcdfc264dd11e77d552538a",
+    "src/ui/ToolCachePanel.vue": "38463434232d6bfdf2f85ea86f6bd8c967152eea178bf7de94c55011e3abdf5c",
+    "scripts/check-package.cjs": "4c98dc9ce89633aeeb72556b04035223390ebff242f1ba8f8be8933534970cb4"
+  }
+}

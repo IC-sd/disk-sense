@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { volumes } = require('./change-tracker.cjs')
+const { inspectPathSpace } = require('./file-space.cjs')
 
 function safeNumber(value) {
   if (typeof value === 'bigint') {
@@ -59,4 +60,4 @@ async function overview(state) {
   }
 }
 
-module.exports = { overview, diskVolumes, volumeMetrics, stateSummary, safeNumber }
+module.exports = { overview, diskVolumes, volumeMetrics, stateSummary, safeNumber, inspectPathSpace }

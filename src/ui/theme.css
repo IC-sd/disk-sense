@@ -1,35 +1,36 @@
 :root {
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
-  color: #f3f6fb;
+  color: #e9ebf2;
   color-scheme: dark;
-  background: #080f18;
+  background: #111216;
   font-synthesis: none;
   text-rendering: auto;
   -webkit-font-smoothing: auto;
-  --bg: #080f18;
-  --surface: #0f1926;
-  --surface-strong: #131f2d;
-  --surface-soft: #172536;
-  --line: #2b3a4d;
-  --line-bright: #405773;
-  --text: #f3f6fb;
-  --muted: #b2becd;
-  --subtle: #8495a9;
-  --blue: #6b8cff;
-  --blue-strong: #4d72f4;
+  --bg: #111216;
+  --surface: #181a20;
+  --surface-strong: #1f2129;
+  --surface-soft: #292c37;
+  --sidebar: #15161c;
+  --line: #2c2f3a;
+  --line-bright: #494e60;
+  --text: #e9ebf2;
+  --muted: #b0b4c3;
+  --subtle: #9198aa;
+  --blue: #a1acff;
+  --blue-strong: #6978df;
   --cyan: #55d7df;
   --green: #55d99b;
   --amber: #f5c466;
   --orange: #ff9c55;
   --red: #ff6f78;
   --purple: #a98aff;
-  --field-bg: #091522;
-  --control-bg: #102033;
-  --control-hover: #172c43;
-  --control-text: #aebed2;
-  --icon-bg: rgba(15, 29, 46, .7);
-  --icon-border: rgba(70, 91, 120, .42);
-  --icon-text: #7f96b8;
+  --field-bg: #14161c;
+  --control-bg: #20232b;
+  --control-hover: #2c303e;
+  --control-text: #c4ccda;
+  --icon-bg: #202630;
+  --icon-border: #374255;
+  --icon-text: #9aaed0;
   --folder-icon-bg: rgba(45, 69, 125, .22);
   --folder-icon-border: rgba(84, 116, 192, .38);
   --folder-icon-text: #759bff;
@@ -38,10 +39,10 @@
   --danger-control-bg: rgba(80, 27, 36, .44);
   --danger-control-border: rgba(163, 61, 72, .48);
   --danger-control-text: #e8a2aa;
-  --radius-sm: 10px;
-  --radius: 16px;
-  --radius-lg: 24px;
-  --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 16px 40px rgba(0, 0, 0, .22);
   --scrollbar-thumb: rgba(105, 130, 164, .18);
   --scrollbar-thumb-hover: rgba(119, 147, 186, .42);
 }
@@ -49,11 +50,12 @@
 :root[data-theme="light"] {
   color: #152235;
   color-scheme: light;
-  background: #edf1f5;
-  --bg: #edf1f5;
+  background: #f3f5f8;
+  --bg: #f3f5f8;
   --surface: #ffffff;
   --surface-strong: #f5f7fa;
   --surface-soft: #e8edf3;
+  --sidebar: #f9fafc;
   --line: #cbd5e1;
   --line-bright: #9eafc2;
   --text: #152235;
@@ -143,7 +145,6 @@ body {
 
 :root[data-theme="light"] .brand small,
 :root[data-theme="light"] .main-nav small,
-:root[data-theme="light"] .sidebar-insight p,
 :root[data-theme="light"] .sidebar-footer small {
   color: var(--subtle);
 }
@@ -172,11 +173,6 @@ body {
   color: #4568da;
   border-color: #bdccee;
   background: #edf2ff;
-}
-
-:root[data-theme="light"] .sidebar-insight {
-  border-color: #cad7e5;
-  background: #f1f5f9;
 }
 
 :root[data-theme="light"] .sidebar-footer {
@@ -389,66 +385,6 @@ textarea:focus-visible {
   color: #a2b2c6;
 }
 
-.sidebar-insight {
-  position: relative;
-  padding: 17px;
-  margin: auto 2px 18px;
-  overflow: hidden;
-  border: 1px solid rgba(54, 80, 111, .45);
-  border-radius: 16px;
-  background: #111e2e;
-}
-
-.sidebar-insight small {
-  color: #8da3bf;
-  font-size: 11px;
-  letter-spacing: .12em;
-}
-
-.sidebar-insight b {
-  display: block;
-  margin-top: 12px;
-  font-size: 14px;
-}
-
-.sidebar-insight p {
-  margin: 5px 0 0;
-  color: var(--subtle);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.insight-orbit {
-  position: absolute;
-  top: -24px;
-  right: -24px;
-  width: 78px;
-  height: 78px;
-  border: 1px solid rgba(102, 139, 227, .26);
-  border-radius: 50%;
-}
-
-.insight-orbit::after,
-.insight-orbit span {
-  position: absolute;
-  content: "";
-  border-radius: 50%;
-}
-
-.insight-orbit::after {
-  inset: 13px;
-  border: 1px solid rgba(102, 139, 227, .18);
-}
-
-.insight-orbit span {
-  top: 17px;
-  left: 3px;
-  width: 6px;
-  height: 6px;
-  background: var(--cyan);
-  box-shadow: 0 0 12px var(--cyan);
-}
-
 .sidebar-footer {
   display: flex;
   gap: 10px;
@@ -604,12 +540,6 @@ textarea:focus-visible {
   background: rgba(15, 29, 46, .86);
 }
 
-.icon-button.labelled {
-  width: auto;
-  height: 44px;
-  white-space: nowrap;
-}
-
 .text-button {
   padding: 4px 0;
   color: #8faeff;
@@ -709,7 +639,6 @@ textarea:focus-visible {
 
   .brand > div:last-child,
   .main-nav button > span:nth-child(2),
-  .sidebar-insight,
   .sidebar-footer > div {
     display: none;
   }
@@ -755,10 +684,6 @@ textarea:focus-visible {
 
   .main-nav button {
     padding-block: 6px;
-  }
-
-  .sidebar-insight {
-    display: none;
   }
 
   .page {

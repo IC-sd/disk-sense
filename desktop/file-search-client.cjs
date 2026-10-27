@@ -41,6 +41,7 @@ function createFileSearchWorkerService({
   onProgress = () => {},
   onError = () => {},
   maximumEntries,
+  nativeEnumeration,
   changeDebounceMs,
   reconcileIntervalMs,
   workerPath = path.join(__dirname, 'file-search-worker.cjs')
@@ -50,6 +51,8 @@ function createFileSearchWorkerService({
   let closing = false
   let closed = false
   let cachedStatus = initialStatus()
+  const searchCancellation = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const searchVersion = new Int32Array(searchCancellation)
   const pending = new Map()
   let resolveReady
   let rejectReady
@@ -61,8 +64,10 @@ function createFileSearchWorkerService({
     workerData: {
       databasePath,
       maximumEntries,
+      nativeEnumeration,
       changeDebounceMs,
-      reconcileIntervalMs
+      reconcileIntervalMs,
+      searchCancellation
     }
   })
   worker.unref()
@@ -121,6 +126,9 @@ function createFileSearchWorkerService({
     await readyPromise
     return new Promise((resolve, reject) => {
       const id = ++requestId
+      if (method === 'search') {
+        payload.searchVersion = Atomics.add(searchVersion, 0, 1) + 1
+      }
       pending.set(id, { resolve, reject })
       worker.postMessage({ id, method, payload })
     })
@@ -170,14 +178,14 @@ function createFileSearchWorkerService({
   return {
     status,
     startAutomatic,
+    enableNtfs: async () => request('enableNtfs', { roots: await currentRoots() }),
+    disableNtfs: () => request('disableNtfs'),
     stopAutomatic,
     rebuild,
     rebuildScope,
     cancel: () => request('cancel'),
     search: input => request('search', { input }),
-    observeSpace: relationship => request('observeSpace', { relationship }),
-    spaceSummary: () => request('spaceSummary'),
-    forgetSpace: entityId => request('forgetSpace', { entityId }),
+    recordSelection: input => request('recordSelection', { input }),
     checkpoint: () => request('checkpoint'),
     waitForIdle: () => request('waitForIdle'),
     close,

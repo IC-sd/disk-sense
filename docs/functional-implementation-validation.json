@@ -1,0 +1,162 @@
+{
+  "date": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "scope": "Current local implementation and verification. Raw desktop metadata, logs, database snapshots and captures remain local.",
+  "features": 18,
+  "checks": {
+    "typecheck": "passed",
+    "unitTests": {
+      "files": 47,
+      "passed": 410,
+      "failed": 0
+    },
+    "desktopSyntax": {
+      "modules": 51,
+      "passed": true
+    },
+    "productionBuild": "passed",
+    "dependencyAudit": "No known vulnerabilities found",
+    "windowsUnpacked": "passed",
+    "packageInspection": {
+      "version": "0.9.0-beta.9",
+      "archiveFilesVerified": 7,
+      "fuses": {
+        "RunAsNode": false,
+        "EnableNodeOptionsEnvironmentVariable": false,
+        "EnableNodeCliInspectArguments": false,
+        "OnlyLoadAppFromAsar": true,
+        "EnableEmbeddedAsarIntegrityValidation": true
+      }
+    }
+  },
+  "desktop": [
+    {
+      "scenario": "development-dark-small",
+      "theme": "dark",
+      "packaged": false,
+      "runtimeVersions": {
+        "electron": "43.8.1",
+        "node": "24.22.0",
+        "chrome": "150.0.7871.250"
+      },
+      "captures": 24,
+      "checks": 132,
+      "passed": true,
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "migrationRecoveryVerified": null
+    },
+    {
+      "scenario": "packaged-light-migration-recovery",
+      "theme": "light",
+      "packaged": true,
+      "runtimeVersions": {
+        "electron": "43.8.1",
+        "node": "24.22.0",
+        "chrome": "150.0.7871.250"
+      },
+      "captures": 25,
+      "checks": 142,
+      "passed": true,
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "migrationRecoveryVerified": true
+    },
+    {
+      "scenario": "final-packaged-dark-small",
+      "theme": "dark",
+      "packaged": true,
+      "runtimeVersions": {
+        "electron": "43.8.1",
+        "node": "24.22.0",
+        "chrome": "150.0.7871.250"
+      },
+      "captures": 24,
+      "checks": 136,
+      "passed": true,
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "migrationRecoveryVerified": null
+    }
+  ],
+  "syntheticIndexBenchmark": {
+    "files": 10000,
+    "snapshotModes": [
+      {
+        "mode": "first",
+        "fullMs": 2662.7206,
+        "publication": {
+          "root": "Z:\\",
+          "entries": 10000,
+          "tookMs": 2040.2792
+        }
+      },
+      {
+        "mode": "unchanged",
+        "fullMs": 751.3732,
+        "publication": {
+          "root": "Z:\\",
+          "entries": 10000,
+          "tookMs": 513.4076999999997
+        }
+      },
+      {
+        "mode": "changed",
+        "fullMs": 907.4868000000001,
+        "publication": {
+          "root": "Z:\\",
+          "entries": 10000,
+          "tookMs": 672.7859999999996
+        }
+      }
+    ],
+    "query": {
+      "total": 7500,
+      "returned": 100,
+      "tookMs": 107.98430000000008
+    },
+    "limits": "Synthetic local SQLite timing; no real MFT, USN or GUI latency measurement. Publication is synchronous on the search worker."
+  },
+  "remainingVerification": [
+    "Actual Windows reboot and installed-service restart in a dedicated environment",
+    "Installer upgrade and uninstall data retention in a dedicated environment",
+    "Real cloud placeholder providers",
+    "Live paid and local AI endpoints with intended credentials",
+    "Million-entry native-volume and Listary end-to-end comparison"
+  ],
+  "remainingArchitecture": [
+    "Snapshot publication is synchronous on the search worker; independent writer/read generation switching is not implemented",
+    "Directory continuation exposes partial sorting until all pages are read",
+    "Tool cache commands are previews; no generic package-store deletion"
+  ],
+  "safety": {
+    "userFilesCleaned": false,
+    "systemMaintenanceExecuted": false,
+    "paidAiRequestsMade": false,
+    "automaticArtifactUpload": false
+  }
+}

@@ -1,3 +1,6 @@
+import type { FileExplanation } from '../domain/desktop'
+import { EVIDENCE_VERSION } from './ai-contract'
+
 function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
@@ -23,6 +26,18 @@ export function createAiEvidence(input: Partial<FileExplanation> & Record<string
     confidence: number(input?.confidence),
     risk: text(input?.risk),
     evidence: {
+      version: EVIDENCE_VERSION,
+      fileType: evidence.fileType && typeof evidence.fileType === 'object' ? {
+        source: 'file-header', format: text(evidence.fileType.format), type: text(evidence.fileType.type),
+        status: text(evidence.fileType.status), confidence: number(evidence.fileType.confidence),
+        extension: text(evidence.fileType.extension), extensionConflict: Boolean(evidence.fileType.extensionConflict),
+        bytesRead: number(evidence.fileType.bytesRead), prefixLimited: Boolean(evidence.fileType.prefixLimited),
+        details: Array.isArray(evidence.fileType.details) ? evidence.fileType.details.slice(0, 4).map(String) : []
+      } : null,
+      observations: Array.isArray(evidence.observations) ? evidence.observations.slice(0, 8).map(item => ({
+        id: text(item.id), source: text(item.source), confidence: number(item.confidence),
+        extensionConflict: Boolean(item.extensionConflict), status: text(item.status), format: text(item.format)
+      })) : [],
       pathSegments: Array.isArray(evidence.pathSegments) ? evidence.pathSegments.slice(-8).map(String) : [],
       siblingNames: Array.isArray(evidence.siblingNames) ? evidence.siblingNames.slice(0, 40).map(String) : [],
       childNames: Array.isArray(evidence.childNames) ? evidence.childNames.slice(0, 60).map(String) : [],
@@ -71,4 +86,3 @@ export function createAiEvidence(input: Partial<FileExplanation> & Record<string
       : []
   }
 }
-import type { FileExplanation } from '../domain/desktop'

@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-24T03:54:26.383Z",
+  "fixtureFiles": 640,
+  "configuredRoots": 3,
+  "reference": "Independent single-root scans using the same scanner; not a historical binary benchmark. Wall time is order/cache sensitive.",
+  "independentRootsReference": {
+    "observedItems": 1540,
+    "candidates": 790,
+    "retained": 750,
+    "calls": {
+      "lstat": 1549,
+      "realpath": 1549,
+      "opendir": 6
+    },
+    "durationMs": 1660.65
+  },
+  "sharedRuleTraversal": {
+    "observedItems": 640,
+    "candidates": 340,
+    "retained": 300,
+    "calls": {
+      "lstat": 648,
+      "realpath": 648,
+      "opendir": 3
+    },
+    "durationMs": 3224.03
+  },
+  "realUserFilesRead": false,
+  "cleanupExecuted": false
+}

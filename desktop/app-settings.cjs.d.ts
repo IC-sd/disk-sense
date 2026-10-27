@@ -3,6 +3,7 @@ export interface DataLocation {
   userDataPath: string
   pointerFile: string | null
   externallyManaged: boolean
+  migrationRecovery?: { source: string; target: string; message: string; detail?: string } | null
 }
 
 export interface DirectoryUsage {
@@ -23,6 +24,9 @@ export function migrationTarget(selectedDirectory: string): string
 export function finalizePendingMigration(target: string): {
   finalized: boolean
   synchronized?: string[]
+  pending?: boolean
+  source?: string
+  code?: string
   error?: string
 }
 export function migrateDataDirectory(input: {

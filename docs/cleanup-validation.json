@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "sources": [
+    {
+      "repository": "https://github.com/bleachbit/bleachbit",
+      "commit": "e071627a34973ba996c0c3b54a12c6dff98bab17",
+      "date": "2026-10-23T03:45:11Z",
+      "paths": [
+        "COPYING",
+        "bleachbit/Action.py",
+        "bleachbit/Cleaner.py",
+        "bleachbit/FileUtilities.py",
+        "bleachbit/Worker.py"
+      ]
+    },
+    {
+      "repository": "https://github.com/qarmin/czkawka",
+      "commit": "eb8b91dbb4d25dff416202674ee0de84ee4b5e5c",
+      "date": "2026-09-16T17:34:08Z",
+      "paths": [
+        "LICENSE_CC_BY_4_ICONS",
+        "LICENSE_MIT_EVERYTHING_OUTSIDE_ANY_CARGO_APP_LIBRARY",
+        "czkawka_core/src/common/dir_traversal.rs",
+        "czkawka_core/src/common/mod.rs"
+      ]
+    }
+  ],
+  "checks": {
+    "typecheck": {
+      "exitCode": 0,
+      "command": "node node_modules/vue-tsc/bin/vue-tsc.js --noEmit"
+    },
+    "tests": {
+      "exitCode": 0,
+      "files": 40,
+      "tests": 301,
+      "newScanQualityTests": 29,
+      "command": "node node_modules/vitest/vitest.mjs run --configLoader runner --maxWorkers=2 --testTimeout=15000"
+    },
+    "build": {
+      "exitCode": 0,
+      "modules": 43,
+      "command": "node node_modules/vite/bin/vite.js build --configLoader runner"
+    },
+    "desktopSyntax": {
+      "exitCode": 0,
+      "modules": 41,
+      "command": "node scripts/check-desktop.cjs"
+    },
+    "diffWhitespace": {
+      "exitCode": 0
+    }
+  },
+  "desktop": [
+    {
+      "file": "release/frontend-full-dark-1280-fixtures/validation.json",
+      "exitCode": 0,
+      "captures": 22,
+      "checks": 121,
+      "failedChecks": [],
+      "cleanupExecuted": false
+    },
+    {
+      "file": "release/frontend-full-light-1000-fixtures/validation.json",
+      "exitCode": 0,
+      "captures": 22,
+      "checks": 121,
+      "failedChecks": [],
+      "cleanupExecuted": false
+    }
+  ],
+  "benchmark": "docs/cleanup-scan-benchmark.json",
+  "limitations": [
+    "28 existing built-in rules; no expansion of deletion scope",
+    "Built-in discovery paths only; portable and custom profiles need more work",
+    "Package-manager configuration parsing warnings are not part of discovery coverage",
+    "Cross-rule observed occupancy can overlap; unique executable candidate totals are separate",
+    "Synchronous profile enumeration cannot preempt an in-flight filesystem call",
+    "Logical bytes and recycle-bin transfer do not measure physical reclaimed space",
+    "Benchmarks compare controlled traversal strategies, not historical versions or universal latency"
+  ],
+  "actualUserCleanupExecuted": false,
+  "files": [
+    {
+      "file": "desktop/cleaner.cjs",
+      "sha256": "2516071bb360dad18787a8a1420d6a7c51585de6830ddb8adb5eb10ee9261734"
+    },
+    {
+      "file": "desktop/cleanup-discovery.cjs",
+      "sha256": "3c5f47a8730e5f8a8347202a778e65472018d17ae4e901ee5a1832be4c4129ca"
+    },
+    {
+      "file": "desktop/cleanup-executor.cjs",
+      "sha256": "60933792477db80f220bef11b400780f8a2f87d3f0febf9a915967081b1e9305"
+    },
+    {
+      "file": "src/application/cleaner.ts",
+      "sha256": "7290fbed157badae9970eb9995e347da1814a322f82c8987b30f64e8b5595d02"
+    },
+    {
+      "file": "src/domain/desktop.ts",
+      "sha256": "5ae2d884d15b4647ad650d45c5733c6ef4a2deec35ab1f02047320581fb24a67"
+    },
+    {
+      "file": "src/ui/CleanerPanel.vue",
+      "sha256": "0637b772c5fe6a66c481da24325cb5f7f48dbef48349984c3366381a487e37cc"
+    },
+    {
+      "file": "src/ui/cleaner.css",
+      "sha256": "49cccdee03d066973ceae400d2afd18e5ec81c131c61a41168f4a9d1edf65e0f"
+    },
+    {
+      "file": "tests/cleanup-scan-quality.test.ts",
+      "sha256": "d471f075cc6c4ac0cc3ba3e847fbdd6b775cbfb91724f9a8a2b59defbb5f3585"
+    },
+    {
+      "file": "scripts/frontend-audit.mjs",
+      "sha256": "ebec899f37bae1e25c4f17c867c580bbed045dca13fc99777fe19adda927e221"
+    },
+    {
+      "file": "scripts/smoke-desktop.mjs",
+      "sha256": "9a844572cd2466d628457636045daefd8ad2df17b3ef8b666e8e78adda479adf"
+    }
+  ]
+}

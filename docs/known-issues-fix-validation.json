@@ -1,0 +1,174 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "recordedAt": "2026-10-24T09:06:48.503Z",
+  "scope": "Fixes R1/R2/R3 from overall-review-validation.json in the current working tree; includes unpacked Windows application validation",
+  "environment": {
+    "node": "v22.22.3",
+    "pnpm": "11.9.0",
+    "platform": "win32",
+    "architecture": "x64",
+    "bundledRuntime": {
+      "electron": "43.8.1",
+      "node": "24.22.0",
+      "chrome": "150.0.7871.250"
+    }
+  },
+  "versions": {
+    "@vitejs/plugin-vue": "6.0.8",
+    "electron": "43.8.1",
+    "electron-builder": "26.15.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.6",
+    "vitest": "4.1.12",
+    "vue": "^3.5.44",
+    "vue-tsc": "3.3.8"
+  },
+  "resolutions": {
+    "R1": {
+      "status": "fixed",
+      "behavior": "Keep the original data directory active after a failed pending handoff; notify and log; retry on restart; refuse an unverified incomplete target without a usable source",
+      "tests": "tests/app-settings.test.ts",
+      "realElectronFailure": "EPERM in disposable fixture; original operations history remains visible"
+    },
+    "R2": {
+      "status": "fixed",
+      "behavior": "Update Electron and vulnerable direct/transitive dependencies, including stale pnpm override pins",
+      "electron": "43.8.1",
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    "R3": {
+      "status": "fixed",
+      "behavior": "Release explanation loading when the selection is invalidated; keep request guards so stale completion cannot overwrite a newer request",
+      "tests": "tests/explorer-search-session.test.ts"
+    }
+  },
+  "checks": {
+    "unitTests": {
+      "exitCode": 0,
+      "files": 40,
+      "tests": 311,
+      "command": "node node_modules/vitest/vitest.mjs run --configLoader runner --maxWorkers=2 --testTimeout=15000",
+      "log": ".cache/known-fixes-tests.log"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "log": ".cache/known-fixes-typecheck.log"
+    },
+    "desktopSyntax": {
+      "exitCode": 0,
+      "modules": 41
+    },
+    "productionBuild": {
+      "exitCode": 0,
+      "modules": 43,
+      "log": ".cache/known-fixes-build.log"
+    },
+    "frozenLockfile": {
+      "exitCode": 0,
+      "command": "pnpm install --frozen-lockfile --ignore-scripts",
+      "log": ".cache/known-fixes-frozen-lockfile.log"
+    },
+    "securityAudit": {
+      "exitCode": 0,
+      "command": "pnpm audit --audit-level=moderate --json",
+      "metadata": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 0,
+          "moderate": 0,
+          "high": 0,
+          "critical": 0
+        },
+        "dependencies": 1,
+        "devDependencies": 365,
+        "optionalDependencies": 54,
+        "totalDependencies": 366
+      },
+      "results": ".cache/known-fixes-audit.json"
+    },
+    "unpackedBuild": {
+      "exitCode": 0,
+      "command": "node node_modules/electron-builder/cli.js --win --x64 --dir --publish never --config.directories.output=release/known-issues-fixed",
+      "log": ".cache/known-fixes-package.log"
+    },
+    "packagedDesktop": {
+      "exitCode": 0,
+      "packaged": true,
+      "theme": "dark",
+      "captures": 22,
+      "frontendChecks": 121,
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "migrationRecoveryVerified": null,
+      "results": ".cache/known-fixes-packaged-smoke.json",
+      "screenshotDirectory": "release\\frontend-full-dark-1280-fixtures-known-fixes-packaged"
+    },
+    "migrationRecoveryDesktop": {
+      "exitCode": 0,
+      "packaged": false,
+      "theme": "light",
+      "captures": 23,
+      "frontendChecks": 127,
+      "advancedSearch": {
+        "pinyinHighlighted": true,
+        "continuousInputComplete": true,
+        "allPagesLoaded": true,
+        "sortResetsPage": true,
+        "sortedSessionViews": true,
+        "searchableDuringBuild": true,
+        "acronymRecall": true,
+        "highlightRefresh": true
+      },
+      "migrationRecoveryVerified": true,
+      "results": ".cache/known-fixes-migration-smoke.json",
+      "screenshotDirectory": "release\\frontend-full-light-1000-fixtures-known-fixes-migration"
+    }
+  },
+  "artifacts": {
+    "executable": "release/known-issues-fixed/win-unpacked/Disk Sense.exe",
+    "executableSha256": "d400905b9d0ac87d2c8de5decf1940636eb7bde40aa6fcee43b28ad8fb45e493",
+    "asar": "release/known-issues-fixed/win-unpacked/resources/app.asar",
+    "asarSha256": "51a2c127ad01c41e03399c40f4374e259e5da21221f24194c9f26c3bc3b88e34"
+  },
+  "sourceHashes": {
+    "desktop/app-settings.cjs": "cd25ac95b1323bf94eda3635c808fcdeab901b6d9915112650709fd9dbf746e0",
+    "desktop/app-settings.cjs.d.ts": "dc7050b6f23306ca16e05d5fd8da723793b75d7e31756f34fb51ee92a4435d22",
+    "desktop/main.cjs": "3c4b20951e6048b84964d2cb55f10484098a72d6bf78c7992b0f7ead02e454b4",
+    "src/ui/App.vue": "1be32cdff44476e234dd96369399f626516d4d6001eb4224b1412a650a60aaee",
+    "src/ui/ExplorerWorkspace.vue": "f20379cf08736bb59bba351ea45cf1ac53644663e7dd15e6614c8869c898d8ee",
+    "src/ui/shell.css": "b8bdc88b640c1428d00c98b6e58b5ec4a5e104e7d33f65f443236ea8a01add89",
+    "src/domain/desktop.ts": "131801cd7a72ac8afe923418e5886f09b30945c29d8a890075450e7408a5f3ac",
+    "tests/app-settings.test.ts": "077834a1ade83fd870cd2d9a917236c97607e65c1971d7714b22ce9a8161ef47",
+    "tests/explorer-search-session.test.ts": "edc2831e9da61607aa4c3682373fdc53bebfabcb885a40a89b12b4537fd95601",
+    "scripts/smoke-desktop.mjs": "0670566d3d89b7a115c1ee9179d19c67e9d6b7735a5ea8f9b2be469eb0920c4b",
+    "scripts/frontend-audit.mjs": "157dceada2c0ff330b3e42ce195fa6d7ba14548536a95173ba3aab83599d1f04",
+    "package.json": "b5def06cafd709dc4b97fd8fc0a2837c4d9e1270172356491f538c6205efb98d",
+    "pnpm-lock.yaml": "f4d67642c2a1701aa988667ccd7ab53820ada0e4e41193949a4aabcbc1595643",
+    "pnpm-workspace.yaml": "63f15fc2f53420627122019f57acab0a407cc81f6a951d131b6cc0344054a47e",
+    "tsconfig.json": "8614db449ca1501274560894de046bde7366ac8cf4ca4a39f311348b09fed310",
+    "vitest.config.ts": "21d676fc6643422e7b29be528e864c57d55f2cda390f2510ca206f752b014e09",
+    "README.md": "d1c0cfefb4ad038b07c6f765dc590c4c7895ebe1db813574f3d2141c2a4aa86c"
+  },
+  "limitations": [
+    "No real user-data migration, cleanup, system maintenance or external AI requests; execution confirmations cancelled",
+    "Unpacked Windows program tested; no NSIS/portable installer release, installed-app replacement, Authenticode trust validation or remote CI check",
+    "No Windows reboot or long-duration/cross-version verification",
+    "Search performance observations from the original review remain; this change does not claim Listary parity",
+    "Dependency audit result reflects the advisory database at validation time"
+  ]
+}

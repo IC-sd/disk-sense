@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,6 +26,12 @@ jobs:
       - run: pnpm validate
       - run: pnpm smoke:development
         env:
-          DISK_SENSE_SMOKE_VIEW: overview
+          DISK_SENSE_SMOKE_VIEW: inspect
           DISK_SENSE_SMOKE_SKIP_SCREENSHOT: '1'
+          DISK_SENSE_SMOKE_INSPECT_SEARCH: '1'
+          DISK_SENSE_SMOKE_SEARCH_ADVANCED: '1'
+          DISK_SENSE_SMOKE_SEARCH_QUERY: search-smoke
+          DISK_SENSE_SMOKE_SEARCH_EXPECTED: search-smoke.txt
+          DISK_SENSE_SMOKE_FRONTEND_AUDIT: '1'
+          DISK_SENSE_SMOKE_FRONTEND_FIXTURES: '1'
       - run: pnpm audit --audit-level=moderate

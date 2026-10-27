@@ -1,9 +1,10 @@
 const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
+const { executeFileAction } = require('../file-actions.cjs')
 const { storageRelationship, findRelatedLocationsAsync } = require('../app-attribution.cjs')
 const { explainRelationship, relationshipNarrative, findRelationshipLocations, explanationFingerprint } = require('../relationship-engine.cjs')
-const { getInstalledApplications, peekInstalledApplications, isSpecificApplicationRoot } = require('../windows-app-inventory.cjs')
+const { getInstalledApplications, peekInstalledApplications } = require('../windows-app-inventory.cjs')
 const {
   status,
   review,
@@ -234,11 +235,40 @@ function createExplainerLoader() {
   }
 }
 
-function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell }) {
+function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell, clipboard }) {
   const loadExplainer = createExplainerLoader()
+  const spaceRequests = new Map()
+  const { createDirectorySessions } = require('../directory-sessions.cjs')
+  const directories = createDirectorySessions({
+    validate: directory => loadExplainer().absoluteTarget(directory, 'C:\\'),
+    present: (...args) => loadExplainer().presentDirectoryPage(...args)
+  })
+  const boundOwners = new WeakSet()
+  function bindOwner(event) {
+    const sender = event?.sender
+    if (!sender?.once || boundOwners.has(sender)) return
+    boundOwners.add(sender)
+    sender.once('destroyed', () => {
+      void directories.closeOwner(sender.id)
+      spaceRequests.get(sender.id)?.controller.abort()
+      spaceRequests.delete(sender.id)
+    })
+  }
   void getInstalledApplications().catch(() => {})
   let activeAiRequest = null
-  let activeDiscovery = null
+  ipcMain.handle('inspect:file-action', (_event, input) => executeFileAction(input, { shell, clipboard,
+    onOpened: choice => choice.query && searchService?.recordSelection ? searchService.recordSelection(choice) : undefined }))
+  ipcMain.handle('inspect:locations', async () => {
+    const candidates = [['home', '个人文件'], ['desktop', '桌面'], ['documents', '文档'], ['downloads', '下载']]
+      .map(([key, name]) => ({ name, path: app.getPath(key) }))
+    const roots = searchService?.cachedStatus?.().roots || []
+    const unique = [...candidates, ...roots.map(root => ({ name: root, path: root }))]
+      .filter((item, index, items) => items.findIndex(other => other.path.toLowerCase() === item.path.toLowerCase()) === index)
+    const accessible = await Promise.all(unique.map(async item => {
+      try { return (await fsp.stat(item.path)).isDirectory() ? item : null } catch { return null }
+    }))
+    return accessible.filter(Boolean)
+  })
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
     nativePresentationCache.delete(filePath)
@@ -246,9 +276,17 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
     while (nativePresentationCache.size > 800) nativePresentationCache.delete(nativePresentationCache.keys().next().value)
   }
 
-  ipcMain.handle('inspect:list', async (_event, directory) => (
-    loadExplainer().listDirectory(directory || 'C:\\')
-  ))
+  ipcMain.handle('inspect:list', async (event, directory) => {
+    bindOwner(event)
+    const owner = event?.sender?.id || 0
+    await directories.closeOwner(owner)
+    return directories.start(directory || 'C:\\', owner)
+  })
+  ipcMain.handle('inspect:list-page', (event, input) => directories.page(input, event?.sender?.id || 0))
+  ipcMain.handle('inspect:list-close', async (event, input) => {
+    await directories.close(String(input?.sessionId || ''), event?.sender?.id || 0)
+    return { closed: true }
+  })
   ipcMain.handle('inspect:hydrate', async (_event, paths) => (
     loadExplainer().hydrateDirectoryItems(paths)
   ))
@@ -256,6 +294,23 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
     path: path.resolve(directory),
     ...await loadExplainer().estimateDirectory(directory)
   }))
+  ipcMain.handle('inspect:space', async (event, input) => {
+    bindOwner(event)
+    const owner = event?.sender?.id || 0
+    spaceRequests.get(owner)?.controller.abort()
+    const controller = new AbortController()
+    const requestId = String(input?.requestId || '').slice(0, 160)
+    spaceRequests.set(owner, { controller, requestId })
+    try {
+      const { inspectPathSpace } = require('../system-info.cjs')
+      return await inspectPathSpace(input?.path, { cacheDirectory: path.join(app.getPath('userData'), 'native-cache'), signal: controller.signal })
+    } finally { if (spaceRequests.get(owner)?.controller === controller) spaceRequests.delete(owner) }
+  })
+  ipcMain.handle('inspect:space-cancel', (event, requestId) => {
+    const pending = spaceRequests.get(event?.sender?.id || 0)
+    if (pending && (!requestId || pending.requestId === requestId)) { pending.controller.abort(); return { cancelled: true } }
+    return { cancelled: false }
+  })
   ipcMain.handle('inspect:explain', async (_event, filePath) => {
     const result = await loadExplainer().explainPath(filePath, { fresh: true })
     const installedApplications = peekInstalledApplications()
@@ -290,72 +345,18 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
       relationship: semanticRelationship ? { ...volumeRelationship, ...semanticRelationship } : volumeRelationship,
       relatedLocations: uniqueLocations.slice(0, 16)
     }
-    let ledgerSaved = false
-    if (semanticRelationship && searchService?.observeSpace) {
-      const roots = [semanticRelationship]
-      if (/^[a-z]:[\\/]/iu.test(semanticRelationship.installLocation || '') && isSpecificApplicationRoot(semanticRelationship.installLocation)) {
-        roots.push({ ...semanticRelationship, rootPath: semanticRelationship.installLocation, basis: 'install-path',
-          evidence: [`Windows 登记的安装目录：${semanticRelationship.installLocation}`] })
-      }
-      // Only persist observed roots, never guessed "related locations" or an AI claim.
-      for (const relationship of roots) {
-        if (!relationship.rootPath) continue
-        try {
-          const stat = await fsp.lstat(relationship.rootPath)
-          if (stat.isDirectory() && !stat.isSymbolicLink()) {
-            const saved = await searchService.observeSpace(relationship)
-            ledgerSaved ||= Boolean(saved.saved)
-          }
-        } catch { /* Attribution remains available if the optional index is unavailable. */ }
-      }
-    }
-    return { ...explained, evidenceFingerprint: explanationFingerprint(explained), ledgerSaved }
+    return { ...explained, evidenceFingerprint: explanationFingerprint(explained) }
   })
 
   if (searchService) {
-    ipcMain.handle('space:forget', (_event, entityId) => {
-      if (!searchService.forgetSpace) throw new Error('空间台账暂时不可用。')
-      return searchService.forgetSpace(entityId)
-    })
-    ipcMain.handle('space:discover', () => {
-      if (!searchService.observeSpace) throw new Error('搜索索引暂不可用，无法保存空间归属。')
-      if (!activeDiscovery) activeDiscovery = (async () => {
-        const applications = await getInstalledApplications({ force: true })
-        const candidates = applications.filter(application => /^[a-z]:[\\/]/iu.test(application.installLocation || '') && isSpecificApplicationRoot(application.installLocation)).slice(0, 512)
-        let saved = 0
-        await mapConcurrent(candidates, 8, async application => {
-          const root = application.installLocation
-          try {
-            const stat = await fsp.lstat(root)
-            if (!stat.isDirectory() || stat.isSymbolicLink()) return
-            // Shared registry roots must pass the same ambiguity checks as individual inspection.
-            const { matchInstalledApplication } = require('../windows-app-inventory.cjs')
-            const match = matchInstalledApplication(root, applications)
-            if (!match || match.application.registryKey !== application.registryKey || match.matchType !== 'install-path') return
-            const result = await searchService.observeSpace({
-              entityId: `installed-application:${application.registryKey.toLowerCase()}`,
-              entityType: 'application', entityName: application.displayName, entityKind: 'Windows 已安装应用',
-              rootPath: root, installLocation: root, publisher: application.publisher || null,
-              basis: 'install-path', confidence: .98,
-              evidence: [`Windows 登记的安装目录：${root}`, ...(application.publisher ? [`发布者：${application.publisher}`] : [])]
-            })
-            if (result.saved) saved++
-          } catch { /* Missing/stale registry paths are not observations. */ }
-        })
-        return { saved }
-      })().finally(() => { activeDiscovery = null })
-      return activeDiscovery
-    })
-    ipcMain.handle('space:summary', () => {
-      if (!searchService.spaceSummary) throw new Error('空间台账暂时不可用，请检查搜索索引状态。')
-      return searchService.spaceSummary()
-    })
     ipcMain.handle('inspect:index-status', () => searchService.status())
     ipcMain.handle('inspect:index-start', (_event, input = {}) => searchService.rebuildScope({
       scope: input.scope === 'all' ? 'all' : 'drive',
       root: path.parse(path.resolve(input.root || 'C:\\')).root
     }))
     ipcMain.handle('inspect:index-cancel', () => searchService.cancel())
+    ipcMain.handle('inspect:ntfs-enable', () => searchService.enableNtfs())
+    ipcMain.handle('inspect:ntfs-disable', () => searchService.disableNtfs())
     ipcMain.handle('inspect:search', (_event, input) => searchService.search(input))
   }
   if (app?.getFileIcon) {
@@ -413,7 +414,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
     try {
       return await review(request.evidence, {
         ...aiConfig.runtime(),
-        analysisMode: request.mode === 'deep' ? 'deep' : 'normal',
+        analysisMode: 'normal',
         signal: controller.signal
       })
     } finally {

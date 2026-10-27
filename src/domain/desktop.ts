@@ -26,6 +26,7 @@ export interface OverviewSummary {
 }
 
 export interface AppInfo {
+  runtimeVersions?: { electron: string; node: string; chrome: string }
   name: string
   version: string
   platform: string
@@ -35,6 +36,7 @@ export interface AppInfo {
   userDataPath: string
   defaultUserDataPath: string
   dataExternallyManaged: boolean
+  migrationRecovery?: { source: string; target: string; message: string; detail?: string } | null
   dataUsage: DirectoryUsage
   appearance: AppearanceSettings
   stateVersion: number
@@ -113,6 +115,10 @@ export interface DirectoryItem {
 }
 
 export interface DirectoryListResult {
+  sessionId?: string
+  offset?: number
+  nextOffset?: number | null
+  complete?: boolean
   path: string
   items: DirectoryItem[]
   truncated: boolean
@@ -148,9 +154,24 @@ export interface FileSearchQuery {
   modified: FileSearchModified
   sort: FileSearchSort
   limit?: number
+  offset?: number
+  sessionId?: string
 }
 
 export interface FileSearchIndexStatus {
+  nativeStage?: string | null
+  scannedEntries?: number
+  scanner?: 'windows-native' | 'portable' | 'ntfs-mft' | 'ntfs-usn'
+  ntfs?: {
+    publication?: { root: string; entries: number; tookMs: number } | null
+    pendingReplays?: Array<{ root: string; phase: string; position: number }>
+    active: boolean
+    persistent?: boolean
+    requiresElevation: boolean
+    synchronizing: boolean
+    error: string
+    volumes: Array<{ root: string; complete: boolean; lastSynced: string | null }>
+  }
   synchronizing?: boolean
   coverageVersion?: number
   revision?: number
@@ -179,6 +200,8 @@ export interface FileSearchIndexStatus {
 }
 
 export interface FileSearchItem extends DirectoryItem {
+  matchPositions?: number[]
+  matchTitle?: string
   parent: string
   displayName: string
   searchKind: Exclude<FileSearchKind, 'all'>
@@ -194,6 +217,11 @@ export interface NativeFilePresentation {
 }
 
 export interface FileSearchResult {
+  diagnostics?: { stages?: Record<string, number>; counts?: Record<string, unknown>; reusedSession?: boolean; candidates?: number; returned?: number; tookMs?: number; renderer?: { requestMs: number; publishMs: number; frameMs?: number } }
+  sessionId?: string
+  total?: number
+  offset?: number
+  nextOffset?: number | null
   items: FileSearchItem[]
   truncated: boolean
   tookMs: number
@@ -222,6 +250,7 @@ export interface RelatedLocation {
 }
 
 export interface SpaceRelationship {
+  provenance?: Record<string, unknown>
   basis?: string
   limited?: boolean
   components?: SpaceRelationship[]
@@ -248,6 +277,9 @@ export interface DirectoryShape {
 }
 
 export interface ExplanationEvidence {
+  version?: number
+  fileType?: { version: number; source: string; format: string; type: string; status: string; confidence: number; extension: string; extensionConflict: boolean; bytesRead: number; prefixLimited: boolean; details: string[] } | null
+  observations?: Array<{ id: string; source: string; label?: string; confidence?: number; format?: string | null; extensionConflict?: boolean; status?: string }>
   pathSegments?: string[]
   siblingNames?: string[]
   childNames?: string[]
@@ -265,7 +297,6 @@ export interface AiDetails {
 
 export interface FileExplanation {
   evidenceFingerprint?: string
-  ledgerSaved?: boolean
   path: string
   name: string
   parent: string
@@ -304,23 +335,6 @@ export interface FileExplanation {
   aiUsage?: Record<string, number> | null
 }
 
-export interface SpaceLedgerSummary {
-  generatedAt: string
-  index: FileSearchIndexStatus
-  locationCount: number
-  limit: number
-  measurement: 'indexed-logical-bytes'
-  entities: Array<{
-    id: string; name: string; kind: string; type: string
-    bytes: number; files: number; inferred: boolean
-    deltaBytes: number | null; baselineAt: string | null
-    locations: Array<{
-      path: string; bytes: number; files: number; basis: string; evidence: string[]
-      observedAt: string; counted: boolean; covered: boolean; shared: boolean; incomplete: boolean
-    }>
-  }>
-}
-
 export interface AiConfigDraft {
   endpoint: string
   provider?: 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'local-openai'
@@ -348,6 +362,11 @@ export interface AiModelOption {
 }
 
 export interface AiReviewResult {
+  analysisVersion?: string
+  promptVersion?: string
+  evidenceVersion?: number
+  evidenceDigest?: string
+  provider?: string
   ok: boolean
   reason?: string
   result?: string
@@ -360,6 +379,11 @@ export interface AiReviewResult {
 }
 
 export interface StoredAiAnalysis {
+  analysisVersion?: string
+  promptVersion?: string
+  evidenceVersion?: number
+  evidenceDigest?: string
+  provider?: string
   path: string
   fingerprint: string
   parsed?: Record<string, unknown> | null
@@ -379,6 +403,8 @@ export interface AiAnalysisLookup {
 }
 
 export interface CleanerRule {
+  version?: number
+  source?: string
   id: string
   title: string
   category: string
@@ -396,6 +422,7 @@ export interface CleanerRule {
 export interface CleanerFile {
   candidateId: string
   path: string
+  canonicalPath?: string
   size: number
   modifiedAt: number
   ruleId: string
@@ -451,6 +478,25 @@ export interface CleanerScanResult {
     excluded: number
   }
   scannedAt: number
+  locations?: string[]
+  coverage?: {
+    status: 'complete' | 'partial' | 'unavailable' | 'not-found' | 'excluded'
+    roots: number
+    missingRoots: number
+    excludedRoots: number
+    directoriesRead: number
+    errorCount: number
+    diagnostics: Array<{ path: string; stage: 'discovery' | 'root' | 'directory' | 'file' | 'summary'; code: string }>
+    omittedDiagnostics: number
+    discovery?: {
+      directoriesRead: number
+      entriesVisited: number
+      missingLocations: number
+      excludedLocations: number
+      linksSkipped: number
+      limited: boolean
+    }
+  }
 }
 
 export interface SlimmingItem {
@@ -502,6 +548,15 @@ export interface MaintenanceProgress {
 }
 
 export interface MaintenanceJob {
+  recoveryRequired?: boolean
+  state?: string
+  outcome?: 'completed' | 'restart-required' | 'failed' | 'interrupted' | 'settings-opened'
+  rebootState?: 'required' | 'initiated' | 'not-reported'
+  restartRequired?: boolean
+  signal?: string | null
+  cancellable?: boolean
+  observedAvailableDeltaBytes?: number | null
+  spaceMeasurement?: 'volume-delta-not-attributed'
   id: string
   actionId: string
   ruleId: string
@@ -526,9 +581,15 @@ export interface CleanupResult extends CleanerFile {
 }
 
 export interface CleanupJob {
+  state?: string
+  uncertainCount?: number
+  recoveryRequired?: boolean
+  offset?: number
+  nextOffset?: number | null
   id: string
   createdAt: string
-  executionMode: 'trash'
+  /** The quarantine value is retained only for reading historical jobs. */
+  executionMode: 'trash' | 'quarantine'
   results: CleanupResult[]
   requested: number
   processed: number
@@ -538,6 +599,9 @@ export interface CleanupJob {
   rejectedOverflow: number
   movedToTrashBytes: number
   reclaimedBytes: number
+  isolatedBytes?: number
+  quarantineId?: string | null
+  volumeChanges?: Array<{ root: string; before: number | null; after: number | null; delta: number | null }>
   omittedResults?: number
 }
 
@@ -553,7 +617,41 @@ export interface CleanupExclusion {
   createdAt: string
 }
 
+export interface PathSpaceMeasurement {
+  path: string
+  generatedAt: string
+  state: 'complete' | 'partial'
+  logicalBytes: number
+  uniqueLogicalBytes: number
+  allocatedBytes: number | null
+  knownAllocatedBytes: number
+  sharedOutsideBytes: number
+  files: number
+  directories: number
+  hardLinkDuplicates: number
+  unknownFiles: number
+  skippedReparsePoints: number
+  cloudPlaceholders: number
+  sparseFiles: number
+  compressedFiles: number
+  errors: number
+  stopReason: 'entry-budget' | 'time-budget' | 'cancelled' | null
+  reclaimableBytes: null
+  measurement: string
+  explanation: string
+  durationMs: number
+}
+
+export interface ToolCacheInspection {
+  generatedAt: string
+  previewOnly: true
+  tools: Array<{ id: string; path: string; source: string; version: string | null; status: string; effectivePath: string | null; warnings: string[];
+    executablePath: string | null; shared: true; automaticExecution: false;
+    nativePreview: { command: string; args: string[]; previewOnly: true; available: boolean; impact: string; scope: string } }>
+}
+
 export interface CleanerScanProgress {
+  phase?: 'discovery' | 'files'
   ruleId: string
   visited: number
   found: number

@@ -2,24 +2,24 @@
   <section class="page cleanup-page">
     <header class="page-header cleaner-page-header">
       <div>
-        <div class="eyebrow"><span></span> SAFE SPACE ACTIONS</div>
+        <div class="eyebrow"><span></span> 空间处理</div>
         <h1>清理中心</h1>
-        <p>清理已经确认的临时空间，系统级操作单独评估；所有候选都先解释来源、风险和影响，再由你决定是否执行。</p>
+        <p>查看可处理空间，核对文件，再执行清理。</p>
       </div>
       <div class="cleaner-safety-state">
         <span><AppIcon name="shield" /></span>
-        <div><b>安全执行边界</b><small>普通文件默认移入回收站</small></div>
+        <div><b>可恢复处理</b><small>普通文件移入回收站</small></div>
       </div>
     </header>
 
-    <nav class="cleanup-tabs cleaner-view-tabs" role="tablist" aria-label="清理中心">
-        <button role="tab" :aria-selected="activeTab === 'junk'" :class="{ active: activeTab === 'junk' }" @click="activeTab = 'junk'">
+    <nav class="cleanup-tabs cleaner-view-tabs" role="tablist" aria-label="清理中心" @keydown="handleRovingKeydown">
+        <button role="tab" :tabindex="activeTab === 'junk' ? 0 : -1" :aria-selected="activeTab === 'junk'" :class="{ active: activeTab === 'junk' }" @click="activeTab = 'junk'">
           <AppIcon name="clean" /><span><b>垃圾清理</b><small>缓存、临时文件和日志</small></span>
         </button>
-        <button role="tab" :aria-selected="activeTab === 'slimming'" :class="{ active: activeTab === 'slimming' }" @click="openSlimming">
+        <button role="tab" :tabindex="activeTab === 'slimming' ? 0 : -1" :aria-selected="activeTab === 'slimming'" :class="{ active: activeTab === 'slimming' }" @click="openSlimming">
           <AppIcon name="database" /><span><b>系统瘦身</b><small>Windows 官方维护能力</small></span>
         </button>
-        <button role="tab" :aria-selected="activeTab === 'history'" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
+        <button role="tab" :tabindex="activeTab === 'history' ? 0 : -1" :aria-selected="activeTab === 'history'" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
           <AppIcon name="history" /><span><b>操作记录</b><small>结果、失败与释放空间</small></span>
         </button>
     </nav>
@@ -29,23 +29,13 @@
         <header class="cleaner-commandbar">
           <div class="cleaner-command-title">
             <span><AppIcon name="clean" /></span>
-            <div><b>扫描已知可清理空间</b><small>只识别规则明确、用途可解释的缓存、临时文件和诊断日志</small></div>
+            <div><b>{{ scannedCount ? '扫描结果' : '查找可清理空间' }}</b><small>{{ scannedCount ? '展开分类核对文件，再选择要处理的内容。' : `${rules.length} 条本地规则 · 缓存、临时文件与诊断日志` }}</small></div>
           </div>
 
-          <div class="cleaner-command-total">
-            <strong>{{ scannedCount ? formatBytes(foundBytes) : '—' }}</strong>
-            <small>{{ scannedCount ? `${foundItems.toLocaleString()} 个发现项目` : '扫描后显示占用' }}</small>
+          <div v-if="scannedCount" class="cleaner-command-total">
+            <strong>{{ formatBytes(foundBytes) }}</strong>
+            <small>按规则汇总占用</small>
           </div>
-
-          <details class="risk-guide">
-            <summary><AppIcon name="shield" />清理等级</summary>
-            <div>
-              <span v-for="level in riskLevels" :key="level.value" class="risk-chip" :class="riskClass(level.value)">
-                <i></i>{{ level.label }}
-              </span>
-            </div>
-            <p>只有“安全”和“低风险”候选可以进入回收站流程；未知和高风险内容不会自动选择。</p>
-          </details>
 
           <div class="cleaner-command-actions">
             <button class="compact-tool-button" :disabled="busy" @click="showExclusions = true">
@@ -60,14 +50,20 @@
           </div>
         </header>
 
-        <div class="cleaner-stats">
-          <article><span>发现项目</span><b>{{ foundItems.toLocaleString() }}</b><small>文件与只读统计</small></article>
-          <article><span>发现占用</span><b>{{ formatBytes(foundBytes) }}</b><small>包含回收站容量</small></article>
+        <div v-if="!scannedCount && !busy" class="cleaner-start-guide">
+          <div><span>01</span><b>扫描已知位置</b><p>按明确规则检查占用，先生成预览。</p></div>
+          <div><span>02</span><b>核对并选择</b><p>查看用途、安全依据和具体文件。</p></div>
+          <div><span>03</span><b>移入回收站</b><p>普通文件可恢复，清空后释放空间。</p></div>
+        </div>
+
+        <div v-if="scannedCount || busy" class="cleaner-stats">
+          <article><span>已知项目</span><b>{{ foundItems.toLocaleString() }}</b><small>按规则汇总，可能交叠</small></article>
+          <article><span>已知占用</span><b>{{ formatBytes(foundBytes) }}</b><small>含只读统计，非释放估算</small></article>
           <article><span>当前可处理</span><b>{{ formatBytes(actionableBytes) }}</b><small>{{ actionableItems.toLocaleString() }} 个文件通过安全条件</small></article>
           <article class="selected-metric"><span>已选择</span><b>{{ formatBytes(selectedBytes) }}</b><small>{{ selected.length.toLocaleString() }} 个文件</small></article>
           <article class="scan-time-stat">
             <span>扫描状态</span>
-            <b>{{ scanBusy ? `${scanProgress}%` : scannedCount ? '已完成' : '尚未扫描' }}</b>
+            <b>{{ scanBusy ? `${scanProgress}%` : incompleteScans ? '结果不完整' : scannedCount ? '扫描结束' : '尚未扫描' }}</b>
             <small>
               {{ scannedCount }} / {{ rules.length }} 条规则
               <template v-if="lastScanDurationMs"> · {{ formatDuration(lastScanDurationMs) }}</template>
@@ -85,7 +81,7 @@
         </div>
         <div v-else-if="busy && scanStatus.current" class="cleanup-operation scan-operation">
           <div>
-            <b>正在扫描 {{ scanningRuleTitle }}</b>
+            <b>{{ scanStatus.phase === 'discovery' ? '正在查找应用位置' : '正在扫描文件' }} · {{ scanningRuleTitle }}</b>
             <span>已访问 {{ scanStatus.visited.toLocaleString() }} 项 · 发现 {{ scanStatus.found.toLocaleString() }} 个候选</span>
           </div>
           <small>{{ scanStatus.current }}</small>
@@ -93,6 +89,17 @@
 
         <p v-if="message" class="inline-message cleaner-message" aria-live="polite">{{ message }}</p>
 
+        <div class="cleaner-list-heading">
+          <div><b>{{ scannedCount ? '分类与文件' : '扫描范围' }}</b><span>{{ categoryGroups.length }} 个分类 · 点击展开规则</span></div>
+          <details class="risk-guide">
+            <summary><AppIcon name="shield" />清理等级</summary>
+            <div>
+              <span v-for="level in riskLevels" :key="level.value" class="risk-chip" :class="riskClass(level.value)"><i></i>{{ level.label }}</span>
+            </div>
+            <p>只有“安全”和“低风险”候选可以进入回收站流程；未知和高风险内容不会自动选择。</p>
+          </details>
+        </div>
+        <div class="cleaner-table-heading" aria-hidden="true"><span>分类 / 安全依据</span><span>扫描进度</span><span>发现占用</span></div>
         <div class="cleaner-category-list">
           <section
             v-for="group in categoryGroups"
@@ -132,11 +139,12 @@
                 <span v-if="group.selectedFiles">{{ group.selectedFiles.toLocaleString() }} 个已选</span>
                 <small>
                   {{ group.scanned }} / {{ group.rules.length }} 条规则已扫描
+                  <template v-if="group.incomplete"> · {{ group.incomplete }} 条结果不完整</template>
                   <template v-if="group.retainedItems"> · 保留 {{ group.retainedItems.toLocaleString() }} 个近期文件</template>
                 </small>
               </div>
               <div class="category-amount">
-                <b>{{ group.scanned ? formatBytes(group.bytes) : '尚未扫描' }}</b>
+                <b>{{ group.unavailable ? '未能读取' : group.scanned ? formatBytes(group.bytes) : '尚未扫描' }}</b>
                 <small>{{ group.scanned ? `${group.items.toLocaleString()} 个项目` : `${group.rules.length} 条规则` }}</small>
               </div>
             </header>
@@ -158,10 +166,13 @@
                     <b>{{ rule.title }}</b>
                     <span class="risk-chip" :class="riskClass(rule.risk)"><i></i>{{ riskLabel(rule.risk) }}</span>
                     <span v-if="rule.requiresAdmin" class="admin-chip">需要管理员</span>
+                    <span v-if="results[rule.id]" class="scan-coverage" :class="results[rule.id].coverage?.status" role="status">{{ cleanerCoverageLabel(results[rule.id]) }}</span>
                   </div>
                   <p>{{ rule.reason }}</p>
                   <details class="rule-evidence">
                     <summary>安全依据与文件明细</summary>
+                    <p v-if="rule.version">规则版本 {{ rule.version }} · {{ rule.source }}</p>
+                    <ToolCachePanel v-if="['npm-cache', 'pip-cache', 'nuget-cache', 'uv-cache', 'pnpm-cache'].includes(rule.id)" :rule-id="rule.id" />
                     <div class="rule-safety">
                       <AppIcon name="shield" />
                       <span>{{ rule.safetyNote }}</span>
@@ -170,6 +181,29 @@
                     </div>
                     <p v-if="results[rule.id]?.blockedReason" class="rule-blocked">{{ results[rule.id].blockedReason }}</p>
                     <p v-if="results[rule.id]?.truncated" class="rule-blocked">{{ scanLimitMessage(results[rule.id]) }}</p>
+                    <div v-if="results[rule.id]?.coverage" class="rule-scan-report">
+                      <p v-if="!results[rule.id].summaryOnly">
+                        {{ results[rule.id].coverage!.roots }} 个规则位置 · 已读取 {{ results[rule.id].coverage!.directoriesRead }} 个目录
+                        <template v-if="results[rule.id].coverage!.missingRoots"> · {{ results[rule.id].coverage!.missingRoots }} 个位置不存在</template>
+                        <template v-if="results[rule.id].coverage!.excludedRoots"> · {{ results[rule.id].coverage!.excludedRoots }} 个位置已排除</template>
+                      </p>
+                      <p v-else>已检查 {{ results[rule.id].coverage!.roots }} 个卷的系统汇总。</p>
+                      <p v-if="results[rule.id].coverage!.discovery?.directoriesRead || results[rule.id].coverage!.discovery?.missingLocations || results[rule.id].coverage!.discovery?.excludedLocations || results[rule.id].coverage!.discovery?.linksSkipped" class="rule-discovery-report">
+                        应用位置发现：读取 {{ results[rule.id].coverage!.discovery!.directoriesRead }} 个目录
+                        <template v-if="results[rule.id].coverage!.discovery!.missingLocations"> · {{ results[rule.id].coverage!.discovery!.missingLocations }} 个检查位置不存在</template>
+                        <template v-if="results[rule.id].coverage!.discovery!.excludedLocations"> · {{ results[rule.id].coverage!.discovery!.excludedLocations }} 个位置按排除项跳过</template>
+                        <template v-if="results[rule.id].coverage!.discovery!.linksSkipped"> · {{ results[rule.id].coverage!.discovery!.linksSkipped }} 个链接目录已跳过</template>
+                      </p>
+                      <p v-if="results[rule.id].coverage!.errorCount" class="rule-blocked">
+                        {{ results[rule.id].coverage!.errorCount }} 处未能完成检查，当前数量不代表完整占用。已通过校验的文件仍可核对。
+                      </p>
+                      <ul v-if="results[rule.id].coverage!.diagnostics.length">
+                        <li v-for="(issue, index) in results[rule.id].coverage!.diagnostics" :key="index">
+                          <code :title="issue.code">{{ cleanerIssueLabel(issue.code) }}</code><span :title="issue.path">{{ issue.path }}</span>
+                        </li>
+                      </ul>
+                      <p v-if="results[rule.id].coverage!.omittedDiagnostics">另有 {{ results[rule.id].coverage!.omittedDiagnostics }} 条问题未展开。</p>
+                    </div>
                     <p v-if="results[rule.id]?.retained.recentItems" class="rule-retained">
                       已发现但保留最近 {{ rule.minimumAgeDays }} 天内的
                       {{ results[rule.id].retained.recentItems.toLocaleString() }} 个文件（{{ formatBytes(results[rule.id].retained.recentBytes) }}），不会进入清理计划。
@@ -181,18 +215,21 @@
                       </span>
                     </div>
                     <div v-if="results[rule.id]?.files.length" class="rule-files">
+                      <header><b>文件路径</b><span>大小</span><span>操作</span></header>
                       <div v-for="file in results[rule.id].files.slice(0, 30)" :key="file.path">
-                        <span>{{ file.path }}</span><small>{{ formatBytes(file.size) }}</small>
-                        <button @click="excludeFile(file.path)">排除</button>
+                        <span :title="file.path">{{ file.path }}</span><small>{{ formatBytes(file.size) }}</small>
+                        <button :aria-label="`排除 ${file.path}`" @click="excludeFile(file.path)">排除</button>
                       </div>
                       <p v-if="results[rule.id].files.length > 30">还有 {{ results[rule.id].files.length - 30 }} 个文件未展开</p>
                     </div>
+                    <p v-else class="rule-detail-empty">{{ results[rule.id] ? '此规则没有可展开的文件候选。' : '扫描后可在这里核对具体文件。' }}</p>
                   </details>
                 </div>
 
                 <div class="compact-rule-result">
-                  <b>{{ results[rule.id] ? formatBytes(results[rule.id].total) : '—' }}</b>
-                  <small v-if="results[rule.id]">
+                  <b>{{ results[rule.id]?.coverage?.status === 'unavailable' ? '未能读取' : results[rule.id] ? formatBytes(results[rule.id].total) : '—' }}</b>
+                  <small v-if="results[rule.id]?.coverage?.status === 'unavailable'">展开查看原因</small>
+                  <small v-else-if="results[rule.id]">
                     <span>{{ results[rule.id].itemCount.toLocaleString() }} 个{{ results[rule.id].summaryOnly ? '项目' : '发现' }}</span>
                     <span v-if="!results[rule.id].summaryOnly && results[rule.id].selectable">
                       {{ results[rule.id].candidateItemCount.toLocaleString() }} 个可处理
@@ -211,25 +248,26 @@
             </div>
           </section>
         </div>
+        <footer class="cleaner-selection-note">
+          <AppIcon name="shield" /><span v-if="selected.length">已选择 {{ selected.length.toLocaleString() }} 个文件 · {{ formatBytes(selectedBytes) }}。执行前会再次校验文件状态。</span><span v-else>扫描只读取文件信息；选择文件并确认后才会执行处理。</span>
+        </footer>
       </section>
 
       <div v-if="showExclusions" class="cleaner-drawer-backdrop" @click.self="showExclusions = false">
-        <aside class="cleaner-drawer" aria-label="清理排除项">
+        <aside ref="exclusionDialogElement" class="cleaner-drawer" role="dialog" aria-modal="true" aria-labelledby="cleaner-exclusions-title" @keydown="handleDialogKeydown($event, () => showExclusions = false)">
           <header>
-            <div><span>PROTECTED PATHS</span><h2>清理排除项</h2><p>这些路径不会进入任何清理候选。</p></div>
+            <div><span>保护路径</span><h2 id="cleaner-exclusions-title">清理排除项</h2><p>这些路径不会进入任何清理候选。</p></div>
             <button class="modal-close" aria-label="关闭" @click="showExclusions = false">×</button>
           </header>
           <div class="exclusion-form">
-            <input v-model="exclusionPath" placeholder="输入要长期保护的完整路径" @keyup.enter="addExclusion()" />
-            <select v-model="exclusionMode">
-              <option value="prefix">保护此目录及其内容</option>
-              <option value="exact">只保护这个路径</option>
-            </select>
+            <label><span>完整路径</span><input v-model="exclusionPath" placeholder="例如 D:\\Projects" @keyup.enter="addExclusion()" /></label>
+            <label><span>保护范围</span><select v-model="exclusionMode"><option value="prefix">保护此目录及其内容</option><option value="exact">只保护这个路径</option></select></label>
             <button class="primary-button" :disabled="busy || !exclusionPath.trim()" @click="addExclusion()">添加保护</button>
           </div>
+          <div class="exclusion-list-heading"><b>已保护的路径</b><span>{{ exclusions.length }} 项</span></div>
           <div v-if="exclusions.length" class="exclusion-list">
             <div v-for="item in exclusions" :key="item.id">
-              <span><b>{{ item.path }}</b><small>{{ item.mode === 'prefix' ? '目录及其内容' : '仅此路径' }} · {{ item.reason }}</small></span>
+              <span><b :title="item.path">{{ item.path }}</b><small>{{ item.mode === 'prefix' ? '目录及其内容' : '仅此路径' }} · {{ item.reason }}</small></span>
               <button :disabled="busy" @click="removeExclusion(item.id)">移除</button>
             </div>
           </div>
@@ -240,13 +278,13 @@
 
     <template v-else>
       <CleanupHistoryPanel v-if="activeTab === 'history'" :refresh-key="historyRefreshKey" />
-      <template v-else>
+      <template v-else-if="activeTab === 'slimming'">
         <section class="slimming-workspace">
           <header class="slimming-intro">
             <div class="slimming-visual"><AppIcon name="database" /><span></span></div>
             <div>
-              <span>WINDOWS MAINTENANCE</span>
-              <h2>系统瘦身</h2>
+              <span>Windows 维护</span>
+              <h2>查看 Windows 系统项目</h2>
               <p>只调用 Windows 官方维护能力。普通清理、不可逆维护和系统设置严格分流，不会直接删除 WinSxS 或分页文件。</p>
             </div>
             <div class="slimming-toolbar">
@@ -320,17 +358,26 @@
               <span class="maintenance-result-icon" :class="{ success: job.success }"><AppIcon :name="job.success ? 'shield' : 'close'" /></span>
               <div><b>{{ job.title }}</b><small>{{ formatDateTime(job.finishedAt) }} · {{ job.readOnly ? '只读分析' : job.irreversible ? '不可逆维护' : '系统维护' }}</small></div>
               <p>{{ job.message }}</p>
-              <strong :class="{ success: job.success }">{{ job.success ? '成功' : `失败 ${job.exitCode}` }}</strong>
+              <strong :class="{ success: job.success }">{{ job.recoveryRequired ? '结果待核对' : job.restartRequired ? '完成，需重启' : job.success ? '成功' : `失败 ${job.exitCode}` }}</strong>
             </article>
           </section>
         </section>
       </template>
     </template>
 
+    <div v-if="cleanupDialog" class="modal cleaner-confirm-modal" @click.self="cleanupDialog = false">
+      <section ref="cleanupDialogElement" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cleanup-confirm-title" @keydown="handleDialogKeydown($event, () => cleanupDialog = false)">
+        <div class="modal-title"><div><p class="kicker">核对处理计划</p><h2 id="cleanup-confirm-title">将所选文件移入回收站？</h2></div><button class="modal-close" aria-label="关闭" @click="cleanupDialog = false">×</button></div>
+        <div class="cleaner-confirm-summary"><div><span>所选文件</span><b>{{ selected.length.toLocaleString() }} <small>个</small></b></div><div><span>文件占用</span><b>{{ formatBytes(selectedBytes) }}</b></div></div>
+        <div class="maintenance-confirm-impact"><b>清空回收站后才会释放空间</b><p>执行前会再次核对文件状态。文件状态变化、被占用或超出安全范围时，将跳过并记录原因。</p></div>
+        <div class="modal-actions"><button class="quiet" @click="cleanupDialog = false">返回核对</button><span></span><button class="primary-button" :disabled="!selected.length || busy" @click="performCleanup">确认移入回收站</button></div>
+      </section>
+    </div>
+
     <div v-if="maintenanceDialog" class="modal maintenance-modal" @click.self="closeMaintenanceDialog">
-      <section class="modal-card">
+      <section ref="maintenanceDialogElement" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="maintenance-confirm-title" @keydown="handleDialogKeydown($event, closeMaintenanceDialog)">
         <div class="modal-title">
-          <div><p class="kicker">SYSTEM MAINTENANCE</p><h2>{{ maintenanceDialog.action.label }}</h2></div>
+          <div><p class="kicker">系统维护确认</p><h2 id="maintenance-confirm-title">{{ maintenanceDialog.action.label }}</h2></div>
           <button class="modal-close" aria-label="关闭" @click="closeMaintenanceDialog">×</button>
         </div>
         <div class="maintenance-confirm-risk" :class="riskClass(maintenanceDialog.action.risk)">
@@ -368,8 +415,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { desktopApi } from '../platform/api'
+import { handleRovingKeydown, trapDialogKeydown } from '../application/accessibility'
 import type {
   CleanerExecuteProgress,
   CleanerFile,
@@ -385,7 +433,9 @@ import type {
 } from '../domain/desktop'
 import { riskClass, riskLabel, riskLevels } from '../domain/risk'
 import { formatBytes, formatDateTime } from '../shared/format'
+import { cleanerCoverageLabel, cleanerFileKey, cleanerIssueLabel, uniqueCleanerFiles } from '../application/cleaner'
 import AppIcon from './AppIcon.vue'
+import ToolCachePanel from './ToolCachePanel.vue'
 import CleanupHistoryPanel from './CleanupHistoryPanel.vue'
 
 const activeTab = ref<'junk' | 'slimming' | 'history'>('junk')
@@ -414,6 +464,11 @@ const scanStatus = reactive<CleanerScanProgress>({ ruleId: '', visited: 0, found
 const maintenanceProgress = reactive<MaintenanceProgress>({ id: '', actionId: '', phase: 'running', percent: null, message: '' })
 const maintenanceDialog = ref<{ item: SlimmingItem; action: SlimmingAction } | null>(null)
 const maintenanceConfirmation = ref('')
+const cleanupDialog = ref(false)
+const exclusionDialogElement = ref<HTMLElement | null>(null)
+const cleanupDialogElement = ref<HTMLElement | null>(null)
+const maintenanceDialogElement = ref<HTMLElement | null>(null)
+let previousDialogFocus: HTMLElement | null = null
 let unsubscribeExecute: (() => void) | null = null
 let unsubscribeScan: (() => void) | null = null
 let unsubscribeMaintenance: (() => void) | null = null
@@ -422,8 +477,10 @@ const scannedCount = computed(() => Object.keys(results).length)
 const scanProgress = computed(() => rules.value.length ? Math.round(scannedCount.value / rules.value.length * 100) : 0)
 const foundItems = computed(() => Object.values(results).reduce((sum, result) => sum + (result.itemCount ?? result.files.length), 0))
 const foundBytes = computed(() => Object.values(results).reduce((sum, result) => sum + result.total, 0))
-const actionableBytes = computed(() => Object.values(results).reduce((sum, result) => sum + (result.selectable ? result.candidateTotal : 0), 0))
-const actionableItems = computed(() => Object.values(results).reduce((sum, result) => sum + (result.selectable ? result.candidateItemCount : 0), 0))
+const actionableFiles = computed(() => uniqueCleanerFiles(Object.values(results).flatMap(result => result.selectable ? result.files : [])))
+const actionableBytes = computed(() => actionableFiles.value.reduce((sum, file) => sum + file.size, 0))
+const actionableItems = computed(() => actionableFiles.value.length)
+const incompleteScans = computed(() => Object.values(results).filter(result => result.truncated || ['partial', 'unavailable'].includes(result.coverage?.status || '')).length)
 const selectedBytes = computed(() => selected.value.reduce((sum, item) => sum + item.size, 0))
 const scanningRuleTitle = computed(() => rules.value.find(rule => rule.id === scanStatus.ruleId)?.title || '清理规则')
 const categoryOrder = ['Windows', '浏览器', '应用缓存', '开发工具', '诊断', '图形', 'Windows 更新']
@@ -444,7 +501,7 @@ const riskPriority: Record<CleanerRule['risk'], number> = {
   danger: 4
 }
 const categoryGroups = computed(() => {
-  const selectedPaths = new Set(selected.value.map(item => item.path.toLowerCase()))
+  const selectedPaths = new Set(selected.value.map(cleanerFileKey))
   return [...new Set(rules.value.map(rule => rule.category))]
     .sort((left, right) => {
       const leftIndex = categoryOrder.indexOf(left)
@@ -454,7 +511,7 @@ const categoryGroups = computed(() => {
     .map(key => {
       const groupRules = rules.value.filter(rule => rule.category === key)
       const groupResults = groupRules.map(rule => results[rule.id]).filter(Boolean)
-      const selectableFiles = groupResults.flatMap(result => result.selectable ? result.files : [])
+      const selectableFiles = uniqueCleanerFiles(groupResults.flatMap(result => result.selectable ? result.files : []))
       const risk = groupRules.reduce(
         (highest, rule) => riskPriority[rule.risk] > riskPriority[highest] ? rule.risk : highest,
         groupRules[0]?.risk || 'safe'
@@ -466,11 +523,13 @@ const categoryGroups = computed(() => {
         risk,
         rules: groupRules,
         scanned: groupResults.length,
+        incomplete: groupResults.filter(result => result.truncated || ['partial', 'unavailable'].includes(result.coverage?.status || '')).length,
+        unavailable: groupResults.length > 0 && groupResults.every(result => result.coverage?.status === 'unavailable'),
         items: groupResults.reduce((sum, result) => sum + (result.itemCount ?? result.files.length), 0),
         bytes: groupResults.reduce((sum, result) => sum + result.total, 0),
         retainedItems: groupResults.reduce((sum, result) => sum + result.retained.recentItems + result.retained.olderItems, 0),
         selectableFiles,
-        selectedFiles: selectableFiles.filter(file => selectedPaths.has(file.path.toLowerCase())).length
+        selectedFiles: selectableFiles.filter(file => selectedPaths.has(cleanerFileKey(file))).length
       }
     })
 })
@@ -525,13 +584,12 @@ function isCategoryPartiallySelected(key: string) {
 function toggleCategory(key: string) {
   const group = categoryByKey(key)
   if (!group?.selectableFiles.length) return
-  const groupPaths = new Set(group.selectableFiles.map(file => file.path.toLowerCase()))
+  const groupPaths = new Set(group.selectableFiles.map(cleanerFileKey))
   if (isCategorySelected(key)) {
-    selected.value = selected.value.filter(file => !groupPaths.has(file.path.toLowerCase()))
+    selected.value = selected.value.filter(file => !groupPaths.has(cleanerFileKey(file)))
     return
   }
-  const existing = new Set(selected.value.map(file => file.path.toLowerCase()))
-  selected.value = [...selected.value, ...group.selectableFiles.filter(file => !existing.has(file.path.toLowerCase()))]
+  selected.value = uniqueCleanerFiles([...selected.value, ...group.selectableFiles])
 }
 
 async function scanRule(id: string, propagateError = false) {
@@ -539,6 +597,7 @@ async function scanRule(id: string, propagateError = false) {
   if (!api || scanningIds.value.has(id)) return
   setScanning(id, true)
   selected.value = selected.value.filter(item => item.ruleId !== id)
+  delete results[id]
   try {
     results[id] = await api.cleanerScan(id)
   } catch (error) {
@@ -567,11 +626,14 @@ async function runLimited(ids: string[], concurrency: number) {
 async function scanAll() {
   scanBusy.value = true
   message.value = ''
+  selected.value = []
+  for (const id of Object.keys(results)) delete results[id]
   const startedAt = performance.now()
   try {
     await runLimited(rules.value.map(rule => rule.id), 3)
     const retainedItems = Object.values(results).reduce((sum, result) => sum + result.retained.recentItems + result.retained.olderItems, 0)
-    message.value = `扫描完成：发现 ${foundItems.value.toLocaleString()} 个项目，占用 ${formatBytes(foundBytes.value)}；其中 ${actionableItems.value.toLocaleString()} 个文件（${formatBytes(actionableBytes.value)}）通过当前安全条件，另有 ${retainedItems.toLocaleString()} 个近期文件已识别但保留。`
+    const coverageNote = incompleteScans.value ? `有 ${incompleteScans.value} 条规则未完整扫描，请展开查看原因。` : ''
+    message.value = `扫描结束：按规则汇总发现 ${foundItems.value.toLocaleString()} 个项目，占用 ${formatBytes(foundBytes.value)}（规则间可能交叠）；去重后 ${actionableItems.value.toLocaleString()} 个文件（${formatBytes(actionableBytes.value)}）通过当前安全条件，另有 ${retainedItems.toLocaleString()} 个文件按保留时间保留。${coverageNote}`
   } catch (error) {
     message.value = error instanceof Error && error.name === 'AbortError' ? '扫描已取消，已完成的规则结果仍可查看。' : error instanceof Error ? error.message : String(error)
   } finally {
@@ -589,25 +651,30 @@ async function cancelScans() {
 
 function isSelected(id: string) {
   const files = results[id]?.files || []
-  const selectedPaths = new Set(selected.value.map(item => item.path.toLowerCase()))
-  return files.length > 0 && files.every(item => selectedPaths.has(item.path.toLowerCase()))
+  const selectedPaths = new Set(selected.value.map(cleanerFileKey))
+  return files.length > 0 && files.every(item => selectedPaths.has(cleanerFileKey(item)))
 }
 
 function toggle(id: string) {
   const rule = rules.value.find(item => item.id === id)
   if (!(results[id]?.selectable ?? rule?.selectable)) return
   const files = results[id]?.files || []
-  const paths = new Set(files.map(file => file.path.toLowerCase()))
+  const paths = new Set(files.map(cleanerFileKey))
   if (isSelected(id)) {
-    selected.value = selected.value.filter(item => !paths.has(item.path.toLowerCase()))
+    selected.value = selected.value.filter(item => !paths.has(cleanerFileKey(item)))
   } else {
-    const existing = new Set(selected.value.map(item => item.path.toLowerCase()))
-    selected.value = [...selected.value, ...files.filter(file => !existing.has(file.path.toLowerCase()))]
+    selected.value = uniqueCleanerFiles([...selected.value, ...files])
   }
 }
 
-async function execute() {
-  if (!selected.value.length || !confirm(`确认将 ${selected.value.length} 个已扫描文件移入回收站？`)) return
+function execute() {
+  if (!selected.value.length) return
+  cleanupDialog.value = true
+}
+
+async function performCleanup() {
+  if (!selected.value.length || busy.value) return
+  cleanupDialog.value = false
   const api = desktopApi()
   if (!api) return
   cleanupBusy.value = true
@@ -770,6 +837,23 @@ function ruleIcon(category: string) {
   return 'database'
 }
 
+function handleDialogKeydown(event: KeyboardEvent, close: () => void) {
+  trapDialogKeydown(event, event.currentTarget as HTMLElement, close)
+}
+
+watch([showExclusions, cleanupDialog, maintenanceDialog], async (values, previous) => {
+  const open = values.some(Boolean)
+  if (open && !previous.some(Boolean)) previousDialogFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  await nextTick()
+  if (open) {
+    const dialog = exclusionDialogElement.value || cleanupDialogElement.value || maintenanceDialogElement.value
+    dialog?.querySelector<HTMLButtonElement>('.modal-close')?.focus()
+  } else if (previousDialogFocus?.isConnected) {
+    previousDialogFocus.focus()
+    previousDialogFocus = null
+  }
+})
+
 onMounted(async () => {
   const api = desktopApi()
   if (!api) return
@@ -795,3 +879,5 @@ onUnmounted(() => {
   unsubscribeMaintenance?.()
 })
 </script>
+
+<style src="./cleaner.css"></style>

@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-19T10:59:18.319Z",
+  "entries": 900010,
+  "wordIndexMs": 8,
+  "mode": "Same frozen SQLite snapshot; alternating before/after engines; five warm samples; query result cache disabled; engine time only",
+  "measurements": [
+    {
+      "query": "word",
+      "before": {
+        "total": 2493,
+        "medianMs": 109.2,
+        "maximumMs": 118.1
+      },
+      "after": {
+        "total": 3561,
+        "medianMs": 125.1,
+        "maximumMs": 150.7
+      }
+    },
+    {
+      "query": "listary",
+      "before": {
+        "total": 3321,
+        "medianMs": 131.8,
+        "maximumMs": 146.5
+      },
+      "after": {
+        "total": 3321,
+        "medianMs": 72.5,
+        "maximumMs": 102.2
+      }
+    },
+    {
+      "query": "vsc",
+      "before": {
+        "total": 19754,
+        "medianMs": 629.3,
+        "maximumMs": 689.2
+      },
+      "after": {
+        "total": 21632,
+        "medianMs": 336.8,
+        "maximumMs": 374.6
+      }
+    },
+    {
+      "query": "report",
+      "before": {
+        "total": 2661,
+        "medianMs": 229.2,
+        "maximumMs": 249.9
+      },
+      "after": {
+        "total": 2680,
+        "medianMs": 100.7,
+        "maximumMs": 109.8
+      }
+    },
+    {
+      "query": "baogao",
+      "before": {
+        "total": 78,
+        "medianMs": 93.4,
+        "maximumMs": 103
+      },
+      "after": {
+        "total": 78,
+        "medianMs": 33.3,
+        "maximumMs": 36.4
+      }
+    },
+    {
+      "query": "Documents report",
+      "before": {
+        "total": 15,
+        "medianMs": 157.8,
+        "maximumMs": 172.1
+      },
+      "after": {
+        "total": 15,
+        "medianMs": 71.9,
+        "maximumMs": 74.8
+      }
+    }
+  ],
+  "clientDate": "2026-10-19",
+  "baselineEngineSha256": "464da53908e5f80f4151c587dedbe519af6f6d7a130bb2374cfbd1ef6eed7d82",
+  "currentEngineSha256": "bb2cb60921db965bcd4e925779b36b470416cf17a37b21098a28ebc9d0a60d71",
+  "auxiliaryIndex": {
+    "note": "Existing file metadata only; no filesystem traversal; the timed query comparison reused the completed auxiliary index",
+    "version": 3,
+    "firstFullBackfillMs": 30198
+  },
+  "validation": {
+    "unitTests": 223,
+    "build": "PASS",
+    "unitTestFiles": 33,
+    "desktopModules": 37,
+    "typecheck": "PASS",
+    "electronAdvancedSearch": "PASS"
+  }
+}
