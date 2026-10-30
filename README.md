@@ -69,40 +69,19 @@ Disk Sense 采用“目录浏览与搜索 + 文件解释 + 安全清理”的方
 
 ## 界面预览
 
-界面统一采用紧凑的桌面布局，支持深色与浅色。首页展示磁盘容量，文件搜索集中在“目录与文件”；设置保留外观、AI、存储位置与应用信息，识别依据和处理记录按需展开。
+三个主要功能模块的浅色界面预览。截图来自真实桌面程序，使用隔离示例数据；磁盘容量和路径仅作演示。
 
-首页与文件搜索截图使用示例项目和路径，首页容量为演示数据。
+**空间概览** — 查看各磁盘容量、已用与剩余空间，进入目录浏览。
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/images/overview.png" alt="空间概览"></td>
-    <td width="50%"><img src="docs/images/directory-inspection.png" alt="目录与文件解释"></td>
-  </tr>
-  <tr>
-    <td align="center">空间概览</td>
-    <td align="center">目录与文件解释</td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/images/file-search.png" alt="即时搜索与键盘操作"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">文件搜索：选择后直接打开或定位，需要时再展开分析</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/images/cleanup.png" alt="垃圾清理"></td>
-    <td width="50%"><img src="docs/images/system-maintenance.png" alt="系统瘦身与 Windows 官方维护"></td>
-  </tr>
-  <tr>
-    <td align="center">垃圾清理</td>
-    <td align="center">系统瘦身与 Windows 官方维护</td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/images/settings.png" alt="设置与关于"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">设置与关于</td>
-  </tr>
-</table>
+![空间概览：浅色界面](docs/images/overview-light.png)
+
+**目录与文件** — 浏览目录、跨盘搜索，按需查看用途分析与证据。
+
+![目录与文件：浅色界面](docs/images/files-light.png)
+
+**垃圾清理** — 扫描已知位置，核对覆盖范围与候选文件，预览后确认处理。
+
+![垃圾清理：浅色界面](docs/images/cleanup-light.png)
 
 ## 安全边界
 
@@ -137,7 +116,7 @@ Disk Sense 采用“目录浏览与搜索 + 文件解释 + 安全清理”的方
 
 ## 性能策略
 
-- 全盘索引和搜索运行在独立工作线程中；索引数据库、排序和大批量元数据处理不会占用 Electron 界面线程。
+- 索引构建和搜索查询分别运行在独立工作线程中；查询通过只读 WAL 连接读取已提交快照，索引发布不会占用查询线程。大候选集合转入 SQLite 磁盘会话，保留完整分页与排序，不通过截断结果控制内存；前 2048 个排序位置使用有界 Top-K，完整排序索引按深分页需要建立。
 - 目录打开先返回名称与类型，再只为屏幕上可见的行补充大小、时间和目录抽样统计，避免进入大目录时等待全部文件完成分析。
 - 文件用途解释只在用户选中对象后读取内容证据，读取上限为 32 KiB；内容、父级和子级上下文并行获取。
 - 原生图标和跨盘应用位置采用有界并发与缓存，连续滚动、搜索和切换页面时不会一次发起大量系统调用。
@@ -146,7 +125,7 @@ Disk Sense 采用“目录浏览与搜索 + 文件解释 + 安全清理”的方
 
 ## 已知限制
 
-- **尚未达到与 Listary 等价的即时体验。** 首次建库和大量变更补收仍需时间；快照原子发布期间仍可能阻塞搜索工作线程。独立构建与可切换读库代际尚未实现。
+- **尚未达到与 Listary 等价的即时体验。** 首次建库、大量变更补收和宽查询的首次召回、排序仍需时间。构建与查询已分离，发布期间可查询上一份已提交数据；大结果的磁盘会话会增加 SQLite 临时文件占用，连接关闭后释放。缓存预算约束保留的候选数据，不等于整个进程的 RSS 上限。
 - 大目录读取采用分批方式；尚未读完时，筛选和排序只覆盖已加载条目。自动续读达到一轮数量上限后，可点击“继续读取目录”。
 - 实际分配测量有时间和条目上限，不包含全部文件系统元数据及其他数据流；硬链接、云占位和权限问题会影响判断，显示占用不等于删除后可释放空间。
 - AI 协议已有夹具测试，但未逐一验证所有真实服务端点；文件格式线索和 AI 结论都不能证明文件安全或赋予清理权限。
@@ -181,10 +160,12 @@ pnpm dev:desktop
 
 ```powershell
 pnpm typecheck          # TypeScript / Vue 类型检查
+pnpm typecheck:desktop  # 关键后端边界模块 checkJs
 pnpm test               # 单元、安全和故障注入测试
 pnpm check:desktop      # Electron 模块语法检查
 pnpm smoke:development  # 启动真实 Electron，执行开发模式冒烟
 pnpm benchmark:search   # 在受控临时目录中测量索引吞吐、搜索延迟和界面线程延迟
+pnpm benchmark:bounded-search 100000 # 合成大结果集的搜索与分页基准
 pnpm validate           # 完整本地质量检查
 pnpm pack               # 检查并生成 Windows 解包程序
 pnpm check:package      # 检查 release/win-unpacked 的 ASAR 文件及 Electron fuses
@@ -195,14 +176,14 @@ pnpm release:win        # 构建 Windows 安装版和便携版
 
 ## 验证记录
 
-2026-10-27 的本轮功能验收结果：
+2026-10-30 的本地验证结果：
 
-- 47 个测试文件、410 项测试通过，51 个桌面模块语法检查通过。
-- 类型检查、生产构建、依赖漏洞审计、Windows 解包及 ASAR/fuses 核验通过。
-- 三组真实 Electron 场景覆盖深浅主题、小窗口、生产程序和迁移失败回退，共 73 张截图、410 项界面检查。
-- 对应代码提交 [`2254ed4`](https://github.com/IC-sd/disk-sense/commit/2254ed42a086f174faae08450b4703682740b0ed) 的 [Windows CI](https://github.com/IC-sd/disk-sense/actions/runs/40495455849) 已通过。
+- 53 个测试文件、448 项测试通过；Vue 与关键后端类型检查、55 个桌面模块语法检查、生产构建通过。
+- 真实 Electron 开发版完整页面巡检、打包版高级搜索及浅色界面冒烟通过；ASAR 11 个必需文件与 5 个安全 Fuses 核验通过。
+- 本机 10 万条匹配的合成索引测试中，四种排序的首次引擎查询约 0.76–1.32 秒。单次测量不等于 GUI 输入延迟，深分页仍需完整排序索引成本。
+- 安装升级、卸载保留、真实服务重启等尚未在独立 Windows 环境验收；已提供手动触发的临时 Windows 验收工作流。远端运行状态见 [GitHub Actions](https://github.com/IC-sd/disk-sense/actions)。
 
-这些结果使用隔离夹具，不代表已执行真实用户文件清理、系统维护或收费 AI 请求，也不代替百万文件规模和多设备长期验证。逐项实现、开源参考及剩余边界见 [18 项功能实现与验收](docs/functional-implementation-2026-10-27.md)，机器可读数据见 [验证结果](docs/functional-implementation-validation.json)。
+详细结果与性能边界见 [本轮续修验证](docs/continuation-validation-2026-10-29.md)，独立系统测试见 [Windows 验收清单](docs/windows-acceptance.md)。这些验证使用隔离夹具，不代表已执行真实用户文件清理、系统维护或收费 AI 请求，也不代替多设备长期验证。此前功能验收见 [18 项功能实现与验收](docs/functional-implementation-2026-10-27.md)。
 
 ## 项目结构
 
