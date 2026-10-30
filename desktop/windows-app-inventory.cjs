@@ -1,6 +1,7 @@
 const path = require('node:path')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
+const { normalizeWindowsPath, pathContains, isSpecificApplicationRoot } = require('./windows-paths.cjs')
 
 const execFileAsync = promisify(execFile)
 const CACHE_TTL_MS = 10 * 60 * 1000
@@ -64,37 +65,6 @@ function parseRegistryOutput(output, environment = process.env) {
 
 function identity(value) {
   return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
-}
-
-function normalizeWindowsPath(value) {
-  if (!value) return ''
-  return path.win32.resolve(value).replace(/[\\/]+$/u, '').toLowerCase()
-}
-
-function pathContains(root, candidate) {
-  const normalizedRoot = normalizeWindowsPath(root)
-  const normalizedCandidate = normalizeWindowsPath(candidate)
-  return Boolean(normalizedRoot && normalizedCandidate && (
-    normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}\\`)
-  ))
-}
-
-function isSpecificApplicationRoot(value, environment = process.env) {
-  if (!/^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+[\\/])/iu.test(String(value || ''))) return false
-  const normalized = normalizeWindowsPath(value)
-  if (!normalized || normalized === normalizeWindowsPath(path.win32.parse(normalized).root)) return false
-  // Registry data is not necessarily trustworthy: shared user/system roots are not owners.
-  const relative = normalized.slice(path.win32.parse(normalized).root.length)
-  if (/^(?:users(?:\\[^\\]+(?:\\appdata(?:\\(?:local|locallow|roaming))?)?)?|program files(?: \(x86\))?(?:\\common files)?|programdata|windows(?:\\(?:system32|syswow64))?)$/iu.test(relative)) return false
-  const broadRoots = [
-    environment.SystemRoot || environment.WINDIR || 'C:\\Windows',
-    environment.ProgramFiles || 'C:\\Program Files',
-    environment['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-    environment.ProgramData || 'C:\\ProgramData',
-    environment.USERPROFILE, environment.LOCALAPPDATA, environment.APPDATA,
-    environment.CommonProgramFiles, environment['CommonProgramFiles(x86)']
-  ].filter(Boolean).flatMap(root => [root, path.win32.join(root, 'System32'), path.win32.join(root, 'SysWOW64')])
-  return !broadRoots.some(root => normalizeWindowsPath(root) === normalized)
 }
 
 function applicationRoots(application) {

@@ -28,7 +28,7 @@ try {
   }
   const child = spawn(process.execPath, [
     path.resolve('scripts/smoke-desktop.mjs'),
-    path.resolve('node_modules/electron/dist/electron.exe')
+    path.resolve(process.env.DISK_SENSE_SMOKE_ELECTRON || 'node_modules/electron/dist/electron.exe')
   ], {
     cwd: process.cwd(),
     stdio: 'inherit',

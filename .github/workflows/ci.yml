@@ -35,3 +35,15 @@ jobs:
           DISK_SENSE_SMOKE_FRONTEND_AUDIT: '1'
           DISK_SENSE_SMOKE_FRONTEND_FIXTURES: '1'
       - run: pnpm audit --audit-level=moderate
+      - name: Package Windows application
+        run: pnpm exec electron-builder --dir
+      - run: pnpm check:package
+      - name: Smoke test packaged search and IPC
+        run: pnpm smoke:desktop
+        env:
+          DISK_SENSE_SMOKE_VIEW: inspect
+          DISK_SENSE_SMOKE_SKIP_SCREENSHOT: '1'
+          DISK_SENSE_SMOKE_INSPECT_SEARCH: '1'
+          DISK_SENSE_SMOKE_SEARCH_ADVANCED: '1'
+          DISK_SENSE_SMOKE_SEARCH_QUERY: search-smoke
+          DISK_SENSE_SMOKE_SEARCH_EXPECTED: search-smoke.txt

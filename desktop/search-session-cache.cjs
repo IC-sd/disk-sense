@@ -51,7 +51,7 @@ function estimateSessionBytes(value, accounting = accountingContext()) {
   return walk(value)
 }
 
-function createSessionCache({ maxSessions = 4, maxBytes = 64 * 1024 * 1024, estimate = estimateSessionBytes } = {}) {
+function createSessionCache({ maxSessions = 4, maxBytes = 64 * 1024 * 1024, estimate = estimateSessionBytes, dispose = () => {} } = {}) {
   if (!Number.isSafeInteger(maxSessions) || maxSessions < 0) throw new RangeError('maxSessions must be a nonnegative integer')
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('maxBytes must be a nonnegative integer')
   if (typeof estimate !== 'function') throw new TypeError('estimate must be a function')
@@ -71,15 +71,16 @@ function createSessionCache({ maxSessions = 4, maxBytes = 64 * 1024 * 1024, esti
     return value
   }
   function remove(id) {
+    const value = entries.get(id)
     const removed = entries.delete(id)
     if (pinnedId === id) pinnedId = undefined
-    if (removed) remeasure()
+    if (removed) { dispose(value); remeasure() }
     return removed
   }
   function set(id, value, { pin = false } = {}) {
     // Reject an oversized query before it can flush all useful small sessions.
     // The caller still owns this value and can answer its current request fully.
-    if (!maxSessions || !maxBytes || (!pin && measure([value]) > maxBytes)) {
+    if (!maxSessions || !maxBytes || measure([value]) > maxBytes) {
       remove(id)
       rejected++
       return false
@@ -89,10 +90,10 @@ function createSessionCache({ maxSessions = 4, maxBytes = 64 * 1024 * 1024, esti
     remeasure()
     while (entries.size > maxSessions || estimatedBytes > maxBytes) {
       const oldest = [...entries.keys()].find(key => key !== pinnedId)
-      // Preserve one active query even if it is individually oversized: losing
-      // its snapshot would restart later pages at zero and break pagination.
       if (oldest === undefined) break
+      const value = entries.get(oldest)
       entries.delete(oldest)
+      dispose(value)
       evictions++
       // Removing an owner need not free a buffer shared by a surviving session.
       remeasure()
@@ -110,7 +111,7 @@ function createSessionCache({ maxSessions = 4, maxBytes = 64 * 1024 * 1024, esti
     // Call after adding a sort view or expanding its retained merged prefix.
     refresh(id, options) { return entries.has(id) ? set(id, entries.get(id), options) : false },
     delete: remove,
-    clear() { entries.clear(); estimatedBytes = 0; pinnedId = undefined },
+    clear() { for (const value of entries.values()) dispose(value); entries.clear(); estimatedBytes = 0; pinnedId = undefined },
     stats() { return { size: entries.size, estimatedBytes, maxSessions, maxBytes, evictions, rejected,
       overBudget: estimatedBytes > maxBytes,
       oversizedPinned: pinnedId !== undefined && entries.has(pinnedId) && measure([entries.get(pinnedId)]) > maxBytes } }

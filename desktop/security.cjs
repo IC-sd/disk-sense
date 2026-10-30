@@ -1,3 +1,4 @@
+/** @param {import('electron').Session} electronSession */
 function lockDownSession(electronSession) {
   if (!electronSession?.setPermissionCheckHandler || !electronSession?.setPermissionRequestHandler) {
     throw new Error('Electron session permission controls are unavailable')

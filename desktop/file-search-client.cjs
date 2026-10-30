@@ -48,6 +48,8 @@ function createFileSearchWorkerService({
 }) {
   let requestId = 0
   let ready = false
+  let reader
+  let searchPaused = false
   let closing = false
   let closed = false
   let cachedStatus = initialStatus()
@@ -77,8 +79,15 @@ function createFileSearchWorkerService({
     pending.clear()
   }
 
-  worker.on('message', message => {
+  function receive(message, fromReader = false) {
     if (message?.type === 'ready') {
+      reader = new Worker(path.join(__dirname, 'file-search-reader.cjs'), { workerData: { databasePath, searchCancellation } })
+      reader.unref()
+      reader.on('message', message => receive(message, true))
+      reader.on('error', error => { onError(error); failPending(error) })
+      reader.on('exit', code => {
+        if (!closing) { const error = new Error(`文件查询工作线程异常退出（代码 ${code}）`); onError(error); failPending(error); closed = true }
+      })
       ready = true
       cachedStatus = message.status || cachedStatus
       resolveReady(cachedStatus)
@@ -94,7 +103,8 @@ function createFileSearchWorkerService({
     if (!request) return
     pending.delete(message.id)
     if (message.ok) {
-      if (message.result?.phase || message.result?.index) {
+      if (fromReader && message.result?.index) message.result.index = cachedStatus
+      else if (message.result?.phase || message.result?.index) {
         cachedStatus = message.result.index || message.result
       } else if (message.result?.status?.phase) {
         cachedStatus = message.result.status
@@ -103,7 +113,8 @@ function createFileSearchWorkerService({
     } else {
       request.reject(reviveError(message.error))
     }
-  })
+  }
+  worker.on('message', receive)
 
   worker.on('error', error => {
     onError(error)
@@ -122,15 +133,17 @@ function createFileSearchWorkerService({
   })
 
   async function request(method, payload = {}) {
-    if (closed || (closing && method !== 'close')) throw new Error('文件搜索工作线程已经关闭')
+    if (closed || (closing && !['close', 'readerClose'].includes(method))) throw new Error('文件搜索工作线程已经关闭')
     await readyPromise
     return new Promise((resolve, reject) => {
       const id = ++requestId
       if (method === 'search') {
         payload.searchVersion = Atomics.add(searchVersion, 0, 1) + 1
+        payload.index = cachedStatus
       }
       pending.set(id, { resolve, reject })
-      worker.postMessage({ id, method, payload })
+      const target = ['search', 'readerClose', 'readerReset'].includes(method) ? reader : worker
+      target.postMessage({ id, method, payload })
     })
   }
 
@@ -145,7 +158,9 @@ function createFileSearchWorkerService({
   }
 
   async function startAutomatic() {
-    return request('startAutomatic', { roots: await currentRoots() })
+    const result = await request('startAutomatic', { roots: await currentRoots() })
+    searchPaused = false
+    return result
   }
 
   function stopAutomatic(options) {
@@ -164,12 +179,15 @@ function createFileSearchWorkerService({
   }
 
   async function close() {
-    if (closed) return
     if (closing) return
     closing = true
     try {
+      if (closed) return
+      Atomics.add(searchVersion, 0, 1)
+      await request('readerClose')
       await request('close')
     } finally {
+      if (reader) await reader.terminate().catch(() => {})
       await worker.terminate().catch(() => {})
       closed = true
     }
@@ -184,9 +202,14 @@ function createFileSearchWorkerService({
     rebuild,
     rebuildScope,
     cancel: () => request('cancel'),
-    search: input => request('search', { input }),
+    search: input => searchPaused ? Promise.reject(Object.assign(new Error('数据迁移期间搜索已暂停'), { code: 'SEARCH_PAUSED' })) : request('search', { input }),
     recordSelection: input => request('recordSelection', { input }),
-    checkpoint: () => request('checkpoint'),
+    checkpoint: async () => {
+      searchPaused = true
+      Atomics.add(searchVersion, 0, 1)
+      await request('readerReset')
+      return request('checkpoint')
+    },
     waitForIdle: () => request('waitForIdle'),
     close,
     cachedStatus: () => cachedStatus

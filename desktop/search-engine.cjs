@@ -4,14 +4,16 @@ const { parseSearchQuery, fuzzyPattern, matchName, createAbbreviationMatcher, ab
 const { historyReader } = require('./search-history.cjs')
 const { createCandidateSet, createCandidateView, indexCandidates } = require('./search-candidate-session.cjs')
 const { createSessionCache } = require('./search-session-cache.cjs')
+const { createDiskSession, orderKey, locationScore } = require('./search-disk-session.cjs')
 
 const escapeLike = value => String(value).replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')
 const fields = 'file.rowid AS id, file.path, file.name, file.root, file.kind, file.is_directory, file.is_link, file.size, file.modified_at'
 const candidateFields = 'file.rowid AS id, file.path, file.name, file.kind, file.is_directory, file.size, file.modified_at'
 
 function createSearchEngine(database, { profile = () => {}, revision = () => 0, cacheMs = 15_000, cancellation, wordIndexReady,
-  incrementalReuse = true, sessionMaxBytes = 64 * 1024 * 1024 } = {}) {
+  incrementalReuse = true, sessionMaxBytes = 64 * 1024 * 1024, readOnlySource = false } = {}) {
   if (!Number.isSafeInteger(sessionMaxBytes) || sessionMaxBytes < 1) throw new RangeError('sessionMaxBytes must be a positive integer')
+  database.exec('PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-4096;')
   const hasWordIndex = Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE name='search_abbreviations'").get())
   const indexState = hasWordIndex ? database.prepare("SELECT value FROM search_metadata WHERE key='wordIndex'") : null
   const wordsReady = wordIndexReady || (() => { try { const state = JSON.parse(indexState?.get()?.value || 'null'); return state?.version === 3 && state.complete } catch { return false } })
@@ -26,7 +28,15 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
     }
     return 0
   }
-  if (cancellationVersion) database.function('disk_search_active', assertActive)
+  database.function('disk_search_active', assertActive)
+  database.function('disk_search_order_key', { deterministic: true }, orderKey)
+  database.function('disk_search_location', { deterministic: true }, locationScore)
+  database.function('disk_search_fold', { deterministic: true }, value => value.toLowerCase())
+  database.function('disk_search_length', { deterministic: true }, value => value.length)
+  database.function('disk_search_title', { deterministic: true }, value => {
+    const key = value.toLowerCase()
+    return key.slice(0, key.endsWith('.appref-ms') ? -10 : -4)
+  })
   const matchScore = (name, query, partial) => {
     const key = `${query}\0${partial}\0${name}`
     if (matchScores.has(key)) return matchScores.get(key)
@@ -35,7 +45,13 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
     return score
   }
   database.function('disk_search_match', { deterministic: true }, matchScore)
-  const sessions = createSessionCache({ maxBytes: sessionMaxBytes, estimate: (session, accounting) => {
+  database.function('disk_search_rank', { deterministic: true }, (name, file, term, partial) => {
+    const key = name.toLowerCase()
+    return key === term || key.startsWith(term + '.') ? 0 : key.startsWith(term) ? 100
+      : key.includes(term) ? 200 : file.toLowerCase().includes(term) ? 300 : matchScore(name, term, partial)
+  })
+  const sessions = createSessionCache({ maxBytes: sessionMaxBytes, dispose: session => session.candidates.close?.(), estimate: (session, accounting) => {
+    if (session.candidates.disk) return 0 // only bounded session metadata remains in JS
     let bytes = 512 + (session.key.length + session.scopeKey.length + session.query.length) * 2
     if (!accounting.objects.has(session.candidates)) {
       accounting.objects.add(session.candidates)
@@ -46,7 +62,10 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
   } })
   const dataVersion = database.prepare('PRAGMA data_version')
   const totalChanges = database.prepare('SELECT total_changes() AS value')
-  const fingerprint = () => JSON.stringify([revision(), dataVersion.get().data_version, totalChanges.get().value, database.isTransaction])
+  // A read-only source cannot change through this connection. Its temporary
+  // candidate tables must not invalidate the source fingerprint themselves.
+  const fingerprint = () => JSON.stringify([revision(), dataVersion.get().data_version,
+    readOnlySource ? 0 : totalChanges.get().value, database.isTransaction])
   function readSnapshot(operation) {
     database.exec('SAVEPOINT disk_search_recall')
     try {
@@ -107,6 +126,12 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
   }
 
   function search(input = {}) {
+    const lifetime = { disk: null }
+    try { return runSearch(input, lifetime) }
+    finally { lifetime.disk?.close() }
+  }
+
+  function runSearch(input, lifetime) {
     const searchStarted = performance.now()
     const diagnostics = { stages: {}, counts: {}, reusedSession: false }
     const record = (stage, duration, details) => {
@@ -183,38 +208,64 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
         const before = fingerprint()
         const source = incrementalReuse && !inCallerTransaction && attempt === 0 ? sessions.find(value => value.key !== key && value.scopeKey === scopeKey
           && value.fingerprint === before && Date.now() - value.createdAt < 15_000) : null
-        const previous = source?.candidates
+        const previous = source?.candidates.disk ? null : source?.candidates
         if (previous) { indexCandidates(previous, assertActive); sessions.refresh(source.id, { pin: true }) }
         const result = readSnapshot(() => {
           const recallStarted = performance.now()
           // Always execute complete recall. Prefix filtering of prior matches is
           // unsound across LIKE/trigram, pinyin and provider-mode transitions.
-          const ids = new Set(database.prepare(`SELECT file.rowid AS id FROM search_files AS file
-            WHERE ${where.join(' AND ') || '1=1'}${active}`).all(...parameters).map(row => row.id))
-          if (fuzzy) {
-            const fuzzyWhere = ["file.kind='application'", "file.name LIKE ? ESCAPE '\\'", ...constraints]
-            for (const row of database.prepare(`SELECT file.rowid AS id FROM search_files AS file WHERE ${fuzzyWhere.join(' AND ')}${active}`).all(fuzzy, ...constraintParameters)) ids.add(row.id)
-            const pairQuery = abbreviationQuery(query), indexed = wordsReady() && Boolean(pairQuery)
-            const missing = indexed ? database.prepare('SELECT rowid AS id FROM search_abbreviations WHERE search_abbreviations MATCH ?').all(pairQuery)
-              .filter(row => !ids.has(row.id)).map(row => row.id) : null
-            const extra = []
-            for (let start = 0; start < (missing?.length ?? 1); start += 500) {
-              const batch = missing?.slice(start, start + 500)
-              extra.push(...database.prepare(`SELECT file.rowid AS id,file.name FROM search_files AS file
-                ${batch ? `WHERE file.rowid IN (${batch.map(() => '?').join(',')}) AND` : 'INDEXED BY search_files_name WHERE'}
-                file.name LIKE ? ESCAPE '\\' ${constraints.length ? `AND ${constraints.join(' AND ')}` : ''}${active}`)
-                .all(...(batch || []), fuzzy, ...constraintParameters))
+          const ids = new Set()
+          let spool = null, estimated = 0
+          const fetchIds = batch => batchStatement(candidateFields, batch.length).all(...batch)
+          const spill = () => {
+            spool = createDiskSession(database, { context, term, partial: Number(parsed.allowPartial),
+              choices: remembered(input.query), matchScore, assertActive })
+            lifetime.disk = spool
+            const pending = [...ids]
+            for (let offset = 0; offset < pending.length; offset += 256) {
+              for (const row of fetchIds(pending.slice(offset, offset + 256))) spool.add(row)
               assertActive()
             }
-            const matches = createAbbreviationMatcher(query), names = new Map()
-            let checked = 0
-            for (const row of extra) {
-              if (ids.has(row.id)) continue
-              if (!names.has(row.name)) names.set(row.name, matches(row.name))
-              if (names.get(row.name)) ids.add(row.id)
-              if ((++checked & 255) === 0) assertActive()
-            }
+            ids.clear()
           }
+          const add = row => {
+            if (spool) { spool.add(row); return }
+            if (ids.has(row.id)) return
+            ids.add(row.id)
+            // Reserve ranking, views and the worst-case ID map as well as text.
+            estimated += 1024 + 8 * (row.path.length + row.name.length)
+            if (estimated > Math.min(sessionMaxBytes / 2, 16 * 1024 * 1024)) spill()
+          }
+          try {
+            const recallSql = `SELECT ${candidateFields} FROM search_files AS file WHERE ${where.join(' AND ') || '1=1'}${active}`
+            for (const row of database.prepare(recallSql).iterate(...parameters)) {
+              add(row); assertActive()
+              if (spool) break
+            }
+            if (spool) spool.addQuery(recallSql, parameters)
+            if (fuzzy) {
+              const fuzzyWhere = ["file.kind='application'", "file.name LIKE ? ESCAPE '\\'", ...constraints]
+              const fuzzySql = `SELECT ${candidateFields} FROM search_files AS file WHERE ${fuzzyWhere.join(' AND ')}${active}`
+              if (spool) spool.addQuery(fuzzySql, [fuzzy, ...constraintParameters])
+              else for (const row of database.prepare(fuzzySql).iterate(fuzzy, ...constraintParameters)) add(row)
+              const pairQuery = abbreviationQuery(query), indexed = wordsReady() && Boolean(pairQuery)
+              const matches = createAbbreviationMatcher(query)
+              const abbreviationWhere = ["file.name LIKE ? ESCAPE '\\'", ...constraints]
+              if (spool) abbreviationWhere.push(spool.missingSql('file'))
+              const abbreviationParameters = [fuzzy, ...constraintParameters]
+              if (indexed) {
+                abbreviationWhere.push('file.rowid IN (SELECT rowid FROM search_abbreviations WHERE search_abbreviations MATCH ?)')
+                abbreviationParameters.push(pairQuery)
+              }
+              for (const row of database.prepare(`SELECT ${candidateFields} FROM search_files AS file WHERE ${abbreviationWhere.join(' AND ')}${active}`).iterate(...abbreviationParameters)) {
+                if (!spool && ids.has(row.id)) continue
+                if (matches(row.name)) add(row)
+                assertActive()
+              }
+            }
+          } catch (error) { spool?.close(); throw error }
+          if (spool) return { candidates: spool, fetched: spool.count, reused: 0,
+            fetchMs: 0, recallMs: performance.now() - recallStarted, columnsMs: 0 }
           const recallMs = performance.now() - recallStarted
           // Copy only selected columns and used names. Small refinements never
           // retain a parent snapshot's large typed-array backing storage.
@@ -244,14 +295,25 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
       record('recall', fetchStats.recallMs, { candidates: candidates.count })
       record('fetch', fetchStats.fetchMs, { count: fetchStats.fetched })
       record('columns', fetchStats.columnsMs, { count: candidates.count })
+      if (candidates.disk) record('storage', 0, { mode: 'disk', candidates: candidates.count })
       if (fetchStats.reused) record('reuse', performance.now() - stageStarted, { reused: fetchStats.reused, fetched: fetchStats.fetched })
       session = { id: randomUUID(), key, scopeKey, query, parsed, term, candidates, views: new Map(), fingerprint: sourceFingerprint,
         createdAt: Date.now(), revision: revision(), rankingChoices: null }
       record('materialize', performance.now() - stageStarted)
       assertActive()
-      sessions.set(session.id, session, { pin: true })
+      if (sessions.set(session.id, session, { pin: true })) lifetime.disk = null
     } else diagnostics.reusedSession = true
     stageStarted = performance.now()
+    if (session.candidates.disk) {
+      const view = session.candidates.view(sort)
+      const page = view.page(offset, limit)
+      record('page', performance.now() - stageStarted)
+      record('cache', 0, sessions.stats())
+      diagnostics.candidates = session.candidates.count
+      diagnostics.returned = page.rows.length
+      diagnostics.tookMs = performance.now() - searchStarted
+      return { ...page, sessionId: session.id, total: view.total, offset, parsed: session.parsed, diagnostics }
+    }
     let view = session.views.get(sort)
     if (!view) {
       // Explicit field ordering never computes fuzzy relevance. A relevance
@@ -304,7 +366,7 @@ function createSearchEngine(database, { profile = () => {}, revision = () => 0, 
     diagnostics.tookMs = performance.now() - searchStarted
     return { rows, sessionId: session.id, total: view.total, offset, nextOffset: cursor < view.total && rows.length ? cursor : null, parsed: session.parsed, diagnostics }
   }
-  return { search, cacheStats: () => sessions.stats() }
+  return { search, close: () => sessions.clear(), cacheStats: () => sessions.stats() }
 }
 
 function nameMatchPositions(name, parsed, preferBoundaries = false) {

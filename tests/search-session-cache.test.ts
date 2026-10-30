@@ -107,28 +107,28 @@ describe('bounded search session retention', () => {
     expect(() => invalid.set('invalid', {})).toThrow(RangeError)
   })
 
-  it('keeps an oversized active snapshot pageable and releases it when the next query becomes active', () => {
+  it('rejects oversized snapshots even when pinned without evicting useful sessions', () => {
     const cache = createSessionCache({ maxBytes: 100, estimate: byBytes })
     const giant = { bytes: 1000 }
     cache.set('small', { bytes: 25 })
-    expect(cache.set('giant', giant, { pin: true })).toBe(true)
-    expect(cache.get('giant')).toBe(giant)
-    expect(cache.get('small')).toBeUndefined()
-    expect(cache.stats()).toMatchObject({ size: 1, overBudget: true, oversizedPinned: true })
+    expect(cache.set('giant', giant, { pin: true })).toBe(false)
+    expect(cache.get('giant')).toBeUndefined()
+    expect(cache.get('small')).toMatchObject({ bytes: 25 })
+    expect(cache.stats()).toMatchObject({ size: 1, overBudget: false, oversizedPinned: false })
     cache.set('next', { bytes: 25 }, { pin: true })
     expect(cache.get('giant')).toBeUndefined()
-    expect(cache.stats()).toMatchObject({ size: 1, estimatedBytes: 25, overBudget: false, oversizedPinned: false })
+    expect(cache.stats()).toMatchObject({ size: 2, estimatedBytes: 50, overBudget: false, oversizedPinned: false })
   })
 
-  it('does not evict the active snapshot when its requested merge prefix grows', () => {
+  it('removes a pinned snapshot that grows beyond the hard retained budget', () => {
     const cache = createSessionCache({ maxBytes: 100, estimate: byBytes })
     const active = { bytes: 20 }
     cache.set('active', active, { pin: true })
     cache.set('other', { bytes: 20 })
     active.bytes = 200
-    expect(cache.refresh('active', { pin: true })).toBe(true)
-    expect(cache.get('active')).toBe(active)
-    expect(cache.get('other')).toBeUndefined()
-    expect(cache.stats().oversizedPinned).toBe(true)
+    expect(cache.refresh('active', { pin: true })).toBe(false)
+    expect(cache.get('active')).toBeUndefined()
+    expect(cache.get('other')).toMatchObject({ bytes: 20 })
+    expect(cache.stats().oversizedPinned).toBe(false)
   })
 })

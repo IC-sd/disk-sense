@@ -1,0 +1,80 @@
+name: Disposable Windows acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_tag:
+        description: Published installer to upgrade from
+        required: true
+        default: v0.9.0-beta.7
+        type: string
+      include_service_lifecycle:
+        description: Install, restart and remove the read-only search service in this disposable runner
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  installation-and-service:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    env:
+      DISK_SENSE_DISPOSABLE_ACCEPTANCE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm validate
+      - name: Build the installer without publishing or launching on completion
+        run: pnpm exec electron-builder --win nsis --publish never --config.nsis.runAfterFinish=false
+      - name: Download the published baseline and verify the selected checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_TAG: ${{ inputs.baseline_tag }}
+        run: |
+          if ($env:BASELINE_TAG -notmatch '^v[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw 'Invalid baseline tag' }
+          $directory = Join-Path $env:RUNNER_TEMP 'disk-sense-baseline'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          gh release download $env:BASELINE_TAG --repo IC-sd/disk-sense --pattern 'Disk-Sense-Setup-*-x64.exe' --pattern 'SHA256SUMS.txt' --dir $directory
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline release download failed' }
+          $installers = @(Get-ChildItem -LiteralPath $directory -Filter 'Disk-Sense-Setup-*-x64.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one baseline x64 installer' }
+          $name = [regex]::Escape($installers[0].Name)
+          $checksumLine = @(Get-Content -LiteralPath (Join-Path $directory 'SHA256SUMS.txt') | Where-Object { $_ -match "^[a-fA-F0-9]{64}\s+\*?$name$" })
+          if ($checksumLine.Count -ne 1) { throw 'Missing or ambiguous baseline checksum' }
+          $checksum = ($checksumLine[0] -split '\s+')[0]
+          if ((Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256).Hash -ne $checksum.ToUpperInvariant()) { throw 'Baseline checksum mismatch' }
+          "ACCEPTANCE_BASELINE=$($installers[0].FullName)" >> $env:GITHUB_ENV
+          "ACCEPTANCE_BASELINE_SHA256=$checksum" >> $env:GITHUB_ENV
+      - name: Run real installation, upgrade, uninstall and optional service acceptance
+        shell: pwsh
+        env:
+          INCLUDE_SERVICE_LIFECYCLE: ${{ inputs.include_service_lifecycle }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $parameters = @{
+            Execute = $true
+            BaselineInstaller = $env:ACCEPTANCE_BASELINE
+            BaselineSha256 = $env:ACCEPTANCE_BASELINE_SHA256
+            CurrentInstaller = (Join-Path (Get-Location) "release/Disk-Sense-Setup-$version-x64.exe")
+            EvidenceDirectory = (Join-Path $env:RUNNER_TEMP 'disk-sense-acceptance-evidence')
+            IncludeServiceLifecycle = ($env:INCLUDE_SERVICE_LIFECYCLE -eq 'true')
+          }
+          & ./scripts/verify-windows-installation.ps1 @parameters
+      - name: Preserve actual acceptance evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installation-acceptance
+          path: ${{ runner.temp }}/disk-sense-acceptance-evidence/**/**.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -15,6 +15,14 @@ HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Hidden
 `
 
 describe('Windows installed application inventory', () => {
+  it('rejects drive and UNC share roots without assigning unrelated files', () => {
+    for (const root of ['C:\\', 'D:/', '\\\\server\\share\\']) {
+      expect(isSpecificApplicationRoot(root)).toBe(false)
+      expect(matchInstalledApplication('C:\\UnrelatedFixture\\report.txt', [{ registryKey: 'fixture', displayName: 'Fixture', installLocation: root }], '')).toBeNull()
+    }
+    expect(isSpecificApplicationRoot('C:\\Apps\\Fixture\\')).toBe(true)
+    expect(isSpecificApplicationRoot('\\\\server\\share\\Fixture')).toBe(true)
+  })
   it('parses useful application identity fields and ignores entries without a display name', () => {
     const applications = parseRegistryOutput(registryFixture)
     expect(applications).toHaveLength(1)

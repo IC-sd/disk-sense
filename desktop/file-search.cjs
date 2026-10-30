@@ -381,6 +381,33 @@ function openSearchDatabase(databasePath) {
   return database
 }
 
+function presentSearchResult(result, input, index, started = Date.now()) {
+  const presentationStarted = performance.now()
+  const items = result.rows.map(row => {
+    const signal = pathSignals(row.path)
+    const isDirectory = Boolean(row.is_directory)
+    const ranking = searchRanking(row, result.parsed.text)
+    const extension = isDirectory ? '' : path.extname(row.name).toLowerCase()
+    const displayName = row.kind === 'application' && ['.lnk', '.url', '.appref-ms'].includes(extension) ? fileStem(row.name) : row.name
+    const match = nameMatchPositions(displayName, result.parsed, row.kind === 'application')
+    return {
+      name: row.name, displayName, path: row.path, parent: path.dirname(row.path),
+      isDirectory, isLink: Boolean(row.is_link), size: isDirectory ? null : Number(row.size),
+      fileCount: isDirectory ? null : 1, sizeEstimated: false, modifiedAt: Number(row.modified_at), extension,
+      searchKind: row.kind, searchPriority: ranking.priority,
+      relevanceReason: row.selectionReason || (match.phonetic ? '拼音匹配' : match.fuzzy ? '模糊匹配' : ranking.reason),
+      matchPositions: match.positions, matchTitle: displayName,
+      ...signal, risk: normalizeRisk(signal.risk)
+    }
+  })
+  result.diagnostics.stages.presentation = performance.now() - presentationStarted
+  return {
+    items, sessionId: result.sessionId, total: result.total, offset: result.offset,
+    nextOffset: result.nextOffset, truncated: result.nextOffset !== null,
+    tookMs: Date.now() - started, index, diagnostics: result.diagnostics
+  }
+}
+
 function createFileSearchService({
   databasePath,
   getVolumeRoots = async () => [],
@@ -1298,31 +1325,9 @@ function createFileSearchService({
     if (!String(input.query || '').trim()) return { items: [], truncated: false, tookMs: 0, index: publicStatus() }
     const inferredKind = wildcardKind(String(input.query || '').trim())
     const result = searchEngine.search({ ...input, inferredKind })
-    const presentationStarted = performance.now()
-    const items = result.rows.map(row => {
-      const signal = pathSignals(row.path)
-      const isDirectory = Boolean(row.is_directory)
-      const ranking = searchRanking(row, result.parsed.text)
-      const extension = isDirectory ? '' : path.extname(row.name).toLowerCase()
-      const displayName = row.kind === 'application' && ['.lnk', '.url', '.appref-ms'].includes(extension) ? fileStem(row.name) : row.name
-      const match = nameMatchPositions(displayName, result.parsed, row.kind === 'application')
-      return {
-        name: row.name, displayName, path: row.path, parent: path.dirname(row.path),
-        isDirectory, isLink: Boolean(row.is_link), size: isDirectory ? null : Number(row.size),
-        fileCount: isDirectory ? null : 1, sizeEstimated: false, modifiedAt: Number(row.modified_at), extension,
-        searchKind: row.kind, searchPriority: ranking.priority,
-        relevanceReason: row.selectionReason || (match.phonetic ? '拼音匹配' : match.fuzzy ? '模糊匹配' : ranking.reason),
-        matchPositions: match.positions, matchTitle: displayName,
-        ...signal, risk: normalizeRisk(signal.risk)
-      }
-    })
-    result.diagnostics.stages.presentation = performance.now() - presentationStarted
-    return {
-      items, sessionId: result.sessionId, total: result.total, offset: result.offset,
-      nextOffset: result.nextOffset, truncated: result.nextOffset !== null,
-      tookMs: Date.now() - started, index: publicStatus(), diagnostics: result.diagnostics
-    }
+    return presentSearchResult(result, input, publicStatus(), started)
   }
+
   async function close() {
     if (closed) return
     stopping = true
@@ -1394,6 +1399,7 @@ function createFileSearchService({
 
 module.exports = {
   createFileSearchService,
+  presentSearchResult,
   fileKind,
   searchRanking,
   searchRelevanceScore,

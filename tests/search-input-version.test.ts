@@ -12,7 +12,7 @@ afterEach(() => {
   while (directories.length) fs.rmSync(directories.pop()!, { recursive: true, force: true })
 })
 
-function fixture(options: { race?: boolean; sessionMaxBytes?: number } = {}) {
+function fixture(options: { race?: boolean; sessionMaxBytes?: number; readOnlySource?: boolean } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'disk-sense-input-version-'))
   directories.push(root)
   const filename = path.join(root, 'index.sqlite'), database = new DatabaseSync(filename)
@@ -44,14 +44,29 @@ function fixture(options: { race?: boolean; sessionMaxBytes?: number } = {}) {
     return typeof value === 'function' ? value.bind(target) : value
   } })
   const events: Array<{ stage: string; details: any }> = []
-  const engine = createSearchEngine(options.race ? proxy : database, {
+  const reader = options.readOnlySource ? new DatabaseSync(filename, { readOnly: true }) : database
+  if (reader !== database) databases.push(reader)
+  const engine = createSearchEngine(options.race ? proxy : reader, {
     cacheMs: 60_000, sessionMaxBytes: options.sessionMaxBytes,
+    readOnlySource: options.readOnlySource,
     profile(stage: string, _ms: number, details: any) { events.push({ stage, details }) }
   })
   return { database, writer, engine, events, armRace: () => { race = true } }
 }
 
 describe('candidate data versioning', () => {
+  it('reuses a read-only disk session despite its temp writes and invalidates it after a source commit', () => {
+    const { engine, writer } = fixture({ sessionMaxBytes: 1, readOnlySource: true })
+    const first = engine.search({ query: 'result', sort: 'size', limit: 2 })
+    engine.search({ query: 'result', sort: 'size', sessionId: first.sessionId, offset: first.nextOffset })
+    const repeated = engine.search({ query: 'result', sort: 'size', limit: 2 })
+    expect(repeated.sessionId).toBe(first.sessionId)
+    expect(repeated.diagnostics.stages.recall).toBeUndefined()
+    writer.exec('UPDATE search_files SET size=999 WHERE rowid=1')
+    const refreshed = engine.search({ query: 'result', sort: 'size' })
+    expect(refreshed.sessionId).not.toBe(first.sessionId)
+    expect(refreshed.rows[0].id).toBe(1)
+  })
   it('invalidates both exact-query and candidate-data caches after another connection commits', () => {
     const { writer, engine, events } = fixture()
     const first = engine.search({ query: 'res', sort: 'size' })
@@ -101,7 +116,8 @@ describe('candidate data versioning', () => {
       ids.push(...page.rows.map((row: any) => row.id))
     }
     expect(new Set(ids).size).toBe(8)
-    expect(engine.cacheStats()).toMatchObject({ size: 1, overBudget: true, oversizedPinned: true })
+    expect(first.diagnostics.counts.storage.mode).toBe('disk')
+    expect(engine.cacheStats()).toMatchObject({ size: 1, overBudget: false, oversizedPinned: false })
     const reordered = engine.search({ query: 'result', sort: 'size', sessionId: first.sessionId })
     expect(reordered.total).toBe(8)
     expect(reordered.rows[0].id).toBe(8)

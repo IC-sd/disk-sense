@@ -109,7 +109,7 @@ describe('search candidate sessions and sorted views', () => {
       counts: { recall: { candidates: 1604 }, fetch: { count: 1604 }, sort: { count: 1604 } } })
     for (const stage of ['recall', 'fetch', 'columns', 'sort', 'page']) expect(first.diagnostics.stages[stage]).toBeGreaterThanOrEqual(0)
     expect(first.diagnostics.stages.score).toBeUndefined()
-    const candidatePrepares = prepare.mock.calls.filter(([sql]) => sql.includes('file.name, file.kind') && sql.includes('file.rowid IN'))
+    const candidatePrepares = prepare.mock.calls.filter(([sql]) => sql.includes('file.name, file.kind') && /WHERE file.rowid IN \(\?(?:,\?)*\)$/.test(sql))
     expect(candidatePrepares).toHaveLength(2) // full 500-ID batches plus the last 104 IDs
     const paths = first.rows.map((row: { path: string }) => row.path)
     let page = first

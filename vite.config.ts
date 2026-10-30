@@ -27,7 +27,7 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
     watch: {
-      ignored: ['**/release/**', '**/release-*/**', '**/dist/**', '**/.cache/**']
+      ignored: ['**/release/**', '**/release-*/**', '**/dist/**', '**/.cache/**', '**/work/**']
     }
   },
   build: {

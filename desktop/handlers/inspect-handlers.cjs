@@ -235,6 +235,24 @@ function createExplainerLoader() {
   }
 }
 
+async function availableLocations(app, roots = []) {
+  const candidates = []
+  for (const [key, name] of [['home', '个人文件'], ['desktop', '桌面'], ['documents', '文档'], ['downloads', '下载']]) {
+    try {
+      const directory = app.getPath(key)
+      if (directory) candidates.push({ name, path: directory })
+    } catch {
+      // Windows may not resolve an unavailable or redirected known folder.
+    }
+  }
+  const unique = [...candidates, ...roots.map(root => ({ name: root, path: root }))]
+    .filter((item, index, items) => items.findIndex(other => other.path.toLowerCase() === item.path.toLowerCase()) === index)
+  const accessible = await Promise.all(unique.map(async item => {
+    try { return (await fsp.stat(item.path)).isDirectory() ? item : null } catch { return null }
+  }))
+  return accessible.filter(Boolean)
+}
+
 function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchService, app, shell, clipboard }) {
   const loadExplainer = createExplainerLoader()
   const spaceRequests = new Map()
@@ -258,17 +276,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
   let activeAiRequest = null
   ipcMain.handle('inspect:file-action', (_event, input) => executeFileAction(input, { shell, clipboard,
     onOpened: choice => choice.query && searchService?.recordSelection ? searchService.recordSelection(choice) : undefined }))
-  ipcMain.handle('inspect:locations', async () => {
-    const candidates = [['home', '个人文件'], ['desktop', '桌面'], ['documents', '文档'], ['downloads', '下载']]
-      .map(([key, name]) => ({ name, path: app.getPath(key) }))
-    const roots = searchService?.cachedStatus?.().roots || []
-    const unique = [...candidates, ...roots.map(root => ({ name: root, path: root }))]
-      .filter((item, index, items) => items.findIndex(other => other.path.toLowerCase() === item.path.toLowerCase()) === index)
-    const accessible = await Promise.all(unique.map(async item => {
-      try { return (await fsp.stat(item.path)).isDirectory() ? item : null } catch { return null }
-    }))
-    return accessible.filter(Boolean)
-  })
+  ipcMain.handle('inspect:locations', () => availableLocations(app, searchService?.cachedStatus?.().roots || []))
   const nativePresentationCache = new Map()
   const cacheNativePresentation = (filePath, presentation) => {
     nativePresentationCache.delete(filePath)
@@ -424,6 +432,7 @@ function registerInspectHandlers({ ipcMain, aiConfig, aiAnalysisStore, searchSer
 }
 
 module.exports = {
+  availableLocations,
   createAiConfigService,
   findOfficeBrandIconAsync,
   resolveFilePresentation,

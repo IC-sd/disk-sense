@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "allowJs": true, "checkJs": true, "noEmit": true, "strict": true,
+    "skipLibCheck": true, "types": ["node"]
+  },
+  "include": ["desktop/ai-safety.cjs", "desktop/windows-paths.cjs", "desktop/security.cjs", "desktop/file-actions.cjs"]
+}

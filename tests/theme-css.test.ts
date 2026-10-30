@@ -93,7 +93,7 @@ describe('light and dark theme surfaces', () => {
 
     expect(searchControls).not.toContain('AI 设置')
     expect(searchControls).not.toContain('showAiSettings')
-    expect(explorerSource).toContain('@click="requestAi"')
+    expect(explorerSource).toContain('@review="requestAi"')
     expect(explorerSource).not.toContain("requestAi('deep')")
     expect(browseToolbar).toBeGreaterThan(fileListStart)
     expect(browseToolbar).toBeLessThan(listHeader)
@@ -115,18 +115,19 @@ describe('light and dark theme surfaces', () => {
   })
 
   it('makes AI completion and its refreshed explanation visually explicit', () => {
-    const banner = explorerSource.slice(
-      explorerSource.indexOf('<div v-if="explanation.aiAnalyzed" class="ai-result-banner"'),
-      explorerSource.indexOf('<div class="meaning-list">')
+    const analysisSource = fs.readFileSync(path.resolve('src/ui/ExplorerAnalysis.vue'), 'utf8')
+    const banner = analysisSource.slice(
+      analysisSource.indexOf('<div v-if="explanation.aiAnalyzed" class="ai-result-banner"'),
+      analysisSource.indexOf('<div class="meaning-list">')
     )
-    const details = explorerSource.slice(
-      explorerSource.indexOf('const objectDetails'),
-      explorerSource.indexOf('const emptyTitle')
+    const details = analysisSource.slice(
+      analysisSource.indexOf('const objectDetails'),
+      analysisSource.indexOf('</script>')
     )
-    expect(explorerSource).toContain("'ai-result': explanation.aiAnalyzed")
-    expect(explorerSource).toContain('class="ai-result-banner"')
-    expect(explorerSource).toContain('分析完成')
-    expect(explorerSource).toContain("explanation.aiPersisted ? '已本地保存' : '已更新'")
+    expect(analysisSource).toContain("'ai-result': explanation.aiAnalyzed")
+    expect(analysisSource).toContain('class="ai-result-banner"')
+    expect(analysisSource).toContain('分析完成')
+    expect(analysisSource).toContain("explanation.aiPersisted ? '已本地保存' : '已更新'")
     expect(banner).not.toContain('<AppIcon')
     expect(details).toContain("label: '识别结论'")
     expect(details).toContain("label: '与系统的关系'")

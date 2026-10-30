@@ -303,114 +303,10 @@
           <button v-if="mode === 'search'" class="analysis-panel-close" aria-label="收起文件分析" @click="searchAnalysisOpen = false"><AppIcon name="close" /></button>
           <small v-else>本地证据优先</small>
         </header>
-        <div
-          v-if="explanation"
-          class="explanation-content"
-          :class="{ 'ai-result': explanation.aiAnalyzed }"
-        >
-          <div class="object-heading">
-            <div class="object-icon"><AppIcon :name="selected?.isDirectory ? 'folder' : 'file'" /></div>
-            <div>
-              <span>{{ explanation.kind }}</span>
-              <h2>{{ selected ? (mode === 'search' ? displayItemName(selected) : selected.name) : '' }}</h2>
-              <small class="explained-path" :title="selected?.path">{{ selected?.path }}</small>
-            </div>
-          </div>
-
-          <div v-if="selected && mode === 'browse'" class="object-file-actions">
-            <button v-if="mode === 'browse'" class="quiet" @click="runFileAction(selected, 'open')">打开</button>
-            <button v-if="mode === 'browse'" class="quiet" @click="runFileAction(selected, 'reveal')">定位</button>
-            <button v-if="mode === 'browse'" class="quiet" @click="runFileAction(selected, 'copy')">复制路径</button>
-          </div>
-
-          <dl v-if="selected" class="object-facts">
-            <div><dt>类型</dt><dd>{{ selected.isDirectory ? '文件夹' : fileTypeLabel(selected.extension) }}</dd></div>
-            <div><dt>大小</dt><dd>{{ selected.metadataPending ? '读取中…' : selected.size === null ? '尚未估算' : `${selected.sizeEstimated ? '≥ ' : ''}${formatBytes(selected.size)}` }}</dd></div>
-            <div><dt>最近修改</dt><dd>{{ formatModified(selected.modifiedAt) }}</dd></div>
-          </dl>
-
-          <PathSpacePanel v-if="selected" :key="selected.path" :path="selected.path" />
-
-          <div class="explanation-summary">
-            <span class="risk-chip" :class="riskClass(explanation.risk)">{{ riskLabel(explanation.risk) }}</span>
-            <span>{{ ['install-path', 'package-install-path', 'package-data-path'].includes(explanation.relationship?.basis || '') ? '安装登记证据' : explanation.relationship?.basis === 'portable-manifest' ? '便携应用清单证据' : explanation.relationship?.basis === 'project-markers' ? '项目结构证据' : explanation.relationship?.basis === 'known-signature' ? '已知路径特征' : explanation.relationship?.basis ? '归属仍需核实' : '本地特征判断' }}</span>
-            <span>{{ explanation.aiAnalyzed ? 'AI 分析' : '本地证据分析' }}</span>
-          </div>
-
-          <div class="ai-actions">
-            <button class="ai-review" :class="{ completed: explanation.aiAnalyzed }" :disabled="aiBusy || refreshingExplanation" @click="requestAi">
-              <AppIcon name="spark" />
-              <span>
-                <b>{{ aiBusy ? '分析中…' : explanation.aiAnalyzed ? '重新分析' : 'AI 分析' }}</b>
-                <small>{{ aiConfigured ? '结合本地证据，解释用途与处理建议' : '配置模型后，补充文件用途与处理建议' }}</small>
-              </span>
-            </button>
-            <button class="ai-config-link secondary-button" @click="showAiSettings = true"><AppIcon name="settings" />设置</button>
-          </div>
-          <div v-if="aiBusy" class="analysis-progress" role="status">
-            <i></i><span>正在结合本地证据分析</span>
-            <button class="quiet ai-cancel" @click="cancelAi">取消本次分析</button>
-          </div>
-          <p v-if="aiError" class="inline-message error-message">{{ aiError }}</p>
-
-          <p v-if="refreshingExplanation" class="inline-message" role="status">正在核实最新证据…</p>
-
-          <div v-if="explanation.aiAnalyzed" class="ai-result-banner" role="status">
-            <div>
-              <b>AI 分析完成</b>
-              <small>已根据本地证据更新结论与处理建议</small>
-            </div>
-            <strong>{{ explanation.aiPersisted ? '已本地保存' : '已更新' }}</strong>
-          </div>
-
-          <div class="meaning-list">
-            <section v-for="detail in objectDetails" :key="detail.label">
-              <span>{{ detail.label }}</span>
-              <p>{{ detail.value }}</p>
-            </section>
-          </div>
-
-          <details v-if="explanation.evidence?.fileType" class="reason-details">
-            <summary>文件格式依据</summary>
-            <p>{{ explanation.evidence.fileType.format }} · {{ explanation.evidence.fileType.status }}</p>
-            <p v-if="explanation.evidence.fileType.extensionConflict" class="error-message">文件头与扩展名不一致，请核实来源后再打开。</p>
-            <ul><li v-for="detail in explanation.evidence.fileType.details" :key="detail">{{ detail }}</li></ul>
-            <small>读取了 {{ explanation.evidence.fileType.bytesRead }} 字节前缀；格式线索不代表文件安全性。</small>
-          </details>
-
-          <details v-if="explanation.relationship?.evidence?.length" class="reason-details relationship-details">
-            <summary>空间关联依据 · {{ explanation.relationship.entityKind || '本地关系分析' }}</summary>
-            <p v-if="explanation.relationship.role">
-              当前对象在关联实体中属于：<b>{{ explanation.relationship.role.label }}</b>
-            </p>
-            <ul><li v-for="reason in explanation.relationship.evidence" :key="reason">{{ reason }}</li></ul>
-            <p v-if="explanation.relationship.components?.length">包含的组件：{{ explanation.relationship.components.map(component => component.entityName).join('、') }}。仅有组件清单不能证明它是独立的软件或项目。</p>
-            <p v-if="explanation.relationship.limited">目录标记采用有限采样，可能仍有未识别的其他内容。</p>
-          </details>
-
-          <details v-if="explanation.aiReasons?.length" class="reason-details">
-            <summary>为什么这样判断</summary>
-            <ul><li v-for="reason in explanation.aiReasons" :key="reason">{{ reason }}</li></ul>
-          </details>
-
-          <div v-if="explanation.relatedLocations?.length" class="related-locations">
-            <b>相关位置</b>
-            <div v-for="location in explanation.relatedLocations" :key="location.path">
-              <AppIcon name="database" />
-              <span>{{ location.path }}<small>{{ location.reason }}</small></span>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="refreshingExplanation" class="panel-empty analysis-loading" role="status">
-          <div class="empty-graphic"><AppIcon name="scan" /></div>
-          <b>正在读取文件信息</b><p>核对本地特征与归属证据…</p>
-        </div>
-        <div v-else class="panel-empty">
-          <div class="empty-graphic"><AppIcon name="scan" /></div>
-          <b>选择一个文件或目录</b>
-          <p>点击左侧条目，查看文件用途和处理建议。双击目录可以进入。</p>
-        </div>
+        <ExplorerAnalysis :explanation="explanation" :selected="selected" :mode="mode"
+          :display-name="selected ? (mode === 'search' ? displayItemName(selected) : selected.name) : ''"
+          :ai-busy="aiBusy" :refreshing-explanation="refreshingExplanation" :ai-configured="aiConfigured" :ai-error="aiError"
+          @action="runFileAction" @review="requestAi" @cancel="cancelAi" @settings="showAiSettings = true" />
       </aside>
     </div>
 
@@ -437,15 +333,15 @@ import type {
   FileSearchModified,
   FileSearchResult,
   FileSearchSort,
-  NativeFilePresentation,
   StoredAiAnalysis
 } from '../domain/desktop'
-import { riskClass, riskLabel } from '../domain/risk'
 import { formatBytes } from '../shared/format'
 import { browseItems, highlightSearchName, readFavoritePaths, searchEnterAction, type BrowseSort } from '../application/explorer'
 import AiSettingsModal from './AiSettingsModal.vue'
 import AppIcon from './AppIcon.vue'
-import PathSpacePanel from './PathSpacePanel.vue'
+import ExplorerAnalysis from './ExplorerAnalysis.vue'
+import { useNativePresentations } from '../application/native-presentations'
+import { formatModified, formatRelativeModified, formatRelativeTime, fileTypeLabel } from '../application/explorer-format'
 
 const props = defineProps<{ requestedPath?: { path: string; id: number } | null; requestedSearch?: number }>()
 let appliedPathRequest = 0
@@ -501,7 +397,6 @@ const showAiSettings = ref(false)
 const fileScroller = ref<HTMLElement | null>(null)
 const explainPanel = ref<HTMLElement | null>(null)
 const searchInputElement = ref<HTMLInputElement | null>(null)
-const nativePresentations = ref<Record<string, NativeFilePresentation>>({})
 const scrollTop = ref(0)
 const viewportHeight = ref(600)
 const aiSession = appAiAnalysisSession
@@ -526,15 +421,12 @@ let rowClickTimer: ReturnType<typeof setTimeout> | null = null
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let lastObservedChangedAt = ''
 let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
-let nativeIconTimer: ReturnType<typeof setTimeout> | null = null
 let visibleMetadataTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 let unsubscribeIndex: (() => void) | null = null
 let workspaceActive = false
 let initialized = false
-const pendingNativeIcons = new Set<string>()
 const hydratingPaths = new Set<string>()
-const maximumNativePresentations = 600
 const localExplanationCache = new Map<string, FileExplanation>()
 const maximumLocalExplanations = 240
 
@@ -576,24 +468,8 @@ const visibleRows = computed(() => {
   return activeItems.value.slice(start, start + count).map((item, offset) => ({ item, index: start + offset }))
 })
 
-const objectDetails = computed(() => {
-  if (!explanation.value) return []
-  const item = explanation.value
-  const ai = item.aiDetails
-  const conclusion = [
-    ai?.what || item.what || item.description || item.reason || '当前证据还不足以明确识别这个对象。',
-    ai?.purpose || item.purpose
-  ].filter(Boolean).join(' ')
-  const relationship = [
-    ai?.belongsTo || item.belongsTo || item.source,
-    ai?.whyHere || item.whyHere
-  ].filter(Boolean).join('。') || `当前只能确认它位于 ${item.parent || '磁盘根目录'}，所属来源仍需进一步确认。`
-  return [
-    { label: '识别结论', value: conclusion },
-    { label: '与系统的关系', value: relationship },
-    { label: '处理建议', value: ai?.handling || item.handling || item.action || '当前不建议直接处理；确认来源和影响后再决定。' }
-  ]
-})
+const { nativePresentation, nativeIcon, scheduleNativeIconLoad, stop: stopNativePresentations } = useNativePresentations(
+  () => workspaceActive && mode.value === 'search', () => visibleRows.value.map(row => row.item))
 
 const emptyTitle = computed(() => {
   if (mode.value === 'browse') return browseFilter.value ? '没有匹配的名称' : '这个位置没有可显示的内容'
@@ -1351,52 +1227,6 @@ function displayItemName(item: DirectoryItem) {
   return nativePresentation(item.path)?.displayName || searchItem(item).displayName || item.name
 }
 
-function nativePresentation(filePath: string) {
-  return nativePresentations.value[filePath.toLowerCase()]
-}
-
-function nativeIcon(filePath: string) {
-  return nativePresentation(filePath)?.dataUrl || ''
-}
-
-function scheduleNativeIconLoad() {
-  if (!workspaceActive) return
-  if (nativeIconTimer) clearTimeout(nativeIconTimer)
-  nativeIconTimer = setTimeout(() => {
-    nativeIconTimer = null
-    void loadVisibleNativeIcons()
-  }, 45)
-}
-
-async function loadVisibleNativeIcons() {
-  if (!workspaceActive || mode.value !== 'search') return
-  const api = desktopApi()
-  if (!api?.inspectFilePresentations) return
-  const paths = visibleRows.value
-    .map(row => row.item.path)
-    .filter(filePath => !nativePresentation(filePath) && !pendingNativeIcons.has(filePath.toLowerCase()))
-    .slice(0, 32)
-  if (!paths.length) return
-  paths.forEach(filePath => pendingNativeIcons.add(filePath.toLowerCase()))
-  try {
-    const loaded = await api.inspectFilePresentations(paths)
-    const next = new Map(Object.entries(nativePresentations.value))
-    for (const [filePath, presentation] of Object.entries(loaded)) {
-      if (presentation.dataUrl?.startsWith('data:image/') || presentation.displayName) {
-        const cacheKey = filePath.toLowerCase()
-        next.delete(cacheKey)
-        next.set(cacheKey, presentation)
-      }
-    }
-    while (next.size > maximumNativePresentations) next.delete(next.keys().next().value as string)
-    nativePresentations.value = Object.fromEntries(next)
-  } catch {
-    // Native icons improve recognition but never block search results.
-  } finally {
-    paths.forEach(filePath => pendingNativeIcons.delete(filePath.toLowerCase()))
-  }
-}
-
 function searchPriority(item: DirectoryItem) {
   return searchItem(item).searchPriority || 'standard'
 }
@@ -1423,45 +1253,6 @@ function searchIconName(item: DirectoryItem) {
 function searchNameSegments(name: string, item?: DirectoryItem) {
   const result = item as FileSearchItem | undefined
   return highlightSearchName(name, searchQuery.value, result?.matchTitle === name ? result.matchPositions : undefined)
-}
-
-function formatModified(value: number) {
-  if (!value) return '时间未知'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  }).format(new Date(value))
-}
-
-function formatRelativeModified(value: number) {
-  if (!value) return '时间未知'
-  const elapsed = Math.max(0, Date.now() - value)
-  if (elapsed < 60_000) return '刚刚'
-  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} 分钟前`
-  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} 小时前`
-  if (elapsed < 7 * 86_400_000) return `${Math.floor(elapsed / 86_400_000)} 天前`
-  if (elapsed < 30 * 86_400_000) return `${Math.floor(elapsed / (7 * 86_400_000))} 周前`
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value))
-}
-
-function formatRelativeTime(value: string) {
-  const elapsed = Date.now() - new Date(value).getTime()
-  if (elapsed < 60_000) return '刚刚'
-  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} 分钟前`
-  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} 小时前`
-  return `${Math.floor(elapsed / 86_400_000)} 天前`
-}
-
-function fileTypeLabel(extension: string) {
-  const knownTypes: Record<string, string> = {
-    '.lnk': '快捷方式',
-    '.url': '网页快捷方式',
-    '.exe': '应用程序',
-    '.msi': '安装程序',
-    '.msix': '应用安装包',
-    '.appx': '应用安装包'
-  }
-  return knownTypes[extension.toLowerCase()]
-    || (extension ? `${extension.slice(1).toUpperCase()} 文件` : '文件')
 }
 
 onMounted(() => {
@@ -1505,7 +1296,6 @@ function stopActiveWork() {
   if (rowClickTimer) clearTimeout(rowClickTimer)
   if (searchTimer) clearTimeout(searchTimer)
   if (backgroundRefreshTimer) clearTimeout(backgroundRefreshTimer)
-  if (nativeIconTimer) clearTimeout(nativeIconTimer)
   if (visibleMetadataTimer) clearTimeout(visibleMetadataTimer)
   if (fileActionNoticeTimer) clearTimeout(fileActionNoticeTimer)
   fileActionNoticeTimer = null
@@ -1513,13 +1303,12 @@ function stopActiveWork() {
   rowClickTimer = null
   searchTimer = null
   backgroundRefreshTimer = null
-  nativeIconTimer = null
   visibleMetadataTimer = null
   unsubscribeIndex?.()
   unsubscribeIndex = null
   resizeObserver?.disconnect()
   resizeObserver = null
-  pendingNativeIcons.clear()
+  stopNativePresentations()
   hydratingPaths.clear()
   estimatingPaths.value = new Set()
   estimatingCount.value = 0
